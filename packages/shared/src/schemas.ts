@@ -248,18 +248,18 @@ export type StoryInput = z.input<typeof StoryInputSchema>;
 export type RecipeListResponse = { recipes: Recipe[] };
 export type RecipeDetailResponse = { recipe: Recipe; stories: Story[] };
 
-// ---------- AI suggestions ("次の30日ガチャ" AI 案) ----------
+// ---------- ひらめき提案 (rule-based, no generative AI — ADR 0003) ----------
 
-export const AiSuggestRequestSchema = z.object({
+export const SuggestRequestSchema = z.object({
   maxMinutes: z.coerce.number().int().min(0).max(180).optional(),
   category: CategorySchema.optional(),
   place: PlaceSchema.optional(),
   hint: text({ min: 0, max: LIMITS.aiHint, noUrl: true, label: "ひとこと" }).optional(),
 });
-export type AiSuggestRequest = z.input<typeof AiSuggestRequestSchema>;
+export type SuggestRequest = z.input<typeof SuggestRequestSchema>;
 
-/** What the model must return for each suggestion. Validated before anything reaches the client. */
-export const AiSuggestionSchema = z.object({
+/** One suggestion. The provider output is validated against this before it reaches the client. */
+export const SuggestionSchema = z.object({
   seal: SealSchema,
   title: text({ max: LIMITS.recipeTitle, noUrl: true, label: "タイトル" }),
   category: CategorySchema,
@@ -270,8 +270,8 @@ export const AiSuggestionSchema = z.object({
   how: z.array(text({ max: LIMITS.recipeHowItem, noUrl: true, label: "コツ" })).min(1).max(LIMITS.recipeHowItems),
   after: text({ min: 0, max: LIMITS.recipeAfter, multiline: true, noUrl: true, label: "30日後" }),
 });
-export type AiSuggestion = z.output<typeof AiSuggestionSchema>;
-export type AiSuggestResponse = { suggestions: AiSuggestion[]; remainingToday: number };
+export type Suggestion = z.output<typeof SuggestionSchema>;
+export type SuggestResponse = { suggestions: Suggestion[]; remainingToday: number };
 
 // ---------- share cards ----------
 
@@ -351,8 +351,7 @@ export type AdminStats = {
   shares: number;
   /** Share actions by channel (from POST /api/metrics/share). */
   shareActions: Record<string, number>;
-  aiCallsToday: number;
-  aiGlobalLimit: number;
+  suggestionsToday: number;
   pushSubscriptions: number;
 };
 

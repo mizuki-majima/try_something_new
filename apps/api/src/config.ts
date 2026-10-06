@@ -1,7 +1,5 @@
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
-import { QUOTAS } from "@thirty/shared";
 
-export type AiProviderKind = "bedrock" | "mock" | "off";
 export type LogLevel = "debug" | "info" | "warn" | "error" | "silent";
 
 export type Config = {
@@ -13,10 +11,6 @@ export type Config = {
   mediaBucket?: string;
   /** Local directory for media when there is no bucket. */
   mediaDir?: string;
-  aiProvider: AiProviderKind;
-  aiModel: string;
-  aiRegion: string;
-  aiGlobalDailyLimit: number;
   vapidPublicKey?: string;
   vapidPrivateKey?: string;
   /** SSM SecureString name holding the VAPID private key (used when vapidPrivateKey is unset). */
@@ -32,7 +26,6 @@ export type Config = {
 
 export type Secrets = { adminToken?: string; vapidPrivateKey?: string };
 
-const AI_PROVIDERS: readonly AiProviderKind[] = ["bedrock", "mock", "off"];
 const LOG_LEVELS: readonly LogLevel[] = ["debug", "info", "warn", "error", "silent"];
 
 function str(env: NodeJS.ProcessEnv, name: string): string | undefined {
@@ -46,13 +39,6 @@ function oneOf<T extends string>(value: string | undefined, allowed: readonly T[
   throw new Error(`${name} must be one of ${allowed.join(", ")} (got "${value}")`);
 }
 
-function positiveInt(value: string | undefined, fallback: number, name: string): number {
-  if (value === undefined) return fallback;
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 0) throw new Error(`${name} must be a non-negative integer (got "${value}")`);
-  return n;
-}
-
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     tableName: str(env, "TABLE_NAME") ?? "thirty-days-local",
@@ -60,10 +46,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     region: str(env, "AWS_REGION") ?? "ap-northeast-1",
     mediaBucket: str(env, "MEDIA_BUCKET"),
     mediaDir: str(env, "MEDIA_DIR"),
-    aiProvider: oneOf(str(env, "AI_PROVIDER"), AI_PROVIDERS, "off", "AI_PROVIDER"),
-    aiModel: str(env, "AI_MODEL") ?? "anthropic.claude-opus-5-5",
-    aiRegion: str(env, "AI_REGION") ?? "ap-northeast-1",
-    aiGlobalDailyLimit: positiveInt(str(env, "AI_GLOBAL_DAILY_LIMIT"), QUOTAS.aiGlobalPerDay, "AI_GLOBAL_DAILY_LIMIT"),
     vapidPublicKey: str(env, "VAPID_PUBLIC_KEY"),
     vapidPrivateKey: str(env, "VAPID_PRIVATE_KEY"),
     vapidPrivateKeyParam: str(env, "VAPID_PRIVATE_KEY_PARAM"),

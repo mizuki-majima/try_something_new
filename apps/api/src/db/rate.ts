@@ -1,7 +1,9 @@
 /**
  * Fixed-window quota counters. One item per (scope, key, window), incremented atomically and
  * refused once it reaches the limit; items expire through TTL after 2 days.
+ * The key (user id, IP hash, ...) is stored hashed, so a deleted account leaves no id behind.
  */
+import { createHash } from "node:crypto";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { todayIn } from "@thirty/shared";
 import { HttpError } from "../errors";
@@ -25,6 +27,10 @@ export function windowFor(kind: WindowKind, now: Date): { id: string; resetAt: n
   const id = now.toISOString().slice(0, 13); // "YYYY-MM-DDTHH" (UTC)
   const start = Date.parse(`${id}:00:00.000Z`);
   return { id, resetAt: start + 3_600_000 };
+}
+
+function counterKey(scope: string, key: string, window: string) {
+  return rateKey(scope, createHash("sha256").update(key).digest("hex").slice(0, 32), window);
 }
 
 export type QuotaResult = { count: number; limit: number; remaining: number; resetAt: number };
@@ -56,7 +62,7 @@ export async function enforceQuota(
     const res = await deps.db.send(
       new UpdateCommand({
         TableName: deps.tableName,
-        Key: rateKey(scope, key, id),
+        Key: counterKey(scope, key, id),
         UpdateExpression: "SET #ttl = :ttl ADD #count :one",
         ConditionExpression: "attribute_not_exists(#count) OR #count < :limit",
         ExpressionAttributeNames: { "#count": "count", "#ttl": "ttl" },
@@ -81,7 +87,7 @@ export async function getQuotaUsage(
   kind: WindowKind,
 ): Promise<QuotaResult> {
   const { id, resetAt } = windowFor(kind, deps.now());
-  const res = await deps.db.send(new GetCommand({ TableName: deps.tableName, Key: rateKey(scope, key, id) }));
+  const res = await deps.db.send(new GetCommand({ TableName: deps.tableName, Key: counterKey(scope, key, id) }));
   const count = Number(res.Item?.count ?? 0);
   return { count, limit, remaining: Math.max(0, limit - count), resetAt };
 }

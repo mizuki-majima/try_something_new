@@ -35,7 +35,7 @@ export const MESSAGES = {
   internal: "サーバーで問題が起きました。時間をおいてもう一度お試しください",
   unsupportedMediaType: "Content-Type は application/json にしてください",
   payloadTooLarge: "送信するデータが大きすぎます",
-  aiUnavailable: "いまは AI 案を使えません",
+  suggestionsUnavailable: "いまは提案を作れません",
 } as const;
 
 export const badRequest = (message: string, fields?: Record<string, string>) =>

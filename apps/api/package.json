@@ -9,7 +9,6 @@
     "dev": "tsx watch src/local.ts"
   },
   "dependencies": {
-    "@anthropic-ai/bedrock-sdk": "^0.34.2",
     "@aws-sdk/client-dynamodb": "^3.1146.0",
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/client-ssm": "^3.1146.0",

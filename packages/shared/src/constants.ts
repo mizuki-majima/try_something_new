@@ -57,7 +57,7 @@ export const LIMITS = {
 /** Per-user and global quotas (per JST day unless noted). Enforced server-side. */
 export const QUOTAS = {
   /** ひらめき提案（AI は使わない。ADR 0003）. */
-  aiPerUserPerDay: 10,
+  suggestionsPerUserPerDay: 10,
   recipesPerUserPerDay: 5,
   storiesPerUserPerDay: 10,
   sharesPerUserPerDay: 10,

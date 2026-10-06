@@ -1,0 +1,273 @@
+/**
+ * Offline-first writes (SPEC: Error Handling). Every mutation is applied to local state right away
+ * and queued here; the queue is sent strictly in order because later operations can depend on
+ * earlier ones (a stamp needs its challenge). The API is idempotent for these routes, so
+ * re-sending after a lost response is safe.
+ *
+ * - 5xx / 429 / network / timeout → keep the item, stop, retry later with backoff
+ * - 401 → keep everything, stop (the session must be restored first)
+ * - other 4xx → drop the item (it will never succeed); the caller refetches to roll back
+ *
+ * Everything here is pure except drain(), which takes its I/O as arguments.
+ */
+import { API, type Challenge, type User, type Verdict } from "@thirty/shared";
+
+export type CreateBody = { id: string; recipeId?: string | null; title: string; seal: string; startDate: string };
+export type ChallengePatchBody = { title?: string; seal?: string; startDate?: string };
+export type ReflectBody = { verdict: Verdict; reflection?: string };
+export type MePatchBody = {
+  nickname?: string;
+  tz?: string;
+  shareProgress?: boolean;
+  reminder?: { enabled: boolean; time: string };
+};
+
+export type OutboxOp =
+  | { kind: "challenge.create"; body: CreateBody }
+  | { kind: "challenge.patch"; id: string; body: ChallengePatchBody }
+  | { kind: "challenge.delete"; id: string }
+  | { kind: "stamp.put"; id: string; day: number; body: { note?: string } }
+  | { kind: "stamp.delete"; id: string; day: number }
+  /** finishedDay is local-only (the server computes its own); body is what is sent. */
+  | { kind: "challenge.reflect"; id: string; body: ReflectBody; finishedDay: number }
+  | { kind: "me.patch"; body: MePatchBody };
+
+export type OutboxItem = {
+  key: string;
+  op: OutboxOp;
+  /** When the user did it (ms). Used as the timestamp when the op is applied locally. */
+  at: number;
+  attempts: number;
+  /** A send was started at least once, so the server may have seen it. */
+  sent: boolean;
+};
+
+/** Challenge id an op touches, or null for account-level ops. */
+export function targetOf(op: OutboxOp): string | null {
+  if (op.kind === "me.patch") return null;
+  if (op.kind === "challenge.create") return op.body.id;
+  return op.id;
+}
+
+export function hasPendingFor(items: readonly OutboxItem[], challengeId: string): boolean {
+  return items.some((i) => targetOf(i.op) === challengeId);
+}
+
+export function hasPendingMe(items: readonly OutboxItem[]): boolean {
+  return items.some((i) => i.op.kind === "me.patch");
+}
+
+// ---------- enqueue ----------
+
+function merge(prev: OutboxOp, next: OutboxOp): OutboxOp | null {
+  if (prev.kind === "stamp.put" && next.kind === "stamp.put" && prev.id === next.id && prev.day === next.day) {
+    return { ...next, body: { ...prev.body, ...next.body } };
+  }
+  if (prev.kind === "challenge.patch" && next.kind === "challenge.patch" && prev.id === next.id) {
+    return { ...next, body: { ...prev.body, ...next.body } };
+  }
+  if (prev.kind === "me.patch" && next.kind === "me.patch") {
+    return { ...next, body: { ...prev.body, ...next.body } };
+  }
+  return null;
+}
+
+/**
+ * Add an op. Repeated edits of the same thing merge into the last item; a merged item always gets
+ * a fresh key, so a copy that is already on the wire is not mistaken for it and the merged
+ * version is still sent. Deleting a challenge the server has never seen just cancels its queue.
+ */
+export function enqueue(items: readonly OutboxItem[], op: OutboxOp, at: number, key: string): OutboxItem[] {
+  if (op.kind === "challenge.delete") {
+    const mine = items.filter((i) => targetOf(i.op) === op.id);
+    const unsentCreate = mine.some((i) => i.op.kind === "challenge.create" && !i.sent);
+    const rest = items.filter((i) => targetOf(i.op) !== op.id || i.sent);
+    if (unsentCreate && !rest.some((i) => targetOf(i.op) === op.id)) return rest;
+    return [...rest, { key, op, at, attempts: 0, sent: false }];
+  }
+  const last = items[items.length - 1];
+  if (last) {
+    const merged = merge(last.op, op);
+    if (merged) return [...items.slice(0, -1), { key, op: merged, at, attempts: 0, sent: false }];
+  }
+  return [...items, { key, op, at, attempts: 0, sent: false }];
+}
+
+// ---------- local (optimistic) application ----------
+
+export type LocalState = { user: User | null; challenges: Challenge[] };
+
+function updateChallenge(list: Challenge[], id: string, fn: (c: Challenge) => Challenge): Challenge[] {
+  return list.map((c) => (c.id === id ? fn(c) : c));
+}
+
+export function applyOp(state: LocalState, op: OutboxOp, at: number): LocalState {
+  switch (op.kind) {
+    case "challenge.create": {
+      if (state.challenges.some((c) => c.id === op.body.id)) return state;
+      const b = op.body;
+      const created: Challenge = {
+        id: b.id,
+        recipeId: b.recipeId ?? null,
+        title: b.title,
+        seal: b.seal,
+        startDate: b.startDate,
+        status: "active",
+        stamps: {},
+        verdict: null,
+        reflection: null,
+        finishedAt: null,
+        finishedDay: null,
+        cheers: 0,
+        shareId: null,
+        createdAt: at,
+        updatedAt: at,
+      };
+      return { ...state, challenges: [...state.challenges, created] };
+    }
+    case "challenge.patch":
+      return {
+        ...state,
+        challenges: updateChallenge(state.challenges, op.id, (c) => ({ ...c, ...op.body, updatedAt: at })),
+      };
+    case "challenge.delete":
+      return { ...state, challenges: state.challenges.filter((c) => c.id !== op.id) };
+    case "stamp.put":
+      return {
+        ...state,
+        challenges: updateChallenge(state.challenges, op.id, (c) => {
+          const prev = c.stamps[String(op.day)];
+          const note = op.body.note !== undefined ? op.body.note : prev?.note;
+          const stamp = note ? { at: prev?.at ?? at, note } : { at: prev?.at ?? at };
+          return { ...c, stamps: { ...c.stamps, [String(op.day)]: stamp }, updatedAt: at };
+        }),
+      };
+    case "stamp.delete":
+      return {
+        ...state,
+        challenges: updateChallenge(state.challenges, op.id, (c) => {
+          if (!c.stamps[String(op.day)]) return c;
+          const stamps = { ...c.stamps };
+          delete stamps[String(op.day)];
+          return { ...c, stamps, updatedAt: at };
+        }),
+      };
+    case "challenge.reflect":
+      return {
+        ...state,
+        challenges: updateChallenge(state.challenges, op.id, (c) => ({
+          ...c,
+          status: "done",
+          verdict: op.body.verdict,
+          reflection: op.body.reflection ? op.body.reflection : null,
+          finishedAt: at,
+          finishedDay: op.finishedDay,
+          updatedAt: at,
+        })),
+      };
+    case "me.patch":
+      return state.user ? { ...state, user: { ...state.user, ...op.body } } : state;
+  }
+}
+
+/** Server state with the not-yet-confirmed local changes re-applied on top. */
+export function applyPending(base: LocalState, items: readonly OutboxItem[]): LocalState {
+  return items.reduce((s, i) => applyOp(s, i.op, i.at), base);
+}
+
+// ---------- sending ----------
+
+export type OpRequest = { method: "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown };
+
+export function opRequest(op: OutboxOp): OpRequest {
+  switch (op.kind) {
+    case "challenge.create":
+      return { method: "POST", path: API.challenges, body: op.body };
+    case "challenge.patch":
+      return { method: "PATCH", path: API.challenge(op.id), body: op.body };
+    case "challenge.delete":
+      return { method: "DELETE", path: API.challenge(op.id) };
+    case "stamp.put":
+      return { method: "PUT", path: API.stamp(op.id, op.day), body: op.body };
+    case "stamp.delete":
+      return { method: "DELETE", path: API.stamp(op.id, op.day) };
+    case "challenge.reflect":
+      return { method: "POST", path: API.reflect(op.id), body: op.body };
+    case "me.patch":
+      return { method: "PATCH", path: API.me, body: op.body };
+  }
+}
+
+export type FailureKind = "retry" | "drop" | "auth";
+
+/** How to treat a failed send. Errors without an HTTP status (bugs) are dropped, never looped. */
+export function classifyError(err: unknown): FailureKind {
+  const status = typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : null;
+  if (status === null) return "drop";
+  if (status === 0) return (err as { code?: unknown }).code === "aborted" ? "drop" : "retry";
+  if (status === 401) return "auth";
+  if (status === 429 || status >= 500) return "retry";
+  return "drop";
+}
+
+/** 2s, 4s, 8s … capped at 5 minutes. */
+export function backoffMs(attempts: number): number {
+  return Math.min(5 * 60_000, 2_000 * 2 ** Math.max(0, attempts - 1));
+}
+
+/** Remove a dropped item. If it was a create, later ops for that challenge would only 404, so drop them too. */
+export function dropItem(items: readonly OutboxItem[], item: OutboxItem): OutboxItem[] {
+  const id = item.op.kind === "challenge.create" ? item.op.body.id : null;
+  const idx = items.findIndex((i) => i.key === item.key);
+  return items.filter((i, n) => {
+    if (i.key === item.key) return false;
+    return !(id && n > idx && targetOf(i.op) === id);
+  });
+}
+
+export type DrainDeps = {
+  load(): OutboxItem[];
+  save(items: OutboxItem[]): void;
+  send(item: OutboxItem): Promise<unknown>;
+  onSent?(item: OutboxItem, response: unknown): void;
+  onDropped?(item: OutboxItem, error: unknown): void;
+};
+
+export type DrainResult =
+  | { status: "empty"; sent: number; dropped: number }
+  | { status: "retry"; sent: number; dropped: number; error: unknown; attempts: number }
+  | { status: "auth"; sent: number; dropped: number; error: unknown };
+
+/** Send queued items one by one, in order, until the queue is empty or something must wait. */
+export async function drain(deps: DrainDeps): Promise<DrainResult> {
+  let sent = 0;
+  let dropped = 0;
+  for (;;) {
+    const head = deps.load()[0];
+    if (!head) return { status: "empty", sent, dropped };
+    // Persist "sent" before the request so a delete can tell whether the server may know this create.
+    const item: OutboxItem = { ...head, sent: true };
+    deps.save(deps.load().map((i) => (i.key === item.key ? item : i)));
+
+    let response: unknown;
+    try {
+      response = await deps.send(item);
+    } catch (error) {
+      const kind = classifyError(error);
+      const current = deps.load();
+      if (kind === "drop") {
+        deps.save(dropItem(current, item));
+        dropped++;
+        deps.onDropped?.(item, error);
+        continue;
+      }
+      const attempts = item.attempts + 1;
+      deps.save(current.map((i) => (i.key === item.key ? { ...i, attempts } : i)));
+      if (kind === "auth") return { status: "auth", sent, dropped, error };
+      return { status: "retry", sent, dropped, error, attempts };
+    }
+    deps.save(deps.load().filter((i) => i.key !== item.key));
+    sent++;
+    deps.onSent?.(item, response);
+  }
+}

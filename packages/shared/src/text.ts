@@ -1,13 +1,15 @@
 /** Text normalisation and checks shared by client forms and API validation. */
 
 // Control characters, zero-width characters and bidi overrides, built from code points so the
-// source stays plain ASCII: C0 controls (except \t \n \r), DEL, U+200B-U+200F, U+202A-U+202E, U+2066-U+2069, U+FEFF.
+// source stays plain ASCII: C0 controls (except \t \n \r), DEL, U+200B, U+200E-U+200F, U+202A-U+202E, U+2066-U+2069, U+FEFF.
+// U+200C/U+200D (ZWNJ/ZWJ) are kept: emoji sequences such as a family or "woman running" need them.
 const CONTROL_RANGES: [number, number][] = [
   [0x00, 0x08],
   [0x0b, 0x0c],
   [0x0e, 0x1f],
   [0x7f, 0x7f],
-  [0x200b, 0x200f],
+  [0x200b, 0x200b],
+  [0x200e, 0x200f],
   [0x202a, 0x202e],
   [0x2066, 0x2069],
   [0xfeff, 0xfeff],
@@ -44,8 +46,11 @@ export function isValidSeal(s: string): boolean {
 }
 
 /** Public text must not carry links (spam). Private notes may. */
+const JOINERS_RE = new RegExp("[" + hex(0x200c) + hex(0x200d) + "]", "g");
+
 export function containsUrl(s: string): boolean {
-  return /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|jp|io|xyz|info|biz|ly|me|co)\b)/i.test(s);
+  // Joiners survive cleanText (emoji), so drop them here: "example<ZWJ>.com" is still a link.
+  return /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|jp|io|xyz|info|biz|ly|me|co)\b)/i.test(s.replace(JOINERS_RE, ""));
 }
 
 /** First grapheme of a string, used as the default seal. */

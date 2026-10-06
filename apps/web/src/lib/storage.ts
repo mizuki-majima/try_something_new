@@ -23,12 +23,22 @@ export function readString(key: string): string | null {
 }
 
 export function writeString(key: string, value: string): void {
-  memory.set(key, value);
   try {
-    store()?.setItem(key, value);
+    const s = store();
+    if (s) {
+      s.setItem(key, value);
+      memory.delete(key);
+      return;
+    }
   } catch {
-    // keep the in-memory copy
+    // Quota or blocked: drop the stale stored copy so reads see the in-memory value.
+    try {
+      store()?.removeItem(key);
+    } catch {
+      // ignore
+    }
   }
+  memory.set(key, value);
 }
 
 export function removeKey(key: string): void {

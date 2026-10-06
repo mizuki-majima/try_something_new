@@ -1,0 +1,48 @@
+/**
+ * Light / dark / follow the device (FR-21). The choice is stored per device and applied as
+ * data-theme on <html>; tokens.css does the rest.
+ */
+import { useSyncExternalStore } from "react";
+import { KEYS, readString, writeString } from "./storage";
+
+export type ThemePref = "system" | "light" | "dark";
+
+/** Must match --paper in tokens.css (used for the browser chrome color). */
+export const THEME_COLORS = { light: "#fafaf6", dark: "#121726" } as const;
+
+const listeners = new Set<() => void>();
+
+export function getThemePref(): ThemePref {
+  const v = readString(KEYS.theme);
+  return v === "light" || v === "dark" ? v : "system";
+}
+
+export function applyTheme(pref: ThemePref): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (pref === "system") delete root.dataset.theme;
+  else root.dataset.theme = pref;
+
+  // index.html ships two theme-color metas (light/dark media). A manual choice overrides both.
+  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
+    const media = meta.getAttribute("media") ?? "";
+    const own = media.includes("dark") ? THEME_COLORS.dark : THEME_COLORS.light;
+    meta.content = pref === "system" ? own : THEME_COLORS[pref];
+  });
+}
+
+export function setThemePref(pref: ThemePref): void {
+  writeString(KEYS.theme, pref);
+  applyTheme(pref);
+  for (const l of [...listeners]) l();
+}
+
+function subscribe(l: () => void): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+
+export function useThemePref(): [ThemePref, (pref: ThemePref) => void] {
+  const pref = useSyncExternalStore(subscribe, getThemePref, () => "system" as ThemePref);
+  return [pref, setThemePref];
+}

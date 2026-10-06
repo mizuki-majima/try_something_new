@@ -2,7 +2,7 @@
  * Everything the routes need from the outside world, injected so that tests and local runs
  * can swap implementations (dynalite instead of DynamoDB, a directory instead of S3, ...).
  */
-import type { AiSuggestRequestSchema, AiSuggestion } from "@thirty/shared";
+import type { SuggestRequestSchema, Suggestion } from "@thirty/shared";
 import type { z } from "zod";
 import type { Config, Secrets } from "./config";
 import type { Db } from "./db/client";
@@ -12,11 +12,15 @@ export interface MediaStore {
   delete(key: string): Promise<void>;
 }
 
-export type AiSuggestInput = z.output<typeof AiSuggestRequestSchema>;
+export type SuggestInput = z.output<typeof SuggestRequestSchema>;
 
-export interface AiProvider {
-  /** Must return suggestions already validated against AiSuggestionSchema. */
-  suggest(input: AiSuggestInput): Promise<AiSuggestion[]>;
+/**
+ * "ひらめき提案" (FR-13). Rule-based over built-in data, no generative AI (ADR 0003); kept behind
+ * this interface so it could be swapped later (a CEO decision).
+ */
+export interface SuggestionProvider {
+  /** At most 3, each valid against SuggestionSchema. */
+  suggest(input: SuggestInput): Promise<Suggestion[]>;
 }
 
 export type PushTarget = { endpoint: string; keys: { p256dh: string; auth: string } };
@@ -32,7 +36,7 @@ export type Deps = {
   config: Config;
   now: () => Date;
   media: MediaStore;
-  ai: AiProvider;
+  suggestions: SuggestionProvider;
   push: PushSender;
   /** Filled before the first request is handled (see lambda.ts / local.ts). */
   secrets: Secrets;

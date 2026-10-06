@@ -3,17 +3,17 @@ import type { Deps } from "../ports";
 import type { AppEnv } from "../types";
 
 /**
- * AI suggestions (FR-13).
- *   POST /api/ai/suggest  AiSuggestRequest → AiSuggestResponse (requireUser; 503 ai_unavailable when off)
+ * "ひらめき提案" (FR-13). No generative AI (ADR 0003).
+ *   POST /api/suggestions  SuggestRequest → SuggestResponse (requireUser)
  *
- * Use deps.ai (providers/ai.ts) and enforceQuota for QUOTAS.aiPerUserPerDay / config.aiGlobalDailyLimit. Never retry automatically.
+ * Use deps.suggestions (providers/suggestions.ts) and enforceQuota for QUOTAS.suggestionsPerUserPerDay. Never store the hint.
  *
  * Mounted at "/" by app.ts: register absolute paths (API in @thirty/shared has them).
  * Attach middleware per route, e.g. r.post(path, requireUser(deps), handler). Never r.use("*", ...):
  * on a router mounted at "/" it would run for every route of the app.
  */
-export function aiRoutes(_deps: Deps) {
+export function suggestionRoutes(_deps: Deps) {
   const r = new Hono<AppEnv>();
-  // TODO(ai): implement the routes above.
+  // TODO(suggestions): implement the route above.
   return r;
 }
