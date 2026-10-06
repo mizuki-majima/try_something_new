@@ -31,7 +31,9 @@ const SYNC_TEXT = {
 
 function SyncPill() {
   const { status, pending, hasSession, lastSyncError } = useSync();
-  const text = status === "synced" && !hasSession ? "この端末" : SYNC_TEXT[status];
+  const localOnly = status === "synced" && !hasSession;
+  const text = localOnly ? "この端末" : SYNC_TEXT[status];
+  const cls = `sync ${localOnly ? "local" : status}`;
   const title =
     status === "synced"
       ? hasSession
@@ -42,13 +44,13 @@ function SyncPill() {
         : (lastSyncError ?? undefined);
   if (status === "error") {
     return (
-      <Link to="/settings#transfer" className={`sync ${status}`} title={title} data-testid="sync-status">
+      <Link to="/settings#transfer" className={cls} title={title} data-testid="sync-status">
         {text}
       </Link>
     );
   }
   return (
-    <span className={`sync ${status}`} title={title} data-testid="sync-status">
+    <span className={cls} title={title} data-testid="sync-status">
       {text}
     </span>
   );

@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "synth": "cdk synth",
-    "deploy": "cdk deploy --all --require-approval never",
-    "diff": "cdk diff"
+    "synth": "cdk synth --quiet --no-notices",
+    "deploy": "cdk deploy --all --require-approval never --no-notices",
+    "diff": "cdk diff --no-notices"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.272.0",

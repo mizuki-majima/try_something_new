@@ -1,6 +1,7 @@
 /**
- * Low-level JSON transport for the same-origin API. No auth and no retries here:
- * a request is sent exactly once (AI calls cost money; the outbox decides about re-sending).
+ * Low-level JSON transport for the same-origin API. No auth and no retries here: a request is
+ * sent exactly once (a blind retry could duplicate a POST; the outbox decides about re-sending
+ * the idempotent writes).
  */
 import { ERROR_CODES, type ErrorCode } from "@thirty/shared";
 
@@ -15,7 +16,7 @@ const MESSAGES: Record<ClientErrorCode, string> = {
   rate_limited: "今日はここまでです。時間をおいてお試しください。",
   payload_too_large: "データが大きすぎます。",
   unsupported_media_type: "送信の形式が正しくありません。",
-  ai_unavailable: "いまはAI案を使えません。",
+  ai_unavailable: "いまは提案を使えません。",
   internal: "サーバーで問題が起きました。時間をおいてもう一度お試しください。",
   network: "通信できませんでした。つながる場所でもう一度お試しください。",
   timeout: "応答がありませんでした。時間をおいてもう一度お試しください。",

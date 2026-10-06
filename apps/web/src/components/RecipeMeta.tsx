@@ -4,7 +4,7 @@ import { difficultyAria, difficultyLabel, minutesLabel, placeLabel } from "../li
 
 type Props = {
   recipe: { minutes: number; place: Place; difficulty: number };
-  /** Extra tags after the line (体験談あり, 投稿, AI案 …). */
+  /** Extra tags after the line (体験談あり, 投稿 …). */
   children?: ReactNode;
 };
 

@@ -453,7 +453,8 @@
   inset: -4px -3px;
 }
 .chip.on,
-.chip[aria-checked="true"] {
+.chip[aria-checked="true"],
+.chip[aria-pressed="true"] {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--paper);
@@ -915,7 +916,8 @@ legend {
   gap: 4px;
   padding-left: 1.3em;
 }
-.story {
+/* The story quote. (.tag.story is the small "体験談あり" tag and must not pick these up.) */
+.story:not(.tag) {
   margin: 0;
   padding: 12px 14px;
   border-left: 3px solid var(--shu);

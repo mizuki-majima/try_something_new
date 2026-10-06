@@ -6,7 +6,7 @@
  *
  * auth: "required" creates the anonymous account on first use; "optional" (default) sends the
  * token when there is one (public lists use it for isMine); "none" never sends it.
- * Requests are never retried automatically.
+ * Requests are never retried automatically (offline-safe writes go through the store's outbox).
  */
 import { send, ApiClientError, type SendOptions } from "./http";
 import { ensureSession, getToken, markSessionInvalid } from "./session";

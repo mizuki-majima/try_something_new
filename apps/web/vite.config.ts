@@ -62,7 +62,8 @@ export default defineConfig({
       },
       injectManifest: {
         // Fonts are not precached (hundreds of unicode-range slices); sw.ts caches them on first use.
-        globPatterns: ["**/*.{js,css,html,webmanifest}", "favicon.svg", "icons/*.png"],
+        // The manifest and its icons are added by the plugin itself.
+        globPatterns: ["**/*.{js,css,html}", "favicon.svg", "icons/apple-touch-icon-180.png"],
         globIgnores: ["**/*.{woff,woff2,ttf,otf}", "og-default.png"],
         rollupFormat: "iife",
       },

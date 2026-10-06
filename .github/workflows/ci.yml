@@ -1,0 +1,45 @@
+# Quality gate for every PR and every push (PROCESS: Gate 4 "Build / Lint / Test", SPEC "Definition of Done").
+# No AWS credentials here: the CDK synth uses a dummy account and the E2E runs against a local API (dynalite).
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - run: npx playwright install --with-deps chromium
+      - name: E2E — Critical User Flow
+        run: npm run test:e2e
+      - name: CDK synth
+        run: npm run synth -w infra
+        env:
+          CDK_DEFAULT_ACCOUNT: "123456789012"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7

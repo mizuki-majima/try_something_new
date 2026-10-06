@@ -1,20 +1,52 @@
 import { Hono } from "hono";
+import { API, AUTO_HIDE_REPORTS, ContactCreateSchema, QUOTAS, ReportCreateSchema } from "@thirty/shared";
+import { clientIpHash, optionalUser, requireUser } from "../auth";
+import { createContact } from "../db/contacts";
+import { enforceQuota } from "../db/rate";
+import { addReport, hideTarget, resolveTarget } from "../db/reports";
+import { badRequest, notFound } from "../errors";
+import { log } from "../log";
 import type { Deps } from "../ports";
-import type { AppEnv } from "../types";
+import { viewer, type AppEnv } from "../types";
+import { readJson } from "../validate";
+
+const TARGET_NOT_FOUND = "通報する対象が見つかりませんでした";
+const OWN_CONTENT = "自分の投稿や記録は通報できません";
 
 /**
  * Reports and contact (FR-18, FR-19).
  *   POST /api/reports  ReportCreate → 204 (requireUser)
  *   POST /api/contact  ContactCreate → 204 (optionalUser)
  *
- * Put gsi2 AUTHOR#<uid> on reporter (BY#<uid>) items if they should be removed by DELETE /api/me.
- *
- * Mounted at "/" by app.ts: register absolute paths (API in @thirty/shared has them).
- * Attach middleware per route, e.g. r.post(path, requireUser(deps), handler). Never r.use("*", ...):
- * on a router mounted at "/" it would run for every route of the app.
+ * Reporter markers (REPORT#…/BY#<uid>) carry gsi2 AUTHOR#<uid>, so DELETE /api/me removes them.
  */
-export function reportsRoutes(_deps: Deps) {
+export function reportsRoutes(deps: Deps) {
   const r = new Hono<AppEnv>();
-  // TODO(reports): implement the routes above.
+
+  r.post(API.reports, requireUser(deps), async (c) => {
+    const input = await readJson(c, ReportCreateSchema);
+    const target = await resolveTarget(deps, input.targetType, input.targetId);
+    if (!target) throw notFound(TARGET_NOT_FOUND);
+    if (target.ownerId === c.var.uid) throw badRequest(OWN_CONTENT);
+    await enforceQuota(deps, "report", c.var.uid, QUOTAS.reportsPerUserPerDay, "day");
+
+    const count = await addReport(deps, c.var.uid, target, input.reason || undefined);
+    if (count !== undefined && count >= AUTO_HIDE_REPORTS && target.status === "published") {
+      await hideTarget(deps, target);
+      log.info("auto-hidden after reports", { targetType: target.type, count });
+    }
+    return c.body(null, 204);
+  });
+
+  r.post(API.contact, optionalUser(deps), async (c) => {
+    const input = await readJson(c, ContactCreateSchema);
+    const user = viewer(c);
+    const key = user ? `user:${user.id}` : `ip:${clientIpHash(c)}`;
+    await enforceQuota(deps, "contact", key, QUOTAS.contactPerUserPerDay, "day");
+    await createContact(deps, { message: input.message, replyTo: input.replyTo || undefined });
+    log.info("contact received", { signedIn: user !== undefined });
+    return c.body(null, 204);
+  });
+
   return r;
 }
