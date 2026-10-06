@@ -89,7 +89,7 @@ export default function TodayPage() {
   }
 
   return (
-    <div className="td">
+    <div className="td-page">
       {main}
       <CohortTeaser today={today} online={online} reserved={reserved} onReserve={() => setStart({ preset: { firstOfMonth: true } })} />
       {doneCount > 0 && (
@@ -272,10 +272,8 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
 
       <div className="td-action">
         {v.phase === "active" && !v.todayStamped && (
-          <button ref={stampRef} type="button" className="td-stamp" onClick={() => doStamp(v.day, true)}>
-            <span className="td-stamp-seal" aria-hidden="true">
-              {c.seal}
-            </span>
+          <button ref={stampRef} type="button" className="btn primary lg stampbtn td-stamp" onClick={() => doStamp(v.day, true)}>
+            <Seal char={c.seal} inverse />
             <span>きょう（{v.day}日目）の分を押す</span>
           </button>
         )}
@@ -285,12 +283,14 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
               <span className="td-done-seal" aria-hidden="true">
                 {c.seal}
               </span>
-              <p className="td-done-text" ref={doneRef} tabIndex={-1}>
-                {v.day}日目、押しました
-              </p>
-              <button type="button" className="linkbtn td-undo" onClick={() => doUnstamp(v.day)}>
-                取り消す
-              </button>
+              <div className="td-done-msg">
+                <p className="td-done-text" ref={doneRef} tabIndex={-1}>
+                  {v.day}日目、押しました
+                </p>
+                <button type="button" className="linkbtn td-undo" onClick={() => doUnstamp(v.day)}>
+                  取り消す
+                </button>
+              </div>
             </div>
             <DayNoteInput challengeId={c.id} day={v.day} note={todayNote} />
           </div>

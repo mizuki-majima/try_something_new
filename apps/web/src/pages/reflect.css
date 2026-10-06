@@ -1,6 +1,6 @@
 /* 振り返り (ReflectPage). Neo-brutalism per docs/design.md, tokens with fallbacks. */
 
-.rf {
+.rf-page {
   display: grid;
   gap: 20px;
 }
@@ -164,9 +164,11 @@
   font-size: 13px;
   line-height: 1.55;
 }
-.rf-verdict:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 7px 7px 0 var(--ink, #111);
+@media (hover: hover) {
+  .rf-verdict:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 7px 7px 0 var(--ink, #111);
+  }
 }
 .rf-verdict:has(input:focus-visible) {
   outline: 3px solid var(--blue, #6c8cff);

@@ -50,16 +50,16 @@ export default function LogPage() {
   if (!ready && challenges.length === 0) return <Loading label="記録を読み込んでいます…" />;
   if (challenges.length === 0 && hasSession && lastSyncedAt === null && lastSyncError) {
     return (
-      <section className="lg">
-        <h1 className="lg-h1">記録</h1>
+      <section className="lp-page">
+        <h1 className="lp-h1">記録</h1>
         <ErrorState title="記録を読み込めませんでした" message={lastSyncError} onRetry={() => void refresh()} retrying={refreshing} />
       </section>
     );
   }
   if (challenges.length === 0) {
     return (
-      <section className="lg">
-        <h1 className="lg-h1">記録</h1>
+      <section className="lp-page">
+        <h1 className="lp-h1">記録</h1>
         <EmptyState
           seal="記"
           title="まだ記録はありません"
@@ -76,50 +76,50 @@ export default function LogPage() {
   }
 
   return (
-    <section className="lg">
-      <h1 className="lg-h1">記録</h1>
+    <section className="lp-page">
+      <h1 className="lp-h1">記録</h1>
 
-      <div className="lg-stats">
-        <p className="lg-stat lg-stat-tried">
+      <div className="lp-stats">
+        <p className="lp-stat lp-stat-tried">
           <b>{tried}</b>
           <small>試した数</small>
         </p>
-        <p className="lg-stat lg-stat-stamps">
+        <p className="lp-stat lp-stat-stamps">
           <b>{totalStamps}</b>
           <small>押した印の合計</small>
         </p>
       </div>
-      <ul className="lg-verdicts" aria-label="判定の内訳">
+      <ul className="lp-verdicts" aria-label="判定の内訳">
         {VERDICT_KEYS.map((k) => (
-          <li key={k} className={`lg-v lg-v-${k}`}>
+          <li key={k} className={`lp-v lp-v-${k}`}>
             <span>{VERDICTS[k].label}</span>
             <b>{counts[k]}</b>
           </li>
         ))}
       </ul>
 
-      <section className="lg-section" aria-labelledby="lg-done-h">
-        <h2 className="lg-h2" id="lg-done-h">
+      <section className="lp-section" aria-labelledby="lp-done-h">
+        <h2 className="lp-h2" id="lp-done-h">
           終わった30日
         </h2>
         {done.length === 0 ? (
-          <p className="lg-empty">振り返りを終えた30日が、ここに並びます。30日目（7日目からは「ここで区切る」）に振り返れます。</p>
+          <p className="lp-empty">振り返りを終えた30日が、ここに並びます。30日目（7日目からは「ここで区切る」）に振り返れます。</p>
         ) : (
-          <ul className="lg-done">
+          <ul className="lp-done">
             {done.map((c) => (
               <li key={c.id}>
-                <Link to={`/c/${c.id}`} className="lg-card">
+                <Link to={`/c/${c.id}`} className="lp-card">
                   <Seal char={c.seal} size="lg" />
-                  <span className="lg-card-body">
-                    <span className="lg-card-title">{c.title}</span>
-                    <span className="lg-card-meta">
+                  <span className="lp-card-body">
+                    <span className="lp-card-title">{c.title}</span>
+                    <span className="lp-card-meta">
                       <span>{jpPeriod(c.startDate)}</span>
                       <span>
                         <b>{stampedDays(c).length}</b>/30日
                       </span>
                       {c.verdict && <VerdictBadge verdict={c.verdict} />}
                     </span>
-                    {c.reflection && <span className="lg-card-quote">「{c.reflection}」</span>}
+                    {c.reflection && <span className="lp-card-quote">「{c.reflection}」</span>}
                   </span>
                 </Link>
               </li>
@@ -128,36 +128,36 @@ export default function LogPage() {
         )}
       </section>
 
-      <section className="lg-section" aria-labelledby="lg-notes-h">
-        <h2 className="lg-h2" id="lg-notes-h">
+      <section className="lp-section" aria-labelledby="lp-notes-h">
+        <h2 className="lp-h2" id="lp-notes-h">
           メモ
         </h2>
         {notes.length === 0 ? (
-          <p className="lg-empty">印を押した日に残したひとことが、新しい順にここに並びます。</p>
+          <p className="lp-empty">印を押した日に残したひとことが、新しい順にここに並びます。</p>
         ) : (
           <>
-            <ol className="lg-notes">
+            <ol className="lp-notes">
               {notes.slice(0, shown).map((n) => (
-                <li key={n.key} className="lg-note">
-                  <time dateTime={n.date} className="lg-note-date">
+                <li key={n.key} className="lp-note">
+                  <time dateTime={n.date} className="lp-note-date">
                     {jpDate(n.date)}
                   </time>
-                  <Link to={`/c/${n.challenge.id}`} className="lg-note-body">
-                    <span className="lg-note-head">
-                      <span className="lg-note-seal" aria-hidden="true">
+                  <Link to={`/c/${n.challenge.id}`} className="lp-note-body">
+                    <span className="lp-note-head">
+                      <span className="lp-note-seal" aria-hidden="true">
                         {n.challenge.seal}
                       </span>
                       <span>
                         {n.challenge.title}・{n.day}日目
                       </span>
                     </span>
-                    <span className="lg-note-text">{n.note}</span>
+                    <span className="lp-note-text">{n.note}</span>
                   </Link>
                 </li>
               ))}
             </ol>
             {notes.length > shown && (
-              <button type="button" className="btn lg-more" onClick={() => setShown((n) => n + NOTES_PAGE)}>
+              <button type="button" className="btn lp-more" onClick={() => setShown((n) => n + NOTES_PAGE)}>
                 もっと見る（残り{notes.length - shown}件）
               </button>
             )}

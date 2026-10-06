@@ -1,32 +1,32 @@
 /* 記録 (LogPage). Neo-brutalism per docs/design.md, tokens with fallbacks. */
 
-.lg {
+.lp-page {
   display: grid;
   gap: 20px;
 }
-.lg-h1 {
+.lp-h1 {
   font-family: "Dela Gothic One", var(--font-body, sans-serif);
   font-size: 28px;
   font-weight: 400;
   line-height: 1.2;
 }
-.lg-h2 {
+.lp-h2 {
   font-family: "Dela Gothic One", var(--font-body, sans-serif);
   font-size: 19px;
   font-weight: 400;
 }
-.lg-section {
+.lp-section {
   display: grid;
   gap: 12px;
 }
 
 /* ---------- totals ---------- */
-.lg-stats {
+.lp-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
-.lg-stat {
+.lp-stat {
   display: grid;
   gap: 2px;
   padding: 14px 16px;
@@ -35,26 +35,26 @@
   background: var(--surface, #fff);
   box-shadow: 5px 5px 0 var(--ink, #111);
 }
-.lg-stat b {
+.lp-stat b {
   font-family: "Dela Gothic One", var(--font-body, sans-serif);
   font-size: clamp(34px, 10vw, 46px);
   font-weight: 400;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
-.lg-stat small {
+.lp-stat small {
   font-size: 13px;
   font-weight: 700;
 }
-.lg-stat-tried {
+.lp-stat-tried {
   background: var(--yellow, #ffd43b);
   color: var(--on-accent, #111);
 }
-.lg-stat-stamps {
+.lp-stat-stamps {
   background: var(--shu, #ff4b2b);
   color: var(--on-accent, #111);
 }
-.lg-verdicts {
+.lp-verdicts {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -62,7 +62,7 @@
   padding: 0;
   list-style: none;
 }
-.lg-v {
+.lp-v {
   display: inline-flex;
   align-items: baseline;
   gap: 10px;
@@ -73,30 +73,30 @@
   color: var(--on-accent, #111);
   transform: rotate(-2deg);
 }
-.lg-v span {
+.lp-v span {
   font-family: "Dela Gothic One", var(--font-body, sans-serif);
   font-size: 15px;
 }
-.lg-v b {
+.lp-v b {
   font-family: "Dela Gothic One", var(--font-body, sans-serif);
   font-size: 22px;
   font-weight: 400;
   line-height: 1;
 }
-.lg-v-continue {
+.lp-v-continue {
   background: var(--mint, #3ddc97);
 }
-.lg-v-stop {
+.lp-v-stop {
   background: var(--gray, #e6e1d3);
   color: var(--ink, #111);
   transform: rotate(1.5deg);
 }
-.lg-v-modify {
+.lp-v-modify {
   background: var(--blue, #6c8cff);
   transform: rotate(-1deg);
 }
 
-.lg-empty {
+.lp-empty {
   padding: 12px 14px;
   border: 2px dashed var(--ink, #111);
   border-radius: 10px;
@@ -105,14 +105,14 @@
 }
 
 /* ---------- finished ---------- */
-.lg-done {
+.lp-done {
   display: grid;
   gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.lg-card {
+.lp-card {
   display: flex;
   align-items: flex-start;
   gap: 14px;
@@ -127,26 +127,31 @@
     transform 0.1s ease-out,
     box-shadow 0.1s ease-out;
 }
-.lg-card:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 7px 7px 0 var(--ink, #111);
+@media (hover: hover) {
+  .lp-card:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 7px 7px 0 var(--ink, #111);
+  }
+  .lp-note-body:hover {
+    box-shadow: 3px 3px 0 var(--ink, #111);
+  }
 }
-.lg-card:active {
+.lp-card:active {
   transform: translate(3px, 3px);
   box-shadow: 2px 2px 0 var(--ink, #111);
 }
-.lg-card-body {
+.lp-card-body {
   display: grid;
   flex: 1;
   gap: 4px;
   min-width: 0;
 }
-.lg-card-title {
+.lp-card-title {
   font-family: "Dela Gothic One", var(--font-body, sans-serif);
   font-size: 17px;
   line-height: 1.35;
 }
-.lg-card-meta {
+.lp-card-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -154,13 +159,13 @@
   color: var(--muted, #4a4a4a);
   font-size: 13px;
 }
-.lg-card-meta b {
+.lp-card-meta b {
   color: var(--ink, #111);
   font-family: "Dela Gothic One", var(--font-body, sans-serif);
   font-size: 16px;
   font-weight: 400;
 }
-.lg-card-quote {
+.lp-card-quote {
   display: -webkit-box;
   overflow: hidden;
   -webkit-line-clamp: 2;
@@ -169,20 +174,20 @@
 }
 
 /* ---------- notes timeline ---------- */
-.lg-notes {
+.lp-notes {
   display: grid;
   margin: 0 0 0 8px;
   padding: 0;
   list-style: none;
   border-left: var(--border, 3px) solid var(--ink, #111);
 }
-.lg-note {
+.lp-note {
   position: relative;
   display: grid;
   gap: 4px;
   padding: 0 0 16px 20px;
 }
-.lg-note::before {
+.lp-note::before {
   content: "";
   position: absolute;
   top: 6px;
@@ -193,12 +198,12 @@
   background: var(--yellow, #ffd43b);
   transform: rotate(45deg);
 }
-.lg-note-date {
+.lp-note-date {
   color: var(--muted, #4a4a4a);
   font-size: 12px;
   font-weight: 700;
 }
-.lg-note-body {
+.lp-note-body {
   display: grid;
   gap: 4px;
   min-height: 44px;
@@ -209,10 +214,7 @@
   color: var(--ink, #111);
   text-decoration: none;
 }
-.lg-note-body:hover {
-  box-shadow: 3px 3px 0 var(--ink, #111);
-}
-.lg-note-head {
+.lp-note-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -220,7 +222,7 @@
   font-size: 12.5px;
   font-weight: 700;
 }
-.lg-note-seal {
+.lp-note-seal {
   display: grid;
   flex: none;
   place-items: center;
@@ -235,9 +237,9 @@
   line-height: 1;
   transform: rotate(-6deg);
 }
-.lg-note-text {
+.lp-note-text {
   white-space: pre-wrap;
 }
-.lg-more {
+.lp-more {
   justify-self: start;
 }

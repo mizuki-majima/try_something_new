@@ -28,7 +28,7 @@ export default function ReflectPage() {
   if (!c) {
     if (!ready) return <Loading label="読み込んでいます…" />;
     return (
-      <section className="rf">
+      <section className="rf-page">
         <h1 className="rf-h1">振り返り</h1>
         <EmptyState
           seal="無"
@@ -80,7 +80,7 @@ function Reflect({ c, today }: { c: Challenge; today: string }) {
 
   if (!done && !v.canReflect) {
     return (
-      <section className="rf">
+      <section className="rf-page">
         <Header c={c} />
         <div className="rf-wait">
           <p className="rf-wait-h">{v.phase === "waiting" ? "まだ始まっていません" : `振り返りは${EARLY_REFLECT_FROM_DAY}日目からできます`}</p>
@@ -123,7 +123,7 @@ function Reflect({ c, today }: { c: Challenge; today: string }) {
   const next = c.verdict === "continue" ? "同じ内容で、もう30日" : c.verdict === "modify" ? "形を変えて、もう30日" : null;
 
   return (
-    <section className="rf">
+    <section className="rf-page">
       <Link to={`/c/${c.id}`} className="backlink rf-back">
         <ChevronLeftIcon />
         チャレンジ

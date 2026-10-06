@@ -3,44 +3,19 @@
  * fallback so the page still reads while tokens.css catches up.
  */
 
-/* ---------- 判定ステッカー ---------- */
-.vbadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 10px;
-  border: 2px solid var(--ink, #111);
-  border-radius: 8px;
-  background: var(--gray, #e6e1d3);
-  color: var(--on-accent, #111);
-  box-shadow: 2px 2px 0 var(--ink, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.6;
-  white-space: nowrap;
-  transform: rotate(-2deg);
-}
-.vbadge-continue {
-  background: var(--mint, #3ddc97);
-}
-.vbadge-modify {
-  background: var(--blue, #6c8cff);
-}
-/* Gray is dark in the dark theme, so やめる keeps the page's ink colour for contrast. */
-.vbadge-stop {
-  background: var(--gray, #e6e1d3);
-  color: var(--ink, #111);
-}
-.vbadge-lg {
+/* ---------- 判定ステッカー (bigger variant of the shared .badge) ---------- */
+.badge.vbadge-lg {
   padding: 3px 14px;
-  border-width: 3px;
-  box-shadow: 3px 3px 0 var(--ink, #111);
+  border-width: var(--border, 3px);
+  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
   font-size: 17px;
+  font-weight: 400;
   transform: rotate(-4deg);
 }
 
 /* ---------- share step ---------- */
-.sh {
+.sh-page {
   display: grid;
   gap: 14px;
 }

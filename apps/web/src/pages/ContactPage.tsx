@@ -27,6 +27,7 @@ export default function ContactPage() {
     const parsed = parseWith(ContactCreateSchema, input);
     if (!parsed.ok) {
       setErrors(parsed.fields);
+      document.getElementById(parsed.fields.message ? "contact-message" : "contact-reply")?.focus();
       return;
     }
     setErrors({});
@@ -90,6 +91,7 @@ export default function ContactPage() {
 
       <form className="form card contact-form" onSubmit={(e) => void onSubmit(e)} noValidate aria-busy={sending}>
         <TextAreaField
+          id="contact-message"
           label="お問い合わせ内容"
           value={message}
           onChange={(v) => {
@@ -104,6 +106,7 @@ export default function ContactPage() {
           disabled={sending}
         />
         <TextField
+          id="contact-reply"
           label="連絡先（任意）"
           value={replyTo}
           onChange={(v) => {

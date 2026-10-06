@@ -309,9 +309,12 @@
   background: var(--yellow, #ffd43b);
   color: var(--on-accent, #111111);
   font-family: var(--font-num, "Dela Gothic One", sans-serif);
-  font-size: clamp(30px, 10vw, 44px);
+  font-size: clamp(24px, 7vw, 44px);
   line-height: 1.2;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
   font-variant-numeric: tabular-nums;
   box-shadow: 5px 5px 0 var(--ink, #111111);
   transform: rotate(-2deg);
@@ -344,7 +347,7 @@
 }
 .set-links {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
   gap: 10px;
   margin: 0;
   padding: 0;

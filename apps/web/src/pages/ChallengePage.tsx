@@ -32,7 +32,7 @@ export default function ChallengePage() {
   if (!c) {
     if (!ready) return <Loading label="読み込んでいます…" />;
     return (
-      <section className="cp">
+      <section className="cp-page">
         <h1 className="cp-h1">チャレンジが見つかりません</h1>
         <EmptyState
           seal="無"
@@ -101,7 +101,7 @@ function ChallengeDetail({ c, today }: { c: Challenge; today: string }) {
   }
 
   return (
-    <section className="cp" aria-labelledby="cp-title">
+    <section className="cp-page" aria-labelledby="cp-title">
       <Link to="/" className="backlink cp-back">
         <ChevronLeftIcon />
         きょう

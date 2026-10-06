@@ -154,7 +154,7 @@ export function SharePanel({ challenge, linkOutdated = false, onLinkCreated }: P
   }
 
   return (
-    <div className="sh">
+    <div className="sh-page">
       <div className="sh-preview">
         {ready ? (
           <img className="sh-img" src={ready.url} alt={shareCardAlt(data)} width={1200} height={630} />

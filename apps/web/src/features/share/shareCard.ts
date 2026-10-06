@@ -292,7 +292,7 @@ export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayou
     ? d.reflection.trim()
       ? { ...fitReflection(text, rw, bottom - reflTop, measure), x: rx, y: reflTop, color: CARD_COLORS.ink }
       : {
-          ...fitText(text, rw, measure, (s) => `500 ${s}px ${CARD_FONTS.body}`, [24, 22], () => 2, 1.5),
+          ...fitText(text, rw, measure, (s) => `400 ${s}px ${CARD_FONTS.body}`, [24, 22], () => 2, 1.5),
           x: rx,
           y: reflTop,
           color: CARD_COLORS.muted,
@@ -486,7 +486,7 @@ export async function ensureCardFonts(d: ShareCardData, timeoutMs = 5000): Promi
     Promise.all([
       fonts.load(`400 56px "Dela Gothic One"`, display),
       fonts.load(`700 26px "Zen Kaku Gothic New"`, body),
-      fonts.load(`500 24px "Zen Kaku Gothic New"`, body),
+      fonts.load(`400 24px "Zen Kaku Gothic New"`, body),
     ]).catch(() => undefined),
     delay(timeoutMs),
   ]);

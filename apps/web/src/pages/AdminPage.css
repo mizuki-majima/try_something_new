@@ -85,6 +85,7 @@
 
 .adm-card {
   display: grid;
+  align-content: start;
   gap: 8px;
 }
 
@@ -187,6 +188,7 @@
 
 .adm-kv {
   display: grid;
+  align-content: start;
   gap: 4px;
   margin: 0;
 }
