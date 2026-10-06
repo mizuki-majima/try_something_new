@@ -1,0 +1,323 @@
+/*
+ * Recipe list / detail / form and the shared recipe pieces (also used by the gacha).
+ * NEO-BRUTALISM (docs/design.md). Every token has a fallback: tokens.css is restyled in parallel.
+ * Base classes (.recipe, .rlist, .rhead, .how, .story, .tag, .chip …) come from components.css.
+ */
+
+/* ---------- category colours (からだ=mint, あたま=blue, 手しごと=yellow, 人と=pink, やめる=lilac) ---------- */
+.cat-body {
+  --cat: var(--mint, #3ddc97);
+}
+.cat-mind {
+  --cat: var(--blue, #6c8cff);
+}
+.cat-hands {
+  --cat: var(--yellow, #ffd43b);
+}
+.cat-people {
+  --cat: var(--pink, #ff9ec7);
+}
+.cat-quit {
+  --cat: var(--lilac, #b9a2ff);
+}
+
+/* Category sticker: coloured block, ink border, a slight tilt. Text on colour is always --on-accent. */
+.cat-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--cat, var(--gray, #e6e1d3));
+  color: var(--on-accent, #111);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+  transform: rotate(-2deg);
+}
+
+/* Colour dot inside a category chip. */
+.cat-dot {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: 50%;
+  background: var(--cat, var(--gray, #e6e1d3));
+}
+/* A selected category chip takes its category colour instead of the generic yellow. */
+.rp-cats .chip[aria-checked="true"]:has(.cat-dot),
+.rp-cats .chip[aria-pressed="true"]:has(.cat-dot) {
+  background: var(--cat, var(--yellow, #ffd43b));
+  color: var(--on-accent, #111);
+}
+.rp-cats .chip:has(.cat-body) {
+  --cat: var(--mint, #3ddc97);
+}
+.rp-cats .chip:has(.cat-mind) {
+  --cat: var(--blue, #6c8cff);
+}
+.rp-cats .chip:has(.cat-hands) {
+  --cat: var(--yellow, #ffd43b);
+}
+.rp-cats .chip:has(.cat-people) {
+  --cat: var(--pink, #ff9ec7);
+}
+.rp-cats .chip:has(.cat-quit) {
+  --cat: var(--lilac, #b9a2ff);
+}
+.rp-cats .chip[aria-checked="true"] .cat-dot {
+  background: var(--surface, #fff);
+}
+
+/* ---------- list ---------- */
+.rp-filters {
+  display: grid;
+  gap: 12px;
+}
+.rp-filters .search {
+  margin: 0;
+}
+.rp-row {
+  display: grid;
+  gap: 6px;
+}
+.rp-status {
+  min-height: 24px;
+}
+.rp-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 12px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+  font-size: 13px;
+  font-weight: 700;
+}
+.rp-notice .linkbtn {
+  color: var(--on-accent, #111);
+}
+.rp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rp-list > li {
+  display: flex;
+  min-width: 0;
+}
+.rp-empty-actions {
+  justify-content: center;
+}
+
+/* ---------- card ---------- */
+.rp-card {
+  position: relative;
+  height: 100%;
+  border-left-width: 10px;
+  border-left-color: var(--cat, var(--ink, #111));
+  transition:
+    transform var(--press, 100ms) ease-out,
+    box-shadow var(--press, 100ms) ease-out;
+}
+.rp-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-hover, 7px 7px 0 var(--ink, #111));
+}
+.rp-card:active {
+  transform: translate(3px, 3px);
+  box-shadow: var(--shadow-press, 2px 2px 0 var(--ink, #111));
+}
+.rp-card .seal {
+  flex: none;
+}
+.rp-title,
+.recipe .rp-title {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+.rp-card .meta {
+  gap: 4px 8px;
+  margin-top: 2px;
+}
+.tag.rp-mine {
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+  font-weight: 700;
+}
+.tag.rp-community {
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+  font-weight: 700;
+}
+
+/* ---------- detail ---------- */
+.rd-head {
+  border-top: 12px solid var(--cat, var(--ink, #111));
+}
+.rd-head .rhead {
+  align-items: flex-start;
+}
+.rd-head .cat-tag {
+  margin-bottom: 6px;
+}
+.rd-title {
+  margin: 2px 0 6px;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: clamp(22px, 6vw, 30px);
+  font-weight: 400;
+  line-height: 1.25;
+}
+.rd-author {
+  margin-top: 10px;
+}
+.rd-body {
+  gap: 18px;
+}
+.rp-section {
+  display: grid;
+  gap: 6px;
+}
+.rp-section > .h3 {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--ink, #111);
+  letter-spacing: 0.02em;
+}
+.rp-how li::marker {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+}
+.rd-ctas {
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .rd-ctas {
+    grid-template-columns: 2fr 1fr;
+  }
+  .rd-ctas .btn.lg {
+    width: auto;
+  }
+}
+.rd-owner {
+  justify-content: flex-end;
+}
+.rd-stories > .h3 {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--ink, #111);
+}
+.rd-storylist {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rd-story {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-sm, 3px 3px 0 var(--ink, #111));
+}
+.rd-story-who {
+  font-weight: 700;
+}
+.rd-story .story {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- form ---------- */
+.rn-from {
+  padding: 10px 12px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+  font-size: 13px;
+  font-weight: 700;
+}
+.rn-form {
+  gap: 18px;
+}
+.rn-seal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+}
+.rn-seal-input {
+  max-width: 96px;
+  text-align: center;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 22px !important;
+}
+.rn-seal-preview {
+  display: grid;
+  place-items: center;
+  min-width: 72px;
+  padding-top: 22px;
+}
+.rn-two {
+  align-items: start;
+}
+@media (max-width: 479px) {
+  .rn-two {
+    grid-template-columns: 1fr;
+  }
+}
+.rn-dots {
+  margin-right: 6px;
+  letter-spacing: 0.05em;
+}
+.rn-how {
+  gap: 10px;
+}
+.rn-how > legend {
+  font-size: 13px;
+  font-weight: 700;
+}
+.rn-howlist {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rn-howrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+.rn-howdel {
+  margin-top: 26px;
+  min-height: var(--tap, 44px);
+}
+.rn-howadd {
+  justify-self: start;
+  min-height: var(--tap, 44px);
+}
+.rn-howadd svg {
+  width: 18px;
+  height: 18px;
+}
+.field[tabindex="-1"]:focus {
+  outline: none;
+}

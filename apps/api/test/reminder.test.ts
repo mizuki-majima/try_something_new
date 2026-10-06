@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { newId, type Challenge, type SessionResponse } from "@thirty/shared";
 import { toChallengeItem } from "../src/db/challenges";
 import type { Db } from "../src/db/client";
-import { pushHash, pushKey } from "../src/db/push";
-import { pushSlotGsi3 } from "../src/db/keys";
+import { pushKey, pushSlotGsi3 } from "../src/db/keys";
+import { listSlotSubscriptions, pushHash } from "../src/db/push";
 import { getStats } from "../src/db/stats";
 import type { PushSender, PushTarget } from "../src/ports";
 import { isInReminderWindow, makeReminderHandler, reminderPayload, unstampedToday } from "../src/reminder";
@@ -261,10 +261,27 @@ describe("reminder job", () => {
     expect(result.failed).toBeGreaterThanOrEqual(2); // the throwing sender + the damaged item
   });
 
+  it("reads at most `cap` subscriptions of a slot", async () => {
+    for (let i = 0; i < 5; i++) {
+      const uid = `capuser${String(i).padStart(9, "0")}`;
+      const hash = String(i).repeat(64);
+      await api.deps.db.send(
+        new PutCommand({
+          TableName: api.deps.tableName,
+          Item: { ...pushKey(uid, hash), ...pushSlotGsi3("03:45", uid, hash), type: "push", endpoint: endpoint(), keys: KEYS },
+        }),
+      );
+    }
+    expect(await listSlotSubscriptions(api.deps, "03:45", 3)).toMatchObject({ capped: true, items: { length: 3 } });
+    expect(await listSlotSubscriptions(api.deps, "03:45", 5)).toMatchObject({ capped: false, items: { length: 5 } });
+    expect(await listSlotSubscriptions(api.deps, "03:45", 100)).toMatchObject({ capped: false, items: { length: 5 } });
+    expect(await listSlotSubscriptions(api.deps, "03:30", 100)).toEqual({ capped: false, items: [] });
+  });
+
   it("stops starting new users when the Lambda is about to time out", async () => {
     api.clock.set("2026-10-06T03:00:00.000Z");
-    const u = await seedUser({ time: "18:00", challenges: [challenge()] });
-    api.clock.set("2026-10-06T09:00:00.000Z");
+    const u = await seedUser({ time: "17:00", challenges: [challenge()] });
+    api.clock.set("2026-10-06T08:00:00.000Z");
     const handler = makeReminderHandler({ ...api.deps, push: sender });
     const result = await handler({}, { getRemainingTimeInMillis: () => 1_000 });
     expect(result.stoppedEarly).toBe(true);

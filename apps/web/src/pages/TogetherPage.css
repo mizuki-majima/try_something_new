@@ -1,0 +1,199 @@
+/*
+ * みんな / 1日組 (FR-8, FR-9). NEO-BRUTALISM; tokens with fallbacks.
+ * Base classes (.people, .person, .ptop, .pill, .badge, .mini) come from components.css.
+ */
+.tg-privacy {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: var(--border-thin, 2px) dashed var(--ink, #111);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface, #fff);
+  font-size: 13px;
+}
+.tg-privacy a {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap, 44px);
+}
+
+/* ---------- tabs ---------- */
+.tg-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow, 5px 5px 0 var(--ink, #111));
+  overflow: hidden;
+}
+.tg-tab {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0;
+  min-height: 56px;
+  padding: 6px 4px;
+  border: 0;
+  border-left: var(--border, 3px) solid var(--ink, #111);
+  background: transparent;
+  color: var(--ink, #111);
+  font-weight: 700;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.tg-tab:first-child {
+  border-left: 0;
+}
+.tg-tab > span {
+  font-size: 14px;
+}
+.tg-tab > small {
+  color: var(--muted, #4a4a4a);
+  font-weight: 400;
+}
+.tg-tab[aria-selected="true"] {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+}
+.tg-tab[aria-selected="true"] > small {
+  color: var(--on-accent, #111);
+}
+.tg-tab:focus-visible {
+  outline-offset: -6px;
+}
+.tg-panel:focus-visible {
+  outline-offset: 4px;
+}
+
+/* ---------- members ---------- */
+.tg-count {
+  margin-bottom: 8px;
+}
+.tg-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+@media (min-width: 900px) {
+  .tg-people {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.tg-member {
+  align-items: start;
+}
+.tg-member.me {
+  outline: var(--border, 3px) solid var(--yellow, #ffd43b);
+  outline-offset: 0;
+}
+.tg-member-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.tg-member-text {
+  min-width: 0;
+}
+.tg-member .t,
+.tg-upc .t {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.tg-member .cnt {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-weight: 400;
+  white-space: nowrap;
+}
+.tg-you {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 8px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+  font-size: 12px;
+  font-weight: 700;
+  transform: rotate(-3deg);
+}
+.tg-first {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--shu, #ff4b2b);
+  color: var(--on-accent, #111);
+  font-size: 12px;
+  font-weight: 700;
+  transform: rotate(-4deg);
+}
+.tg-tags {
+  min-height: 24px;
+}
+.tg-actions {
+  align-items: center;
+}
+.tg-cheer {
+  gap: 6px;
+  min-height: var(--tap, 44px);
+}
+.tg-cheer svg {
+  width: 18px;
+  height: 18px;
+}
+.tg-cheer:not(:disabled) {
+  background: var(--pink, #ff9ec7);
+  color: var(--on-accent, #111);
+}
+.tg-cheer.done {
+  opacity: 1;
+  background: var(--surface, #fff);
+  color: var(--muted, #4a4a4a);
+}
+.tg-cheer-n {
+  min-width: 1.5em;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-weight: 400;
+  text-align: center;
+}
+
+/* ---------- next 1日組 ---------- */
+.tg-next {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+}
+.tg-next-date b {
+  margin-right: 4px;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: clamp(26px, 8vw, 36px);
+  font-weight: 400;
+}
+.tg-next-meta b {
+  margin: 0 2px;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 20px;
+  font-weight: 400;
+}
+.tg-next .btn {
+  margin-top: 6px;
+}
+.tg-upcoming {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tg-upc-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-width: 0;
+}

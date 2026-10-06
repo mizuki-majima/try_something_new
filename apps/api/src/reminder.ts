@@ -30,7 +30,8 @@ export type ReminderDeps = Pick<Deps, "db" | "tableName" | "now" | "push">;
 
 /** Upper bound of subscriptions handled in one run (a run has 60 s; the service expects ~100 users). */
 export const MAX_SUBSCRIPTIONS_PER_RUN = 2000;
-const USER_CONCURRENCY = 10;
+/** Users handled in parallel (each sends to ≤ 5 subscriptions at once, 5 s timeout per send). */
+const USER_CONCURRENCY = 25;
 /** Stop starting new users when the Lambda has less than this left. */
 const SAFETY_MARGIN_MS = 8_000;
 

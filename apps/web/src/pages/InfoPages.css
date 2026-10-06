@@ -1,0 +1,382 @@
+/*
+ * このサービスについて・利用規約・プライバシーポリシー・お問い合わせ.
+ * Long text: a readable measure, generous line height, numbered sticker headings.
+ * Tokens from docs/design.md, each with a fallback.
+ */
+
+.info-page {
+  display: grid;
+  gap: 22px;
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.info-head {
+  display: grid;
+  gap: 10px;
+}
+
+.info-title {
+  margin: 0;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: clamp(26px, 7vw, 36px);
+  font-weight: 400;
+  line-height: 1.25;
+}
+.info-title:focus {
+  outline: none;
+}
+
+.info-meta {
+  justify-self: start;
+  margin: 0;
+  padding: 2px 10px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 999px;
+  background: var(--surface, #ffffff);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.info-lead {
+  display: grid;
+  gap: 8px;
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+/* Table of contents: a bordered card with numbered links. */
+.info-toc {
+  padding: 14px 16px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: var(--radius, 12px);
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+  box-shadow: var(--shadow, 5px 5px 0 var(--ink, #111111));
+}
+.info-toc-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 16px;
+  font-weight: 400;
+}
+.info-toc ol {
+  display: grid;
+  gap: 0 18px;
+  margin: 0;
+  padding-left: 1.6em;
+}
+@media (min-width: 640px) {
+  .info-toc ol {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.info-toc li {
+  font-weight: 700;
+}
+.info-toc a {
+  display: inline-block;
+  padding: 6px 0;
+  color: var(--on-accent, #111111);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 2px;
+}
+
+.info-sec {
+  display: grid;
+  gap: 10px;
+  scroll-margin-top: calc(var(--header-h, 56px) + 16px);
+}
+
+.info-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.info-num {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: 8px;
+  background: var(--blue, #6c8cff);
+  color: var(--on-accent, #111111);
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-size: 15px;
+  transform: rotate(-4deg);
+  box-shadow: 2px 2px 0 var(--ink, #111111);
+}
+
+.info-body {
+  display: grid;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.9;
+}
+.info-body ul,
+.info-body ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.4em;
+}
+.info-body li::marker {
+  color: var(--shu, #ff4b2b);
+}
+.info-body a,
+.about-a a {
+  font-weight: 700;
+}
+
+.info-table-wrap {
+  overflow-x: auto;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #ffffff);
+}
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.info-table th,
+.info-table td {
+  padding: 8px 12px;
+  border-bottom: 2px solid color-mix(in srgb, var(--ink, #111111) 20%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+.info-table tr:last-child th,
+.info-table tr:last-child td {
+  border-bottom: 0;
+}
+.info-table thead th {
+  background: var(--ink, #111111);
+  color: var(--surface, #ffffff);
+  font-size: 13px;
+}
+.info-table tbody th {
+  width: 9em;
+  font-weight: 900;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .info-table tbody th {
+    width: auto;
+    white-space: normal;
+  }
+}
+
+.info-foot {
+  padding-top: 12px;
+  border-top: var(--border, 3px) solid var(--ink, #111111);
+  font-size: 13px;
+  text-align: right;
+}
+
+.info-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.info-more a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 999px;
+  background: var(--surface, #ffffff);
+  color: var(--ink, #111111);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.info-more a:hover {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+}
+
+/* ---------- このサービスについて ---------- */
+
+.about-hero {
+  justify-items: start;
+}
+.about-seal {
+  transform: rotate(-8deg);
+}
+
+.about-steps {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 640px) {
+  .about-steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.about-step {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 16px 14px 14px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #ffffff);
+  box-shadow: var(--shadow, 5px 5px 0 var(--ink, #111111));
+}
+.about-step:nth-child(1) {
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111111);
+}
+.about-step:nth-child(2) {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+}
+.about-step:nth-child(3) {
+  background: var(--pink, #ff9ec7);
+  color: var(--on-accent, #111111);
+}
+.about-step b {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-weight: 400;
+  font-size: 17px;
+}
+.about-step p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.about-step-n {
+  position: absolute;
+  top: -12px;
+  right: 12px;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: 50%;
+  background: var(--surface, #ffffff);
+  color: var(--ink, #111111);
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-size: 14px;
+}
+
+.about-credit {
+  padding: 12px 14px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 10px;
+  background: var(--surface, #ffffff);
+}
+
+.about-faq {
+  display: grid;
+  gap: 10px;
+}
+.about-qa {
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #ffffff);
+}
+.about-qa[open] {
+  box-shadow: 4px 4px 0 var(--ink, #111111);
+}
+.about-qa summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 14px;
+  font-weight: 900;
+  cursor: pointer;
+  list-style: none;
+}
+.about-qa summary::-webkit-details-marker {
+  display: none;
+}
+.about-qa summary::before {
+  content: "Q";
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 6px;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-size: 14px;
+}
+.about-qa summary::after {
+  content: "+";
+  margin-left: auto;
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-size: 20px;
+  line-height: 1;
+}
+.about-qa[open] summary::after {
+  content: "−";
+}
+.about-qa summary:focus-visible {
+  outline: 3px solid var(--blue, #6c8cff);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.about-a {
+  padding: 0 14px 14px 52px;
+  line-height: 1.85;
+}
+
+.about-cta {
+  margin: 0;
+}
+
+/* ---------- お問い合わせ ---------- */
+
+.contact-report {
+  margin: 0;
+  padding: 10px 12px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 10px;
+  background: var(--pink, #ff9ec7);
+  color: var(--on-accent, #111111);
+  font-size: 14px;
+  font-weight: 700;
+}
+.contact-report a {
+  margin-left: 6px;
+  color: var(--on-accent, #111111);
+}
+
+.contact-form textarea {
+  min-height: 10em;
+}
+
+.contact-done {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  padding: 28px 16px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #ffffff);
+  box-shadow: var(--shadow, 5px 5px 0 var(--ink, #111111));
+  text-align: center;
+}
+.contact-done-actions {
+  justify-content: center;
+}

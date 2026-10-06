@@ -153,7 +153,7 @@
   margin: 0;
   border: var(--border, 3px) solid var(--ink, #111111);
   border-radius: 999px;
-  background: var(--gray, #e6e1d3);
+  background: var(--gray, var(--soft, #e6e1d3));
   cursor: pointer;
   transition: background-color 120ms ease;
 }
@@ -190,7 +190,7 @@
   padding: 10px 12px;
   border: 2px solid var(--ink, #111111);
   border-radius: 10px;
-  background: var(--bg, #fff4d6);
+  background: var(--bg, var(--paper, #fff4d6));
   font-size: 13px;
 }
 
@@ -253,7 +253,7 @@
   height: 14px;
   border: 2px solid var(--ink, #111111);
   border-radius: 50%;
-  background: var(--gray, #e6e1d3);
+  background: var(--gray, var(--soft, #e6e1d3));
 }
 .set-dot.on {
   background: var(--mint, #3ddc97);
@@ -297,7 +297,7 @@
   padding: 14px;
   border: var(--border, 3px) solid var(--ink, #111111);
   border-radius: var(--radius, 12px);
-  background: var(--bg, #fff4d6);
+  background: var(--bg, var(--paper, #fff4d6));
 }
 .set-code {
   display: inline-flex;
@@ -377,10 +377,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .set-h,
-  .set-code {
-    transform: none;
-  }
   .set-links a,
   .set-links a:hover,
   .set-links a:active {

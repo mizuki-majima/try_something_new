@@ -1,0 +1,611 @@
+/*
+ * きょう (TodayPage). Neo-brutalism per docs/design.md: 3px ink borders, hard offset shadows, flat
+ * colours, Dela Gothic One for display type, slightly tilted stickers. Tokens have fallbacks.
+ */
+
+.td {
+  display: grid;
+  gap: 22px;
+}
+
+.td-date {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+.td-date span {
+  padding: 0 8px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+  font-size: 14px;
+  line-height: 1.7;
+  transform: rotate(-2deg);
+}
+
+.td-list {
+  display: grid;
+  gap: 24px;
+}
+
+/* ---------- hero ---------- */
+.td-hero {
+  position: relative;
+  padding: 26px 18px 22px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  box-shadow: 6px 6px 0 var(--ink, #111);
+}
+.td-hero-seal {
+  position: absolute;
+  top: -16px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 70px;
+  height: 70px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 50%;
+  background: var(--shu, #ff4b2b);
+  color: var(--on-accent, #111);
+  box-shadow: 4px 4px 0 var(--ink, #111);
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 34px;
+  line-height: 1;
+  transform: rotate(10deg);
+}
+.td-hero-kicker {
+  display: inline-block;
+  margin-right: 64px;
+  padding: 2px 10px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111);
+  font-size: 13px;
+  font-weight: 700;
+  transform: rotate(-2deg);
+}
+.td-hero-h {
+  margin: 16px 0 14px;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: clamp(29px, 8.2vw, 50px);
+  font-weight: 400;
+  line-height: 1.32;
+  letter-spacing: 0.01em;
+}
+.td-hero-h mark {
+  display: inline-block;
+  padding: 0 0.12em;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 8px;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+  box-shadow: 3px 3px 0 var(--ink, #111);
+  line-height: 1.15;
+  transform: rotate(-3deg);
+}
+.td-hero-sub {
+  max-width: 34em;
+  font-size: 15.5px;
+  font-weight: 500;
+}
+.td-ctas {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+}
+.td-cta {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 17px;
+  font-weight: 400;
+}
+.td-cta-yellow {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+}
+@media (min-width: 560px) {
+  .td-hero {
+    padding: 32px 28px 26px;
+  }
+  .td-ctas {
+    grid-template-columns: 1.2fr 1fr 1fr;
+  }
+}
+
+.td-steps {
+  display: grid;
+  gap: 12px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.td-step {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  min-height: 64px;
+  padding: 12px 14px 12px 64px;
+  border: 2px solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+}
+.td-step b {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 16px;
+  font-weight: 400;
+}
+.td-step small {
+  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+}
+.td-step-n {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 8px;
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111);
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 20px;
+  line-height: 1;
+  transform: rotate(-5deg);
+}
+.td-step-2 .td-step-n {
+  background: var(--blue, #6c8cff);
+  transform: rotate(4deg);
+}
+.td-step-3 .td-step-n {
+  background: var(--pink, #ff9ec7);
+  transform: rotate(-3deg);
+}
+@media (min-width: 560px) {
+  .td-steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.td-credit {
+  margin-top: 20px;
+  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+}
+.td-credit a {
+  color: var(--ink, #111);
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+}
+
+/* ---------- challenge card ---------- */
+.td-card {
+  padding: 16px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+  box-shadow: 6px 6px 0 var(--ink, #111);
+}
+@media (min-width: 560px) {
+  .td-card {
+    padding: 20px;
+  }
+}
+.td-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.td-headtext {
+  flex: 1;
+  min-width: 0;
+}
+.td-title {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+.td-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 4px;
+  color: var(--muted, #4a4a4a);
+  font-size: 12.5px;
+}
+.td-tag {
+  display: inline-block;
+  padding: 0 7px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+  transform: rotate(-2deg);
+}
+.td-tag-day {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+}
+.td-tag-first {
+  background: var(--pink, #ff9ec7);
+  color: var(--on-accent, #111);
+}
+.td-count {
+  flex: none;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.td-count b {
+  font-size: 34px;
+  font-weight: 400;
+}
+.td-count small {
+  margin-left: 2px;
+  color: var(--muted, #4a4a4a);
+  font-size: 16px;
+}
+.td-grid {
+  margin: 16px auto 0;
+}
+.td-action {
+  margin-top: 16px;
+}
+
+/* The big stamp button. */
+.td-stamp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 16px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 14px;
+  background: var(--shu, #ff4b2b);
+  color: var(--on-accent, #111);
+  box-shadow: 5px 5px 0 var(--ink, #111);
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: clamp(16px, 4.6vw, 20px);
+  line-height: 1.3;
+  cursor: pointer;
+  transition:
+    transform 0.1s ease-out,
+    box-shadow 0.1s ease-out;
+}
+.td-stamp:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0 var(--ink, #111);
+}
+.td-stamp:active {
+  transform: translate(3px, 3px);
+  box-shadow: 2px 2px 0 var(--ink, #111);
+}
+.td-stamp:focus-visible {
+  outline: 3px solid var(--blue, #6c8cff);
+  outline-offset: 4px;
+}
+.td-stamp-seal {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 50%;
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+  font-size: 20px;
+  line-height: 1;
+  transform: rotate(-8deg);
+}
+
+/* After stamping. */
+.td-done {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+}
+.td-done label,
+.td-done .counter,
+.td-done .field-hint {
+  color: var(--on-accent, #111);
+}
+.td-done-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.td-done-seal {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 50%;
+  background: var(--shu, #ff4b2b);
+  color: var(--on-accent, #111);
+  box-shadow: 3px 3px 0 var(--ink, #111);
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 26px;
+  line-height: 1;
+  transform: rotate(-8deg);
+}
+.td-done-text {
+  flex: 1;
+  min-width: 0;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 18px;
+}
+.td-done-text:focus {
+  outline: none;
+}
+.td-done-text:focus-visible {
+  outline: 3px solid var(--ink, #111);
+  outline-offset: 2px;
+}
+.td-done .td-undo {
+  color: var(--on-accent, #111);
+  font-weight: 700;
+}
+.td-note {
+  display: grid;
+  gap: 2px;
+}
+.td-saved {
+  min-height: 1.2em;
+  font-size: 12px;
+  font-weight: 700;
+}
+.td-done.is-fresh .td-done-seal {
+  animation: td-don 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.td-done.is-fresh .td-done-text {
+  animation: td-rise 0.35s ease-out 0.18s both;
+}
+.td-card.is-thud {
+  animation: td-thud 0.3s ease-out 0.16s;
+}
+@keyframes td-don {
+  0% {
+    opacity: 0;
+    transform: scale(2.6) rotate(-28deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.88) rotate(-8deg);
+  }
+  78% {
+    transform: scale(1.07) rotate(-8deg);
+  }
+  100% {
+    transform: rotate(-8deg);
+  }
+}
+@keyframes td-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes td-thud {
+  0%,
+  100% {
+    transform: none;
+  }
+  35% {
+    transform: translate(2px, 3px);
+  }
+  65% {
+    transform: translate(-1px, -1px);
+  }
+}
+
+/* Waiting / ended. */
+.td-wait {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: var(--border, 3px) dashed var(--ink, #111);
+  border-radius: var(--radius, 12px);
+}
+.td-wait p {
+  display: grid;
+  gap: 2px;
+}
+.td-wait b {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 17px;
+  font-weight: 400;
+}
+.td-wait span {
+  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+}
+.td-end {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111);
+}
+.td-end-h {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 20px;
+}
+
+.td-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin-top: 10px;
+}
+.td-foot a,
+.td-history a,
+.td-teaser-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink, #111);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* ---------- more / teaser / history ---------- */
+.td-more {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: var(--border, 3px) dashed var(--ink, #111);
+  border-radius: var(--radius, 12px);
+}
+.td-more-h {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 16px;
+  font-weight: 400;
+}
+.td-more-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.td-teaser {
+  display: grid;
+  gap: 14px;
+  margin-top: 6px;
+  padding: 16px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--pink, #ff9ec7);
+  color: var(--on-accent, #111);
+  box-shadow: 5px 5px 0 var(--ink, #111);
+}
+.td-teaser .linkbtn,
+.td-teaser-link {
+  color: var(--on-accent, #111);
+}
+.td-teaser-h {
+  display: inline-block;
+  justify-self: start;
+  padding: 1px 10px;
+  border: 2px solid var(--on-accent, #111);
+  border-radius: 6px;
+  background: #fff;
+  color: #111;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 15px;
+  font-weight: 400;
+  transform: rotate(-3deg);
+}
+.td-teaser-text {
+  display: grid;
+  gap: 4px;
+}
+.td-teaser-date {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 6px;
+  font-weight: 700;
+}
+.td-teaser-date b {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+.td-teaser-left {
+  font-size: 14px;
+}
+.td-teaser-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 1.6em;
+  font-size: 14px;
+}
+.td-teaser-meta b {
+  margin: 0 2px;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 18px;
+  font-weight: 400;
+}
+.td-teaser-meta .td-tag-first {
+  background: #fff;
+  color: #111;
+  border-color: #111;
+}
+.td-teaser-note {
+  font-size: 13px;
+}
+.td-teaser-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+.td-teaser-btn {
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+}
+@media (min-width: 560px) {
+  .td-teaser {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+  .td-teaser-btns {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .td-teaser-link {
+    justify-content: center;
+  }
+}
+
+.td-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 12px;
+  font-size: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .td-card.is-thud,
+  .td-done.is-fresh .td-done-seal,
+  .td-done.is-fresh .td-done-text {
+    animation: none;
+  }
+}

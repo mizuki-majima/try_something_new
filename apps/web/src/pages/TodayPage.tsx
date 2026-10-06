@@ -30,7 +30,7 @@ import { prefersReducedMotion, usePageTitle } from "../lib/hooks";
 import { useApp, useAppActions } from "../lib/store";
 import "./today.css";
 
-export const TED_TALK_URL = "https://www.ted.com/talks/matt_cutts_try_something_new_for_30_days";
+const TED_TALK_URL = "https://www.ted.com/talks/matt_cutts_try_something_new_for_30_days";
 
 export default function TodayPage() {
   usePageTitle();
@@ -111,9 +111,7 @@ function Hero({ onCustom }: { onCustom: () => void }) {
       <span className="td-hero-seal" aria-hidden="true">
         卅
       </span>
-      <p className="td-hero-kicker" aria-hidden="true">
-        TRY SOMETHING NEW
-      </p>
+      <p className="td-hero-kicker">新しいことを、30日だけ。</p>
       <h1 id="td-hero-h" className="td-hero-h">
         どうせ過ぎる<mark>30日</mark>なら、
         <br />
