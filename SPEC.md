@@ -24,7 +24,7 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 2. 毎日1タップで30マスのカードに印（漢字1文字）を押す。一言メモも残せる
 3. 同じ月に始めた人（1日組）の進捗が並んで見え、応援できる
 4. 30日目（7日目以降なら途中でも）に「続ける／やめる／形を変える」を選び、シェア用カードを作る
-5. 次に何をやるかは「ガチャ」か AI の提案で決める
+5. 次に何をやるかは「ガチャ」か「ひらめき提案」で決める
 6. 自分の体験をレシピや体験談として残し、次の人が使う
 
 ## Critical User Flow
@@ -78,7 +78,7 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 | FR-10 | **レシピ**: 公式23本（端末に同梱、オフラインでも見られる）＋みんなのレシピ。検索、ジャンル絞り込み、並び替え（おすすめ・人気・新着）。詳細に、やり方・30日後・体験談・「これを30日やる」 |
 | FR-11 | **投稿**: レシピ（1日5件まで）と体験談（1日10件まで）を投稿・削除できる。公開テキストに URL は入れられない |
 | FR-12 | **ガチャ**: 時間（5／15／30／60分以内・制限なし）・ジャンル・場所で絞って抽選。スロット風の演出（reduce-motion では省略）。結果からそのまま開始 |
-| FR-13 | **AI 案**: ガチャ画面で条件とひとこと（100字）を渡すと AI がオリジナル案を最大3つ返す。1人1日3回、全体で1日20回まで。AI が使えないときはボタンを無効にし理由を表示。案は検証してから表示し、そのまま開始・レシピとして投稿できる |
+| FR-13 | **ひらめき提案（お試し）**: ガチャ画面で条件（時間・ジャンル・場所）とひとこと（100字）を渡すと、オリジナル案を最大3つ返す。**AI は使わない**（CEO 決定 [ADR 0003](docs/decisions/0003-no-ai-mock-suggestions.md)）。サーバに内蔵した案（公式レシピとは別に約60本）から、条件で絞り、ひとことのキーワードとの一致で並べて選ぶ。画面に「いまは AI を使わず、ルールで選んでいます」と表示する。1人1日10回まで。結果はそのまま開始・レシピとして投稿できる |
 | FR-14 | **リマインド**: Web Push。時刻（15分刻み）を設定すると、その時刻にまだ印を押していないチャレンジがあれば通知。iOS はホーム画面に追加した場合のみと案内。テスト通知ボタン。代替として Google カレンダーに毎日の予定を入れるリンクと .ics ダウンロード |
 | FR-15 | **記録**: 終わったチャレンジの一覧（判定バッジ・押せた日数・ひとこと）、合計（試した数・押した印の数・判定の内訳）、日ごとのメモ一覧 |
 | FR-16 | **バックアップ**: JSON の書き出し・読み込み（読み込みは自分のアカウントにマージ） |
@@ -93,7 +93,7 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 
 | 項目 | 基準 |
 |---|---|
-| コスト | AWS は月 $5 以内を目標（100人規模）。AI は全体で1日20回まで（Claude Opus 5.5 で最悪でも月 $20 弱、通常は月 $1 未満。Haiku 4.5 に切り替えると約1/4）。AWS Budgets で月 $10 超過をメール通知（`alertEmail` 指定時） |
+| コスト | AWS は月 $1 未満を目標（100人規模で約 $0.1）。AI は使わない。AWS Budgets で月 $10 超過をメール通知（`alertEmail` 指定時。アカウントに既存の予算アラートあり） |
 | 性能 | API p95 < 500ms（コールドスタート除く）。初回表示 JS < 250KB gzip（フォント除く） |
 | 可用性 | 個人の趣味サービスとして、障害時は「データを失わない」を優先（DynamoDB PITR 有効）。SLA なし |
 | 対応環境 | iOS Safari 16.4+、Android Chrome、デスクトップの Chrome / Edge / Safari / Firefox 最新 |
@@ -110,7 +110,7 @@ CloudFront ─ /*        → S3 web bucket (OAC)      … SPA。CloudFront Funct
            ─ /s/*      → 同上（公開カードの HTML。OGP）
            ─ /media/*  → S3 media bucket (OAC)    … 公開カード画像
 EventBridge rule (15分ごと) → Lambda "reminder" → Web Push (VAPID)
-Lambda "api" → DynamoDB（1テーブル, on-demand, PITR） / S3 media / SSM Parameter Store / Amazon Bedrock (Claude)
+Lambda "api" → DynamoDB（1テーブル, on-demand, PITR） / S3 media / SSM Parameter Store
 ```
 
 - リージョン `ap-northeast-1`。IaC は AWS CDK（`infra/`）。Lambda は Node.js 22 / arm64、esbuild で自前バンドル（`apps/api/build.mjs`）
@@ -123,8 +123,8 @@ Lambda "api" → DynamoDB（1テーブル, on-demand, PITR） / S3 media / SSM P
 ### ローカル実行とテスト
 
 - `npm run dev`: dynalite（インメモリ DynamoDB 互換）+ API（`@hono/node-server`, :8787）+ Vite（:5173、`/api` `/s` `/media` をプロキシ）
-- ローカルでは媒体を `.local-data/media` に保存、AI は `AI_PROVIDER=mock`、VAPID 鍵は起動時に生成
-- 課金 API（Bedrock）はテスト・CI で呼ばない
+- ローカルでは媒体を `.local-data/media` に保存、VAPID 鍵は起動時に生成
+- 課金される外部 API は使わない（AI なし）
 
 ## UI
 
@@ -134,7 +134,7 @@ Lambda "api" → DynamoDB（1テーブル, on-demand, PITR） / S3 media / SSM P
 | レシピ一覧 | `/recipes` | 検索・ジャンル・並び替え・読み込み中・0件 |
 | レシピ詳細 | `/recipes/:id` | やり方・30日後・体験談一覧・開始・体験談を書く・通報・（自分の投稿なら）削除 |
 | レシピを書く | `/recipes/new` | フォーム、入力エラー、送信中 |
-| ガチャ | `/gacha` | 条件チップ・回す・結果・AI 案（読み込み中・残り回数・使えない理由） |
+| ガチャ | `/gacha` | 条件チップ・回す・結果・ひらめき提案（お試し。読み込み中・残り回数・「AI は使っていません」の注記） |
 | みんな | `/together` | 今月の組・次の1日組（予約）・先月の組。読み込み中・0人・エラー（再試行） |
 | 記録 | `/log` | 合計・終わった30日・メモ一覧・0件 |
 | チャレンジ詳細 | `/c/:id` | 30マス（日をタップでメモ・写真・押し忘れ）・編集・リマインド・削除・ここで区切る |
@@ -155,7 +155,6 @@ Lambda "api" → DynamoDB（1テーブル, on-demand, PITR） / S3 media / SSM P
 - エラー: `{ "error": { "code", "message", "fields?" } }`。400 bad_request / 401 unauthorized / 403 forbidden / 404 not_found / 409 conflict / 413 payload_too_large / 415 unsupported_media_type / 429 rate_limited / 503 ai_unavailable / 500 internal
 - 日付の判定はユーザーのタイムゾーン（`tz`）での「今日」。端末とずれる場合に備えて、印は「今日の日数 + 1」まで受け付ける
 - `POST /api/challenges` はクライアント生成の `id` で冪等（同じ `id` の再送は既存を返す）。印の `PUT` / `DELETE` も冪等
-- AI（課金 API）を呼ぶ `POST /api/ai/suggest` はタイムアウトしても自動で再試行しない（クライアント・サーバとも）
 - 公開レスポンスにトークン・ユーザー ID・ひとことメモ・通知の登録情報を含めない
 
 ## Data Model
@@ -192,16 +191,16 @@ DynamoDB 1テーブル（`pk`, `sk`）＋ GSI 3つ（`gsi1pk/gsi1sk`, `gsi2pk/gs
 | オフライン／API 5xx | 書き込みは端末の送信待ち（outbox）に入れて画面は先に更新。復帰時に順に再送（冪等なので重複しない）。4xx は再送せず、画面を元に戻してメッセージ |
 | 401（トークン無効） | 端末のトークンを破棄し、引き継ぎコードでの復元を案内。ローカルの未送信データは書き出せる |
 | 429 | 「今日はここまで」と残り回数・リセット時刻の目安を表示 |
-| AI の失敗 | 1回だけ表示「AI 案を作れませんでした」。自動再試行しない。通常のガチャは使える |
+| 提案の失敗 | 「提案を作れませんでした」を表示。通常のガチャは使える |
 | 公開カードの画像アップロード失敗 | 端末内の共有（保存・Web Share・X・LINE）は使える |
 | Push の配信先が 404/410 | その登録を削除 |
 
 ## Security
 
-- 秘密: SSM SecureString（VAPID 秘密鍵・管理トークン）。Lambda 起動時に読み、メモリにだけ持つ。フロントに API キーは無い（AI は Lambda から IAM で Bedrock を呼ぶ）
+- 秘密: SSM SecureString（VAPID 秘密鍵・管理トークン）。Lambda 起動時に読み、メモリにだけ持つ。フロントに API キーは無い
 - 入力検証: すべての入力を `schemas.ts` で検証（文字数は書記素単位、制御文字・双方向制御文字を除去、公開テキストは URL 禁止）
 - 出力: React のエスケープに任せ、`dangerouslySetInnerHTML` を使わない。`/s/:id` の HTML はサーバで全項目を HTML エスケープ
-- AI 出力: スキーマ検証に通ったものだけを返す。ユーザーの「ひとこと」はプロンプト内で引用として扱い、指示として解釈しないよう明示。ツールは持たせない
+- ひらめき提案: 内蔵データから選ぶだけ。ユーザーの「ひとこと」はキーワード照合にだけ使い、保存しない
 - 認可: チャレンジ・投稿・カード・通知登録は本人だけが変更・削除できる。管理 API は `X-Admin-Token`（定数時間比較）
 - レート制限: [`QUOTAS`](packages/shared/src/constants.ts)。API Gateway のステージ全体でも 20 rps / burst 40
 - Push の宛先: 既知のプッシュサービス（`fcm.googleapis.com`, `*.push.services.mozilla.com`, `*.push.apple.com`, `*.notify.windows.com`）の https だけを受け付ける（SSRF 対策）
@@ -212,7 +211,6 @@ DynamoDB 1テーブル（`pk`, `sk`）＋ GSI 3つ（`gsi1pk/gsi1sk`, `gsi2pk/gs
 ## Logging
 
 - 構造化 JSON ログ（level, msg, route, status, ms）。トークン・ひとこと・投稿本文・Push の宛先・IP を出さない。ユーザーは ID の先頭6文字だけ
-- AI 呼び出しは入力・出力トークン数と概算コストを出す
 - ロググループの保持は 14日
 
 ## Out of Scope

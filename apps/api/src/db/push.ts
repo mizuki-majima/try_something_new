@@ -3,9 +3,15 @@
  * them through gsi3 SLOT#<HH:MM UTC>, which is present only while the user's reminder is on.
  */
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { utcSlotFor, type User } from "@thirty/shared";
 import type { DbDeps } from "../ports";
 import { pushKey, pushSlotGsi3, userPk } from "./keys";
 import { isConditionFailed, queryPrefix, type Item } from "./util";
+
+/** The UTC slot ("HH:MM") the user's reminder fires on, or null when reminders are off. */
+export function reminderSlot(user: Pick<User, "tz" | "reminder">, now: Date): string | null {
+  return user.reminder.enabled ? utcSlotFor(user.reminder.time, user.tz, now) : null;
+}
 
 export function listPushItems(deps: Pick<DbDeps, "db" | "tableName">, uid: string): Promise<Item[]> {
   return queryPrefix(deps, userPk(uid), "PUSH#");
