@@ -1,0 +1,79 @@
+/*
+ * Design tokens, carried over from the prototype the user approved:
+ * 方眼紙 (grid paper) + 朱肉 (vermilion seal ink) + indigo ink.
+ * Dark mode follows the OS unless the user picked a theme (data-theme on <html>).
+ */
+:root {
+  --paper: #fafaf6;
+  --grid: rgba(59, 91, 165, 0.11);
+  --surface: #ffffff;
+  --soft: #eef1f7;
+  --ink: #1b2440;
+  --muted: #5f6782;
+  --line: #d8dce7;
+  /* --shu inks seals and text; --shu-fill backs white text (AA 4.5:1 in both themes). */
+  --shu: #c73a23;
+  --shu-fill: #c73a23;
+  --on-shu: #ffffff;
+  --ai: #3b5ba5;
+  --wakaba: #22703f;
+  --amber: #9a6a08;
+  --danger: #b4352a;
+  --overlay: rgba(10, 14, 30, 0.45);
+
+  --font-display: "Kiwi Maru", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-num: "Dela Gothic One", "Zen Kaku Gothic New", sans-serif;
+
+  --r: 14px;
+  --shadow: 0 1px 2px rgba(27, 36, 64, 0.05), 0 10px 28px -14px rgba(27, 36, 64, 0.25);
+  --tap: 44px;
+  --header-h: 56px;
+  --tabbar-h: 64px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #121726;
+    --grid: rgba(138, 166, 230, 0.09);
+    --surface: #1a2135;
+    --soft: #232b42;
+    --ink: #ecebe3;
+    --muted: #a3aabf;
+    --line: #2d3550;
+    --shu: #f0624a;
+    --shu-fill: #c8432d;
+    --on-shu: #ffffff;
+    --ai: #8aa6e6;
+    --wakaba: #5fc283;
+    --amber: #e2a93c;
+    --danger: #f08a80;
+    --overlay: rgba(0, 0, 0, 0.6);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.6);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #121726;
+  --grid: rgba(138, 166, 230, 0.09);
+  --surface: #1a2135;
+  --soft: #232b42;
+  --ink: #ecebe3;
+  --muted: #a3aabf;
+  --line: #2d3550;
+  --shu: #f0624a;
+  --shu-fill: #c8432d;
+  --on-shu: #ffffff;
+  --ai: #8aa6e6;
+  --wakaba: #5fc283;
+  --amber: #e2a93c;
+  --danger: #f08a80;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
