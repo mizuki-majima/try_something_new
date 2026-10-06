@@ -1,0 +1,414 @@
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  newId,
+  type ApiError,
+  type Challenge,
+  type ChallengeCreate,
+  type ChallengeListResponse,
+  type ChallengeResponse,
+  type SessionResponse,
+} from "@thirty/shared";
+import { getStats } from "../src/db/stats";
+import { CHALLENGE_MESSAGES } from "../src/routes/challenges";
+import { json, setupApi } from "./helpers";
+
+const api = setupApi();
+
+/** 12:00 in Tokyo: "today" is 2026-10-06, the next 1st is 2026-11-01. */
+const BASE = "2026-10-06T03:00:00.000Z";
+const TODAY = "2026-10-06";
+const NEXT_FIRST = "2026-11-01";
+const DAY_MS = 86_400_000;
+
+beforeEach(() => api.clock.set(BASE));
+
+const getItem = async (pk: string, sk: string) =>
+  (await api.deps.db.send(new GetCommand({ TableName: api.deps.tableName, Key: { pk, sk } }))).Item;
+
+function createBody(overrides: Partial<ChallengeCreate> = {}): ChallengeCreate {
+  return { id: newId(16), recipeId: "photo", title: "毎日1枚、写真を撮る", seal: "写", startDate: TODAY, ...overrides };
+}
+
+function postChallenge(s: SessionResponse, body: ChallengeCreate) {
+  return api.request("/api/challenges", { token: s.token, body });
+}
+
+async function create(s: SessionResponse, overrides: Partial<ChallengeCreate> = {}): Promise<Challenge> {
+  const res = await postChallenge(s, createBody(overrides));
+  if (res.status !== 201) throw new Error(`create failed: ${res.status} ${await res.text()}`);
+  return (await json<ChallengeResponse>(res)).challenge;
+}
+
+const stamp = (s: SessionResponse, id: string, day: number | string, body?: unknown) =>
+  api.request(`/api/challenges/${id}/stamps/${day}`, { method: "PUT", token: s.token, body });
+const unstamp = (s: SessionResponse, id: string, day: number | string) =>
+  api.request(`/api/challenges/${id}/stamps/${day}`, { method: "DELETE", token: s.token });
+const reflect = (s: SessionResponse, id: string, body: unknown) =>
+  api.request(`/api/challenges/${id}/reflect`, { token: s.token, body });
+const patch = (s: SessionResponse, id: string, body: unknown) =>
+  api.request(`/api/challenges/${id}`, { method: "PATCH", token: s.token, body });
+const remove = (s: SessionResponse, id: string) => api.request(`/api/challenges/${id}`, { method: "DELETE", token: s.token });
+
+const challengeOf = async (res: Response) => (await json<ChallengeResponse>(res)).challenge;
+const errorOf = async (res: Response) => (await json<ApiError>(res)).error;
+
+async function list(s: SessionResponse): Promise<ChallengeListResponse> {
+  return json<ChallengeListResponse>(await api.request("/api/challenges", { token: s.token }));
+}
+
+describe("POST /api/challenges", () => {
+  it("creates a challenge with its cohort projection, lists it, and replays idempotently", async () => {
+    const s = await api.createSession("はじめ");
+    const statsBefore = await getStats(api.deps);
+    const startsBefore = Number((await getItem("RSTATS", "photo"))?.startCount ?? 0);
+    const body = createBody();
+
+    const res = await postChallenge(s, body);
+    expect(res.status).toBe(201);
+    const created = await challengeOf(res);
+    const now = api.clock.now().getTime();
+    expect(created).toEqual({
+      id: body.id,
+      recipeId: "photo",
+      title: "毎日1枚、写真を撮る",
+      seal: "写",
+      startDate: TODAY,
+      status: "active",
+      stamps: {},
+      verdict: null,
+      reflection: null,
+      finishedAt: null,
+      finishedDay: null,
+      cheers: 0,
+      shareId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const item = await getItem(`USER#${s.user.id}`, `CH#${body.id}`);
+    expect(item).toMatchObject({ userId: s.user.id, nickname: "はじめ", gsi1pk: "COHORT#2026-10" });
+    expect(item?.gsi1sk).toBe(`${String(now).padStart(13, "0")}#${body.id}`);
+    expect((await getItem(`CHREF#${body.id}`, "REF"))?.userId).toBe(s.user.id);
+
+    // Replay (offline outbox): same answer, nothing counted twice.
+    api.clock.advance(5_000);
+    const replay = await postChallenge(s, { ...body, title: "別のタイトル" });
+    expect(replay.status).toBe(200);
+    expect(await challengeOf(replay)).toEqual(created);
+    expect((await getStats(api.deps)).challengesStarted).toBe(statsBefore.challengesStarted + 1);
+    expect((await getItem("RSTATS", "photo"))?.startCount).toBe(startsBefore + 1);
+
+    // Newest first.
+    const second = await create(s, { recipeId: "walk", title: "毎日20分歩く", seal: "歩" });
+    const listed = await list(s);
+    expect(listed.today).toBe(TODAY);
+    expect(listed.challenges.map((c) => c.id)).toEqual([second.id, created.id]);
+  });
+
+  it("is 409 when the id already belongs to someone else", async () => {
+    const a = await api.createSession("A");
+    const b = await api.createSession("B");
+    const mine = await create(a);
+    const res = await postChallenge(b, createBody({ id: mine.id, title: "乗っ取り" }));
+    expect(res.status).toBe(409);
+    expect((await errorOf(res)).code).toBe("conflict");
+    expect((await list(b)).challenges).toHaveLength(0);
+    expect((await list(a)).challenges[0]?.title).toBe("毎日1枚、写真を撮る");
+  });
+
+  it("accepts today (±1 day of slack) or the next 1st, in the user's time zone", async () => {
+    const s = await api.createSession("日付");
+    for (const startDate of ["2026-10-05", TODAY, "2026-10-07", NEXT_FIRST]) {
+      expect((await postChallenge(s, createBody({ startDate }))).status, startDate).toBe(201);
+    }
+    for (const startDate of ["2026-10-04", "2026-10-08", "2026-10-31", "2026-12-01", "2026-02-30"]) {
+      const res = await postChallenge(s, createBody({ startDate }));
+      expect(res.status, startDate).toBe(400);
+    }
+    const bad = await errorOf(await postChallenge(s, createBody({ startDate: "2026-10-20" })));
+    expect(bad.message).toBe(CHALLENGE_MESSAGES.startDate);
+    expect(bad.fields?.startDate).toBe(CHALLENGE_MESSAGES.startDate);
+
+    // 03:00 UTC is still Oct 5 in Los Angeles.
+    const la = await api.createSession("LA", "America/Los_Angeles");
+    expect((await postChallenge(la, createBody({ startDate: "2026-10-07" }))).status).toBe(400);
+    expect((await postChallenge(la, createBody({ startDate: "2026-10-04" }))).status).toBe(201);
+  });
+
+  it("allows at most 5 open challenges; finished ones do not count", async () => {
+    const s = await api.createSession("上限");
+    const made: Challenge[] = [];
+    for (let i = 0; i < 5; i++) made.push(await create(s, { title: `チャレンジ${i + 1}` }));
+
+    const sixth = createBody({ title: "6つめ" });
+    const res = await postChallenge(s, sixth);
+    expect(res.status).toBe(409);
+    expect((await errorOf(res)).message).toBe(CHALLENGE_MESSAGES.openLimit);
+    expect((await getItem(`CHREF#${sixth.id}`, "REF"))).toBeUndefined();
+    // A replay of an existing one is still fine at the limit.
+    expect((await postChallenge(s, createBody({ id: made[0]!.id }))).status).toBe(200);
+
+    // Reflect one on day 7 → a slot opens.
+    api.clock.advance(6 * DAY_MS);
+    expect((await reflect(s, made[0]!.id, { verdict: "continue" })).status).toBe(200);
+    expect((await postChallenge(s, { ...sixth, startDate: "2026-10-12" })).status).toBe(201);
+    expect((await postChallenge(s, createBody({ startDate: "2026-10-12" }))).status).toBe(409);
+
+    // Deleting one opens a slot too.
+    expect((await remove(s, made[1]!.id)).status).toBe(204);
+    expect((await postChallenge(s, createBody({ startDate: "2026-10-12" }))).status).toBe(201);
+  });
+
+  it("keeps official and published community recipe ids, drops unknown or hidden ones", async () => {
+    const s = await api.createSession("レシピ");
+    const published = newId(16);
+    const hidden = newId(16);
+    const put = (rid: string, status: string) =>
+      api.deps.db.send(new PutCommand({ TableName: api.deps.tableName, Item: { pk: `RECIPE#${rid}`, sk: "META", status, title: "x" } }));
+    await put(published, "published");
+    await put(hidden, "hidden");
+
+    expect((await create(s, { recipeId: published })).recipeId).toBe(published);
+    expect((await getItem("RSTATS", published))?.startCount).toBe(1);
+    expect((await create(s, { recipeId: hidden })).recipeId).toBeNull();
+    expect(await getItem("RSTATS", hidden)).toBeUndefined();
+    expect((await create(s, { recipeId: "no-such-recipe" })).recipeId).toBeNull();
+    expect((await create(s, { recipeId: null, title: "自分で決めた", seal: "自" })).recipeId).toBeNull();
+  });
+
+  it("projects into next month's cohort for a reservation, and not at all when progress is private", async () => {
+    const s = await api.createSession("予約");
+    const reserved = await create(s, { startDate: NEXT_FIRST });
+    expect((await getItem(`USER#${s.user.id}`, `CH#${reserved.id}`))?.gsi1pk).toBe("COHORT#2026-11");
+
+    await api.request("/api/me", { method: "PATCH", token: s.token, body: { shareProgress: false } });
+    const quiet = await create(s);
+    const item = await getItem(`USER#${s.user.id}`, `CH#${quiet.id}`);
+    expect(item?.gsi1pk).toBeUndefined();
+    expect(item?.gsi1sk).toBeUndefined();
+  });
+
+  it("validates the body and requires a session", async () => {
+    const s = await api.createSession();
+    const badSeal = await postChallenge(s, createBody({ seal: "ab" }));
+    expect(badSeal.status).toBe(400);
+    expect((await errorOf(badSeal)).fields?.seal).toBeDefined();
+    expect((await postChallenge(s, createBody({ title: "見て https://spam.example.com" }))).status).toBe(400);
+    expect((await postChallenge(s, createBody({ id: "BAD-ID" }))).status).toBe(400);
+    expect((await api.request("/api/challenges", { body: createBody() })).status).toBe(401);
+    expect((await api.request("/api/challenges")).status).toBe(401);
+  });
+});
+
+describe("PATCH /api/challenges/:id", () => {
+  it("edits title and seal and keeps the cohort projection current", async () => {
+    const s = await api.createSession("編集");
+    const c = await create(s);
+    api.clock.advance(60_000);
+    const res = await patch(s, c.id, { title: "  朝の写真  ", seal: "朝" });
+    expect(res.status).toBe(200);
+    const updated = await challengeOf(res);
+    const now = api.clock.now().getTime();
+    expect(updated).toMatchObject({ title: "朝の写真", seal: "朝", startDate: TODAY, updatedAt: now, createdAt: c.createdAt });
+    const item = await getItem(`USER#${s.user.id}`, `CH#${c.id}`);
+    expect(item?.gsi1sk).toBe(`${String(now).padStart(13, "0")}#${c.id}`);
+    expect((await patch(s, c.id, {})).status).toBe(400);
+    expect((await patch(s, c.id, { seal: "二文字" })).status).toBe(400);
+  });
+
+  it("moves the start date only while waiting, and only to today or the next 1st", async () => {
+    const s = await api.createSession("移動");
+    const c = await create(s, { startDate: NEXT_FIRST });
+
+    const bad = await patch(s, c.id, { startDate: "2026-10-20" });
+    expect(bad.status).toBe(400);
+    expect((await errorOf(bad)).message).toBe(CHALLENGE_MESSAGES.startDate);
+
+    // Unchanged start date is a no-op, even with other fields.
+    expect((await patch(s, c.id, { startDate: NEXT_FIRST, title: "同じ日" })).status).toBe(200);
+
+    const moved = await patch(s, c.id, { startDate: TODAY });
+    expect(moved.status).toBe(200);
+    expect((await challengeOf(moved)).startDate).toBe(TODAY);
+    expect((await getItem(`USER#${s.user.id}`, `CH#${c.id}`))?.gsi1pk).toBe("COHORT#2026-10");
+
+    // Started now: the date is fixed.
+    const again = await patch(s, c.id, { startDate: NEXT_FIRST });
+    expect(again.status).toBe(409);
+    expect((await errorOf(again)).message).toBe(CHALLENGE_MESSAGES.started);
+  });
+
+  it("is locked after the reflection", async () => {
+    const s = await api.createSession("確定");
+    const c = await create(s);
+    api.clock.advance(6 * DAY_MS);
+    expect((await reflect(s, c.id, { verdict: "stop" })).status).toBe(200);
+    const res = await patch(s, c.id, { title: "あとから" });
+    expect(res.status).toBe(409);
+    expect((await errorOf(res)).message).toBe(CHALLENGE_MESSAGES.done);
+  });
+});
+
+describe("DELETE /api/challenges/:id", () => {
+  it("removes the challenge and its reference", async () => {
+    const s = await api.createSession("削除");
+    const c = await create(s);
+    expect((await remove(s, c.id)).status).toBe(204);
+    expect(await getItem(`USER#${s.user.id}`, `CH#${c.id}`)).toBeUndefined();
+    expect(await getItem(`CHREF#${c.id}`, "REF")).toBeUndefined();
+    expect((await list(s)).challenges).toHaveLength(0);
+    expect((await remove(s, c.id)).status).toBe(404);
+  });
+});
+
+describe("ownership", () => {
+  it("answers 404 for someone else's challenge on every route and changes nothing", async () => {
+    const owner = await api.createSession("持ち主");
+    const other = await api.createSession("他人");
+    const c = await create(owner);
+    await stamp(owner, c.id, 1, { note: "本人のメモ" });
+    api.clock.advance(6 * DAY_MS);
+
+    const responses = [
+      await patch(other, c.id, { title: "書き換え" }),
+      await remove(other, c.id),
+      await stamp(other, c.id, 2),
+      await unstamp(other, c.id, 1),
+      await reflect(other, c.id, { verdict: "stop" }),
+    ];
+    for (const res of responses) {
+      expect(res.status).toBe(404);
+      expect(JSON.stringify(await res.json())).not.toContain("本人のメモ");
+    }
+    const [mine] = (await list(owner)).challenges;
+    expect(mine).toMatchObject({ id: c.id, title: "毎日1枚、写真を撮る", status: "active" });
+    expect(Object.keys(mine!.stamps)).toEqual(["1"]);
+    expect(await getItem(`CHREF#${c.id}`, "REF")).toBeDefined();
+
+    expect((await patch(other, "nosuchchallenge1", { title: "x" })).status).toBe(404);
+    expect((await patch(other, "BAD!", { title: "x" })).status).toBe(400);
+  });
+});
+
+describe("stamps", () => {
+  it("allows days 1..today+1, keeps the first stamp time, and edits or clears the note", async () => {
+    const s = await api.createSession("印");
+    const c = await create(s);
+    const t0 = api.clock.now().getTime();
+
+    const first = await stamp(s, c.id, 1, { note: "  初日  " });
+    expect(first.status).toBe(200);
+    expect((await challengeOf(first)).stamps).toEqual({ "1": { at: t0, note: "初日" } });
+    expect((await stamp(s, c.id, 2)).status).toBe(200); // +1 day of slack
+    const future = await stamp(s, c.id, 3);
+    expect(future.status).toBe(400);
+    expect((await errorOf(future)).message).toBe(CHALLENGE_MESSAGES.futureDay);
+    for (const day of [0, 31, "x", "1.5"]) expect((await stamp(s, c.id, day)).status, String(day)).toBe(400);
+    expect((await stamp(s, c.id, 1, { note: "あ".repeat(121) })).status).toBe(400);
+
+    // Ten days later: missed days can be filled in, the future still cannot.
+    api.clock.advance(10 * DAY_MS);
+    const t1 = api.clock.now().getTime();
+    expect((await stamp(s, c.id, 5)).status).toBe(200);
+    expect((await stamp(s, c.id, 12)).status).toBe(200);
+    expect((await stamp(s, c.id, 13)).status).toBe(400);
+
+    // Idempotent re-put without a body keeps `at` and the note.
+    let res = await stamp(s, c.id, 1);
+    expect((await challengeOf(res)).stamps["1"]).toEqual({ at: t0, note: "初日" });
+    res = await stamp(s, c.id, 1, { note: "書き直し" });
+    expect((await challengeOf(res)).stamps["1"]).toEqual({ at: t0, note: "書き直し" });
+    res = await stamp(s, c.id, 1, { note: "" });
+    const updated = await challengeOf(res);
+    expect(updated.stamps["1"]).toEqual({ at: t0 });
+    expect(updated.stamps["5"]).toEqual({ at: t1 });
+    expect(updated.updatedAt).toBe(t1);
+    expect((await getItem(`USER#${s.user.id}`, `CH#${c.id}`))?.gsi1sk).toBe(`${String(t1).padStart(13, "0")}#${c.id}`);
+
+    // Remove, twice (idempotent).
+    res = await unstamp(s, c.id, 2);
+    expect(res.status).toBe(200);
+    expect(Object.keys((await challengeOf(res)).stamps).sort()).toEqual(["1", "12", "5"]);
+    res = await unstamp(s, c.id, 2);
+    expect(res.status).toBe(200);
+    expect(Object.keys((await challengeOf(res)).stamps).sort()).toEqual(["1", "12", "5"]);
+  });
+
+  it("accepts day 1 the day before the start (slack) but not for a reservation further away", async () => {
+    const s = await api.createSession("予約の印");
+    const tomorrow = await create(s, { startDate: "2026-10-07" });
+    expect((await stamp(s, tomorrow.id, 1)).status).toBe(200);
+    expect((await stamp(s, tomorrow.id, 2)).status).toBe(400);
+    const reserved = await create(s, { startDate: NEXT_FIRST });
+    expect((await stamp(s, reserved.id, 1)).status).toBe(400);
+  });
+
+  it("caps at day 30 after the end and is locked once reflected", async () => {
+    const s = await api.createSession("終わり");
+    const c = await create(s);
+    api.clock.advance(40 * DAY_MS);
+    expect((await stamp(s, c.id, 30)).status).toBe(200);
+    expect((await reflect(s, c.id, { verdict: "modify" })).status).toBe(200);
+    const put = await stamp(s, c.id, 29);
+    expect(put.status).toBe(409);
+    expect((await errorOf(put)).message).toBe(CHALLENGE_MESSAGES.done);
+    expect((await unstamp(s, c.id, 30)).status).toBe(409);
+    expect(Object.keys((await list(s)).challenges[0]!.stamps)).toEqual(["30"]);
+  });
+});
+
+describe("POST /api/challenges/:id/reflect", () => {
+  it("opens on day 7, closes the record once, and counts stats once", async () => {
+    const s = await api.createSession("振り返り");
+    const c = await create(s);
+    await stamp(s, c.id, 1);
+
+    api.clock.advance(5 * DAY_MS); // day 6
+    const early = await reflect(s, c.id, { verdict: "continue" });
+    expect(early.status).toBe(400);
+    expect((await errorOf(early)).message).toBe(CHALLENGE_MESSAGES.tooEarly);
+
+    api.clock.advance(DAY_MS); // day 7
+    const before = await getStats(api.deps);
+    const res = await reflect(s, c.id, { verdict: "continue", reflection: "  思ったより\n続いた  " });
+    expect(res.status).toBe(200);
+    const now = api.clock.now().getTime();
+    const done = await challengeOf(res);
+    expect(done).toMatchObject({
+      status: "done",
+      verdict: "continue",
+      reflection: "思ったより\n続いた",
+      finishedAt: now,
+      finishedDay: 7,
+      stamps: { "1": { at: c.createdAt } },
+    });
+    let stats = await getStats(api.deps);
+    expect(stats.challengesDone).toBe(before.challengesDone + 1);
+    expect(stats.verdict_continue).toBe(before.verdict_continue + 1);
+
+    // Changing one's mind later updates verdict / reflection only.
+    api.clock.advance(DAY_MS);
+    let again = await challengeOf(await reflect(s, c.id, { verdict: "modify" }));
+    expect(again).toMatchObject({ verdict: "modify", reflection: "思ったより\n続いた", finishedAt: now, finishedDay: 7 });
+    again = await challengeOf(await reflect(s, c.id, { verdict: "modify", reflection: "" }));
+    expect(again.reflection).toBeNull();
+    stats = await getStats(api.deps);
+    expect(stats.challengesDone).toBe(before.challengesDone + 1);
+    expect(stats.verdict_continue).toBe(before.verdict_continue + 1);
+    expect(stats.verdict_modify).toBe(before.verdict_modify);
+  });
+
+  it("records day 30 for a challenge reflected after its end, and rejects reservations and bad input", async () => {
+    const s = await api.createSession("あとで");
+    const c = await create(s);
+    const reserved = await create(s, { startDate: NEXT_FIRST });
+    expect((await reflect(s, reserved.id, { verdict: "stop" })).status).toBe(400);
+    api.clock.advance(45 * DAY_MS);
+    expect((await reflect(s, c.id, { verdict: "maybe" })).status).toBe(400);
+    expect((await reflect(s, c.id, { verdict: "stop", reflection: "あ".repeat(141) })).status).toBe(400);
+    expect((await reflect(s, c.id, { verdict: "stop", reflection: "www.example.com を見て" })).status).toBe(400);
+    const done = await challengeOf(await reflect(s, c.id, { verdict: "stop" }));
+    expect(done).toMatchObject({ status: "done", verdict: "stop", reflection: null, finishedDay: 30 });
+  });
+});
