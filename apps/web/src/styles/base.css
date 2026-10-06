@@ -47,6 +47,8 @@ h4 {
   line-height: 1.3;
   letter-spacing: 0.01em;
   text-wrap: balance;
+  /* Break Japanese headings between phrases, not inside a word (Chromium; others ignore it). */
+  word-break: auto-phrase;
 }
 
 p,

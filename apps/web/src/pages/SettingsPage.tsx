@@ -499,7 +499,8 @@ function IssueCode() {
     setBusy(true);
     setError(null);
     try {
-      const res = await request<TransferCodeResponse>("POST", API.meTransferCode, { auth: "required" });
+      // Empty JSON body: a POST without Content-Type: application/json is answered with 415.
+      const res = await request<TransferCodeResponse>("POST", API.meTransferCode, { body: {}, auth: "required" });
       const at = Date.now();
       const ttl = TRANSFER_CODE_TTL_MINUTES * 60_000;
       // Trust the server's expiry unless the device clock is clearly off.
@@ -891,7 +892,7 @@ function DangerSection({ app, signedIn }: { app: AppContextValue; signedIn: bool
 
   async function onConfirm() {
     if (typed.trim() !== DELETE_WORD) {
-      setTypedError(`確認のため「${DELETE_WORD}」と入力してください`);
+      setTypedError(`「${DELETE_WORD}」と入力すると削除できます`);
       return;
     }
     setBusy(true);

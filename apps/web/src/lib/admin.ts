@@ -23,24 +23,32 @@ function session(): Storage | null {
   }
 }
 
+/** sessionStorage is the source of truth; the in-memory copy is only for when it is unavailable. */
 export function getAdminToken(): string | null {
-  try {
-    const v = session()?.getItem(TOKEN_KEY);
-    if (v) return v;
-  } catch {
-    // fall through
+  const s = session();
+  if (s) {
+    try {
+      return s.getItem(TOKEN_KEY) || null;
+    } catch {
+      // blocked: fall through to memory
+    }
   }
   return memoryToken;
 }
 
 export function setAdminToken(token: string): void {
   const t = token.trim();
-  memoryToken = t;
+  memoryToken = null;
   try {
-    session()?.setItem(TOKEN_KEY, t);
+    const s = session();
+    if (s) {
+      s.setItem(TOKEN_KEY, t);
+      return;
+    }
   } catch {
-    // keep the in-memory copy
+    // blocked or full: keep it in memory for this page load
   }
+  memoryToken = t;
 }
 
 export function clearAdminToken(): void {

@@ -1,0 +1,304 @@
+/* チャレンジ詳細 (ChallengePage). Neo-brutalism per docs/design.md, tokens with fallbacks. */
+
+.cp {
+  display: grid;
+  gap: 20px;
+}
+.cp-back {
+  justify-self: start;
+  margin-bottom: -10px;
+}
+.cp-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.cp-headtext {
+  flex: 1;
+  min-width: 0;
+}
+.cp-h1 {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: clamp(20px, 5.6vw, 28px);
+  font-weight: 400;
+  line-height: 1.3;
+}
+.cp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 6px;
+  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+}
+.cp-tag {
+  display: inline-block;
+  padding: 0 7px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+  transform: rotate(-2deg);
+}
+.cp-tag-day,
+.cp-tag-on {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+}
+.cp-tag-first {
+  background: var(--pink, #ff9ec7);
+  color: var(--on-accent, #111);
+}
+.cp-count {
+  flex: none;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cp-count b {
+  font-size: 38px;
+  font-weight: 400;
+}
+.cp-count small {
+  margin-left: 2px;
+  color: var(--muted, #4a4a4a);
+  font-size: 17px;
+}
+.cp-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cp-tools svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cp-card {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+  box-shadow: 6px 6px 0 var(--ink, #111);
+}
+@media (min-width: 560px) {
+  .cp-card {
+    padding: 20px;
+  }
+}
+.cp-grid {
+  margin: 0 auto;
+  width: 100%;
+}
+.cp-hint {
+  color: var(--muted, #4a4a4a);
+  font-size: 14px;
+}
+
+/* ---------- day panel ---------- */
+.cp-day {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--bg, var(--paper, #fff4d6));
+  scroll-margin: 96px 0 96px;
+}
+.cp-day:focus {
+  outline: none;
+}
+.cp-day:focus-visible {
+  outline: 3px solid var(--blue, #6c8cff);
+  outline-offset: 3px;
+}
+.cp-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cp-day-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 20px;
+  font-weight: 400;
+}
+.cp-day-h span {
+  color: var(--muted, #4a4a4a);
+  font-family: var(--font-body, sans-serif);
+  font-size: 14px;
+  font-weight: 700;
+}
+.cp-day-note {
+  display: grid;
+  gap: 4px;
+}
+.cp-day-save {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
+}
+.cp-day .btn {
+  justify-self: start;
+}
+.cp-quote-sm {
+  padding: 8px 12px;
+  border-left: 4px solid var(--ink, #111);
+  font-weight: 500;
+  white-space: pre-wrap;
+}
+
+.cp-photo {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 2px dashed var(--ink, #111);
+}
+.cp-photo-h {
+  font-size: 13px;
+  font-weight: 700;
+}
+.cp-photo-img {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  max-height: 360px;
+  object-fit: contain;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  box-shadow: 4px 4px 0 var(--ink, #111);
+}
+.cp-photo-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.cp-file {
+  position: relative;
+  cursor: pointer;
+}
+.cp-file svg {
+  width: 18px;
+  height: 18px;
+}
+.cp-file:has(input:focus-visible) {
+  outline: 3px solid var(--blue, #6c8cff);
+  outline-offset: 3px;
+}
+.cp-file.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---------- sections ---------- */
+.cp-section {
+  display: grid;
+  gap: 10px;
+}
+.cp-h2 {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 18px;
+  font-weight: 400;
+}
+.cp-reflection {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 16px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+  box-shadow: 5px 5px 0 var(--ink, #111);
+}
+.cp-quote {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.cp-notes {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cp-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+  text-align: left;
+  cursor: pointer;
+}
+.cp-note:hover {
+  box-shadow: 3px 3px 0 var(--ink, #111);
+}
+.cp-note b {
+  flex: none;
+  width: 4em;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.cp-note span:not(.cp-tag) {
+  flex: 1;
+  min-width: 0;
+}
+.cp-rem-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 12px;
+  font-weight: 500;
+}
+.cp-rem-status a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink, #111);
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+}
+.cp-cal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cp-cal svg {
+  width: 20px;
+  height: 20px;
+}
+.cp-danger {
+  padding-top: 18px;
+  border-top: var(--border, 3px) dashed var(--ink, #111);
+}
+.cp-danger .btn {
+  justify-self: start;
+}
+.cp-danger svg {
+  width: 18px;
+  height: 18px;
+}

@@ -160,7 +160,7 @@ export function applyOp(state: LocalState, op: OutboxOp, at: number): LocalState
           status: "done",
           verdict: op.body.verdict,
           reflection: op.body.reflection ? op.body.reflection : null,
-          finishedAt: at,
+          finishedAt: c.status === "done" && c.finishedAt !== null ? c.finishedAt : at,
           finishedDay: op.finishedDay,
           updatedAt: at,
         })),

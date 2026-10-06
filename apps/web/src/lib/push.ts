@@ -242,7 +242,8 @@ export async function disablePush(opts: { notifyServer?: boolean } = {}): Promis
 
 /** One notification now (to check that reminders arrive). */
 export async function sendTestPush(): Promise<void> {
-  await request("POST", API.pushTest, { auth: "required" });
+  // An empty JSON body: the API answers 415 to a POST without Content-Type: application/json.
+  await request("POST", API.pushTest, { body: {}, auth: "required" });
 }
 
 /**

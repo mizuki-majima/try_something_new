@@ -488,13 +488,15 @@ export function createAppStore(): AppStore {
     },
 
     reflect(challengeId, verdict, reflection) {
-      const c = findOpen(challengeId);
+      // A finished challenge may change its verdict / ひとこと later (the API keeps the record closed).
+      const done = view.challenges.find((x) => x.id === challengeId && x.status === "done");
+      const c = done ?? findOpen(challengeId);
       if ("ok" in c) return c;
       const v = viewChallenge(c, today);
-      if (!v.canReflect) return fail("振り返りは7日目からできます。");
+      if (!done && !v.canReflect) return fail("振り返りは7日目からできます。");
       const parsed = parseWith(ReflectSchema, reflection === undefined ? { verdict } : { verdict, reflection });
       if (!parsed.ok) return parsed;
-      const finishedDay = Math.max(1, Math.min(v.day, TOTAL_DAYS));
+      const finishedDay = done ? (done.finishedDay ?? TOTAL_DAYS) : Math.max(1, Math.min(v.day, TOTAL_DAYS));
       mutate({ kind: "challenge.reflect", id: challengeId, body: parsed.data, finishedDay });
       return ok();
     },

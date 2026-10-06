@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@fontsource/dela-gothic-one": "^5.3.0",
-    "@fontsource/kiwi-maru": "^5.3.0",
     "@fontsource/zen-kaku-gothic-new": "^5.3.0",
     "@thirty/shared": "*",
     "react": "^19.3.0",

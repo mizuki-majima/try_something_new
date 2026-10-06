@@ -358,7 +358,7 @@ main.wrap:focus {
   animation: stampIn 420ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
 .cell:has(.st.new) {
-  animation: stampHit 260ms 140ms ease-out both;
+  animation: stampHit 260ms 140ms ease-out;
 }
 @keyframes stampIn {
   0% {
@@ -932,6 +932,20 @@ legend {
   font-weight: 900;
   font-variant-numeric: tabular-nums;
 }
+/* Short display texts: break Japanese between phrases (Chromium; others ignore it). */
+.h1,
+.h2,
+.display,
+.chhead .title,
+.recipe .t,
+.teaser b,
+.step b,
+.slot,
+.empty b,
+.errorbox b,
+.sheet-title {
+  word-break: auto-phrase;
+}
 .h1 {
   margin: 4px 0 14px;
   font-family: var(--font-display);
@@ -1366,9 +1380,9 @@ legend {
   margin: 0;
   padding: 12px 14px;
   border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-left: 8px solid var(--shu, #ff4b2b);
   border-radius: var(--radius, 12px);
   background: var(--surface, #fff);
+  box-shadow: 4px 4px 0 var(--shu, #ff4b2b);
   white-space: pre-wrap;
 }
 

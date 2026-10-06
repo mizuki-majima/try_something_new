@@ -9,11 +9,13 @@ import { BrowserRouter } from "react-router";
 import App from "./App";
 import { ToastProvider } from "./components/Toast";
 import { loadFonts } from "./lib/fonts";
+import { startPushResync } from "./lib/push";
 import { AppProvider } from "./lib/store";
 import { applyTheme, getThemePref } from "./lib/theme";
 
 applyTheme(getThemePref());
 void loadFonts();
+startPushResync(); // re-register this device's push subscription (endpoints rotate)
 
 // After a deploy, an old tab may ask for a lazy chunk that no longer exists: reload once
 // (the flag clears after a while so a later deploy in the same tab can reload again).

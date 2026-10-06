@@ -1,0 +1,318 @@
+/* 管理 — page-only styles. Tokens from docs/design.md, each with a fallback. */
+
+.adm {
+  display: grid;
+  gap: 16px;
+}
+
+.adm-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.adm-title {
+  margin: 0;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: clamp(24px, 6vw, 32px);
+  font-weight: 400;
+}
+
+.adm-login {
+  max-width: 28rem;
+}
+
+/* Tabs: bordered blocks, the selected one is yellow. */
+.adm-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.adm-tab {
+  min-height: 44px;
+  padding: 6px 16px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: 10px;
+  background: var(--surface, #ffffff);
+  color: var(--ink, #111111);
+  font-weight: 700;
+  cursor: pointer;
+}
+.adm-tab[aria-selected="true"] {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+  box-shadow: 3px 3px 0 var(--ink, #111111);
+}
+.adm-tab:focus-visible {
+  outline: 3px solid var(--blue, #6c8cff);
+  outline-offset: 2px;
+}
+
+.adm-panel:focus {
+  outline: none;
+}
+.adm-panel:focus-visible {
+  outline: 3px dashed var(--blue, #6c8cff);
+  outline-offset: 6px;
+}
+
+.adm-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.adm-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.adm-h {
+  margin: 0;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.adm-sub {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.adm-card {
+  display: grid;
+  gap: 8px;
+}
+
+/* Number tiles */
+.adm-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 640px) {
+  .adm-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1000px) {
+  .adm-tiles {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+.adm-tile {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #ffffff);
+  box-shadow: 3px 3px 0 var(--ink, #111111);
+}
+.adm-tile-n {
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-size: 26px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.adm-tile-l {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted, #4a4a4a);
+}
+
+.adm-table-wrap {
+  overflow-x: auto;
+}
+.adm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.adm-table th,
+.adm-table td {
+  padding: 8px;
+  border-bottom: 2px solid color-mix(in srgb, var(--ink, #111111) 20%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+.adm-table thead th {
+  font-size: 12px;
+  color: var(--muted, #4a4a4a);
+}
+.adm-table td small {
+  display: block;
+  color: var(--muted, #4a4a4a);
+  font-size: 12px;
+}
+
+.adm-judge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  color: var(--on-accent, #111111);
+  transform: rotate(-2deg);
+}
+.adm-judge.pass {
+  background: var(--mint, #3ddc97);
+}
+.adm-judge.fail {
+  background: var(--shu, #ff4b2b);
+}
+.adm-judge.na {
+  background: var(--gray, var(--soft, #e6e1d3));
+  color: var(--ink, #111111);
+}
+
+.adm-two {
+  display: grid;
+  gap: 14px;
+}
+@media (min-width: 720px) {
+  .adm-two {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.adm-kv {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.adm-kv > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 2px dotted color-mix(in srgb, var(--ink, #111111) 30%, transparent);
+}
+.adm-kv dt {
+  font-weight: 700;
+}
+.adm-kv dd {
+  margin: 0;
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lists */
+.adm-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.adm-item {
+  display: grid;
+  gap: 8px;
+}
+.adm-item[data-status="deleted"] {
+  opacity: 0.7;
+}
+.adm-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.adm-type,
+.adm-status {
+  padding: 1px 8px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--on-accent, #111111);
+}
+.adm-type {
+  background: var(--blue, #6c8cff);
+}
+.adm-status.published {
+  background: var(--mint, #3ddc97);
+}
+.adm-status.hidden {
+  background: var(--yellow, #ffd43b);
+}
+.adm-status.deleted {
+  background: var(--gray, var(--soft, #e6e1d3));
+  color: var(--ink, #111111);
+}
+.adm-count {
+  margin-left: auto;
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-size: 14px;
+}
+.adm-preview,
+.adm-message {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.adm-reasons {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 10px 8px 1.6em;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 8px;
+  background: var(--bg, var(--paper, #fff4d6));
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.adm-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 700;
+}
+
+.adm-recipe {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 12px;
+}
+@media (min-width: 560px) {
+  .adm-recipe {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+}
+.adm-recipe-body {
+  display: grid;
+  gap: 2px;
+}
+.adm-feat {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+@media (min-width: 560px) {
+  .adm-feat {
+    grid-column: auto;
+  }
+}
+.adm-feat.on {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+}
+
+.adm-contact {
+  display: grid;
+  gap: 6px;
+}
+.adm-reply {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
