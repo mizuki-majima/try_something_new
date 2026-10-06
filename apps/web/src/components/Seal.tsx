@@ -1,10 +1,10 @@
-/** The 朱 seal: one character in a slightly rotated vermilion ring. */
+/** The 朱 seal: one ink character on a vermilion disc with an ink ring and hard shadow, tilted -6deg. */
 export type SealSize = "sm" | "md" | "lg" | "xl";
 
 type Props = {
   char: string;
   size?: SealSize;
-  /** White ring for use on the vermilion primary button. */
+  /** For use on the 朱 primary button (a yellow seal with an ink ring). */
   inverse?: boolean;
   /** Accessible name (e.g. "印「写」"). Without it the seal is decorative. */
   label?: string;

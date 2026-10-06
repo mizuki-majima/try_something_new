@@ -5,7 +5,7 @@
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { findOfficialRecipe, monthKey, type Challenge, type Stamp } from "@thirty/shared";
 import type { DbDeps } from "../ports";
-import { challengeKey, challengeRefKey, cohortGsi1, recipeKey, recipeStatsKey, userPk, type Key } from "./keys";
+import { authorPk, challengeKey, challengeRefKey, cohortGsi1, recipeKey, recipeStatsKey, userPk, type Key } from "./keys";
 import { isConditionFailed, queryPrefix, type Item } from "./util";
 
 export type ChallengeItem = Key &
@@ -100,13 +100,17 @@ export async function getChallengeOwner(deps: Pick<DbDeps, "db" | "tableName">, 
   return typeof uid === "string" ? uid : undefined;
 }
 
-/** Claim a challenge id for `uid`. Returns false when the id is already taken (by anyone). */
+/**
+ * Claim a challenge id for `uid`. Returns false when the id is already taken (by anyone).
+ * The ref sits outside USER#<uid>, so it carries gsi2 AUTHOR#<uid>: account deletion finds it even
+ * when the challenge item itself was never written (a create that failed half-way).
+ */
 export async function claimChallengeId(deps: Pick<DbDeps, "db" | "tableName">, chId: string, uid: string): Promise<boolean> {
   try {
     await deps.db.send(
       new PutCommand({
         TableName: deps.tableName,
-        Item: { ...challengeRefKey(chId), type: "challengeRef", userId: uid },
+        Item: { ...challengeRefKey(chId), gsi2pk: authorPk(uid), gsi2sk: `CHREF#${chId}`, type: "challengeRef", userId: uid },
         ConditionExpression: "attribute_not_exists(pk)",
       }),
     );
@@ -183,7 +187,14 @@ export async function putNewChallenge(deps: Pick<DbDeps, "db" | "tableName">, ui
 /** An official recipe, or a community recipe that is currently published. */
 export async function isKnownRecipe(deps: Pick<DbDeps, "db" | "tableName">, rid: string): Promise<boolean> {
   if (findOfficialRecipe(rid)) return true;
-  const res = await deps.db.send(new GetCommand({ TableName: deps.tableName, Key: recipeKey(rid), ProjectionExpression: "#s", ExpressionAttributeNames: { "#s": "status" } }));
+  const res = await deps.db.send(
+    new GetCommand({
+      TableName: deps.tableName,
+      Key: recipeKey(rid),
+      ProjectionExpression: "#s",
+      ExpressionAttributeNames: { "#s": "status" },
+    }),
+  );
   return res.Item?.status === "published";
 }
 

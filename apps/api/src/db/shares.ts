@@ -96,20 +96,23 @@ export async function createShare(deps: Deps, user: User, challenge: Challenge, 
     return undefined;
   }
   if (previous && previous !== id) {
-    const old = await getShareItem(deps, previous);
-    if (old && old.userId === user.id) await removeShare(deps, previous);
+    // Best effort: the new card is already live, so a failed cleanup must not fail the request.
+    try {
+      const old = await getShareItem(deps, previous);
+      if (old && old.userId === user.id) await removeShare(deps, previous);
+    } catch (err) {
+      log.warn("replaced share cleanup failed", { share: previous, err });
+    }
   }
   return id;
 }
 
-/** Image first (an orphaned public image is worse than an orphaned row), then the item. */
+/**
+ * Image first (an orphaned public image is worse than an orphaned row), then the item.
+ * A failed image delete throws and leaves the item, so the owner can retry.
+ */
 export async function removeShare(deps: Pick<Deps, "db" | "tableName" | "media">, sid: string): Promise<void> {
-  try {
-    await deps.media.delete(shareMediaKey(sid));
-  } catch (err) {
-    log.warn("share image delete failed", { share: sid, err });
-    throw err;
-  }
+  await deps.media.delete(shareMediaKey(sid));
   await deps.db.send(new DeleteCommand({ TableName: deps.tableName, Key: shareKey(sid) }));
 }
 

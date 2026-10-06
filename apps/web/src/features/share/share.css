@@ -1,0 +1,141 @@
+/*
+ * Share step + verdict stickers (features/share). Neo-brutalism per docs/design.md; every token has a
+ * fallback so the page still reads while tokens.css catches up.
+ */
+
+/* ---------- 判定ステッカー ---------- */
+.vbadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 10px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 8px;
+  background: var(--gray, #e6e1d3);
+  color: var(--on-accent, #111);
+  box-shadow: 2px 2px 0 var(--ink, #111);
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  white-space: nowrap;
+  transform: rotate(-2deg);
+}
+.vbadge-continue {
+  background: var(--mint, #3ddc97);
+}
+.vbadge-modify {
+  background: var(--blue, #6c8cff);
+}
+/* Gray is dark in the dark theme, so やめる keeps the page's ink colour for contrast. */
+.vbadge-stop {
+  background: var(--gray, #e6e1d3);
+  color: var(--ink, #111);
+}
+.vbadge-lg {
+  padding: 3px 14px;
+  border-width: 3px;
+  box-shadow: 3px 3px 0 var(--ink, #111);
+  font-size: 17px;
+  transform: rotate(-4deg);
+}
+
+/* ---------- share step ---------- */
+.sh {
+  display: grid;
+  gap: 14px;
+}
+.sh-preview {
+  overflow: hidden;
+  aspect-ratio: 1200 / 630;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow, 5px 5px 0 var(--ink, #111));
+}
+.sh-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.sh-drawing {
+  display: grid;
+  place-items: center;
+  height: 100%;
+}
+.sh-preview .errorbox {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  align-content: center;
+}
+.sh-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.sh-btn svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.sh-actions .btn {
+  min-height: 48px;
+}
+.sh-link {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #fff);
+  box-shadow: 4px 4px 0 var(--ink, #111);
+}
+.sh-link-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 17px;
+  font-weight: 400;
+}
+.sh-link-h svg {
+  width: 22px;
+  height: 22px;
+}
+.sh-url {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.sh-url input {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+.sh-make {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+}
+.sh-outdated {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 10px 12px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 10px;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+  font-size: 14px;
+}
+.sh-del {
+  justify-self: start;
+}
+.sh-err {
+  padding: 10px 12px;
+  border: var(--border, 3px) solid var(--shu, #ff4b2b);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+  font-size: 14px;
+  font-weight: 700;
+}

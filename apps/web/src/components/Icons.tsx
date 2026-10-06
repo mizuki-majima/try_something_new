@@ -1,5 +1,5 @@
 /**
- * Line icons in one style (24px grid, 1.8 stroke, round caps). Decorative by default: give the
+ * Line icons in one style (24px grid, 2.2 stroke for the neo-brutalist look, round caps). Decorative by default: give the
  * surrounding button or link the accessible name.
  */
 import type { ReactNode, SVGProps } from "react";
@@ -12,7 +12,7 @@ function Svg({ title, children, ...rest }: IconProps & { children: ReactNode }) 
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth={2.2}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden={title ? undefined : true}
@@ -86,7 +86,7 @@ export function ArchiveIcon(p: IconProps) {
 
 export function CloseIcon(p: IconProps) {
   return (
-    <Svg strokeWidth={2} {...p}>
+    <Svg strokeWidth={2.6} {...p}>
       <path d="M6 6l12 12M18 6 6 18" />
     </Svg>
   );

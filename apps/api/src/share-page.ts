@@ -3,7 +3,7 @@
  * rendered on the server. No scripts (the CSP for /s/* has no script-src) and no external
  * resources; every interpolated value goes through escapeHtml.
  */
-import { VERDICTS, jpPeriod, isValidDate, shareImagePath, sharePagePath, TOTAL_DAYS } from "@thirty/shared";
+import { VERDICTS, jpDate, isValidDate, shareImagePath, sharePagePath, TOTAL_DAYS } from "@thirty/shared";
 import type { Context } from "hono";
 import type { ShareView } from "./db/shares";
 
@@ -148,6 +148,11 @@ export function renderSharePage(v: ShareView, origin: string): string {
     `<link rel="canonical" href="${escapeHtml(pageUrl)}">`,
   ].join("\n");
 
+  const sticker = verdict && v.verdict ? `<span class="sticker display v-${escapeHtml(v.verdict)}">${escapeHtml(verdict.label)}</span>` : "";
+  // Start date only: a card may close early ("ここで区切る"), so a 30-day period would be wrong.
+  const since = isValidDate(v.startDate) ? `<span class="period">${escapeHtml(jpDate(v.startDate))}から</span>` : "";
+  const reflection = v.reflection ? `<blockquote class="reflection">${escapeHtml(v.reflection)}</blockquote>` : "";
+
   const body = `<figure class="shot"><img src="${escapeHtml(imagePath)}" width="1200" height="630" alt="${escapeHtml(imageAlt)}"></figure>
 <article class="card">
 <div class="head">
@@ -157,10 +162,8 @@ export function renderSharePage(v: ShareView, origin: string): string {
 <h1 class="display">${escapeHtml(v.title)}</h1>
 </div>
 </div>
-<p class="facts">${verdict && v.verdict ? `<span class="sticker display v-${escapeHtml(v.verdict)}">${escapeHtml(verdict.label)}</span>` : ""}<span class="days display">${escapeHtml(v.days)}<small>/${TOTAL_DAYS}日</small></span>${
-    isValidDate(v.startDate) ? `<span class="period">${escapeHtml(jpPeriod(v.startDate))}</span>` : ""
-  }</p>
-${v.reflection ? `<blockquote class="reflection">${escapeHtml(v.reflection)}</blockquote>` : ""}
+<p class="facts">${sticker}<span class="days display">${escapeHtml(v.days)}<small>/${TOTAL_DAYS}日</small></span>${since}</p>
+${reflection}
 </article>
 <a class="cta display" href="${escapeHtml(cta)}">自分も30日やってみる</a>
 <p class="sub"><a href="/about">「${escapeHtml(SITE_NAME)}」について</a></p>`;

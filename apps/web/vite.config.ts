@@ -10,8 +10,9 @@ const proxy: Record<string, ProxyOptions> = {
   "^/media/": { target: API_ORIGIN },
 };
 
-/** Light theme paper (tokens.css --paper). */
-const THEME_COLOR = "#fafaf6";
+/** Browser chrome = the white header (tokens.css --surface); splash = the cream page (--bg). */
+const THEME_COLOR = "#ffffff";
+const BACKGROUND_COLOR = "#fff4d6";
 
 /**
  * @fontsource CSS lists a .woff fallback next to every .woff2. Every supported browser takes
@@ -52,7 +53,7 @@ export default defineConfig({
         display: "standalone",
         orientation: "portrait",
         theme_color: THEME_COLOR,
-        background_color: THEME_COLOR,
+        background_color: BACKGROUND_COLOR,
         categories: ["lifestyle", "productivity"],
         icons: [
           { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

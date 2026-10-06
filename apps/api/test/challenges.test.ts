@@ -9,6 +9,7 @@ import {
   type ChallengeResponse,
   type SessionResponse,
 } from "@thirty/shared";
+import { claimChallengeId } from "../src/db/challenges";
 import { getStats } from "../src/db/stats";
 import { CHALLENGE_MESSAGES } from "../src/routes/challenges";
 import { json, setupApi } from "./helpers";
@@ -259,6 +260,22 @@ describe("DELETE /api/challenges/:id", () => {
     expect(await getItem(`CHREF#${c.id}`, "REF")).toBeUndefined();
     expect((await list(s)).challenges).toHaveLength(0);
     expect((await remove(s, c.id)).status).toBe(404);
+  });
+
+  it("recovers a half-finished create on replay, and account deletion removes an orphaned reference", async () => {
+    const s = await api.createSession("途中");
+    // A create that claimed the id but never wrote the challenge item.
+    const id = newId(16);
+    expect(await claimChallengeId(api.deps, id, s.user.id)).toBe(true);
+    expect((await postChallenge(s, createBody({ id }))).status).toBe(201);
+    const orphan = newId(16);
+    expect(await claimChallengeId(api.deps, orphan, s.user.id)).toBe(true);
+
+    expect((await api.request("/api/me", { method: "DELETE", token: s.token })).status).toBe(204);
+    const dump = JSON.stringify(await api.scanAll());
+    expect(dump).not.toContain(s.user.id);
+    expect(dump).not.toContain(id);
+    expect(dump).not.toContain(orphan);
   });
 });
 

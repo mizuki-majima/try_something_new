@@ -25,10 +25,11 @@ export function reportsRoutes(deps: Deps) {
 
   r.post(API.reports, requireUser(deps), async (c) => {
     const input = await readJson(c, ReportCreateSchema);
+    // Counted before the lookup, so probing ids (and reading story partitions) is bounded too.
+    await enforceQuota(deps, "report", c.var.uid, QUOTAS.reportsPerUserPerDay, "day");
     const target = await resolveTarget(deps, input.targetType, input.targetId);
     if (!target) throw notFound(TARGET_NOT_FOUND);
     if (target.ownerId === c.var.uid) throw badRequest(OWN_CONTENT);
-    await enforceQuota(deps, "report", c.var.uid, QUOTAS.reportsPerUserPerDay, "day");
 
     const count = await addReport(deps, c.var.uid, target, input.reason || undefined);
     if (count !== undefined && count >= AUTO_HIDE_REPORTS && target.status === "published") {

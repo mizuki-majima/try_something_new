@@ -4,7 +4,7 @@
  * the challenge is not hidden by moderation. Public shapes never carry notes or user ids.
  */
 import { BatchGetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { findOfficialRecipe, TOTAL_DAYS, type CohortMember, type UpcomingResponse } from "@thirty/shared";
+import { findOfficialRecipe, monthKey, TOTAL_DAYS, type CohortMember, type UpcomingResponse } from "@thirty/shared";
 import type { DbDeps } from "../ports";
 import { toChallenge } from "./challenges";
 import { authorPk, cheerKey, cohortPk, ttlIn, type Key } from "./keys";
@@ -57,7 +57,7 @@ export async function queryStartingOn(deps: DbOnly, startDate: string): Promise<
         KeyConditionExpression: "gsi1pk = :pk",
         FilterExpression: "#startDate = :d",
         ExpressionAttributeNames: { "#startDate": "startDate" },
-        ExpressionAttributeValues: { ":pk": cohortPk(startDate.slice(0, 7)), ":d": startDate },
+        ExpressionAttributeValues: { ":pk": cohortPk(monthKey(startDate)), ":d": startDate },
         ExclusiveStartKey: start,
       }),
     );

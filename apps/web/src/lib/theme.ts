@@ -7,8 +7,8 @@ import { KEYS, readString, writeString } from "./storage";
 
 export type ThemePref = "system" | "light" | "dark";
 
-/** Must match --paper in tokens.css (used for the browser chrome color). */
-export const THEME_COLORS = { light: "#fafaf6", dark: "#121726" } as const;
+/** Browser chrome color = the header (--surface in tokens.css); must match index.html. */
+export const THEME_COLORS = { light: "#ffffff", dark: "#1f1f1f" } as const;
 
 const listeners = new Set<() => void>();
 

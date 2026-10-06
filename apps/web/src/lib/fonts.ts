@@ -4,7 +4,11 @@
  * (the share card) must wait:
  *
  *   await loadFonts();
- *   await document.fonts.load('500 48px "Kiwi Maru"', text);
+ *   await document.fonts.load('400 48px "Dela Gothic One"', text);
+ *   await document.fonts.load('700 20px "Zen Kaku Gothic New"', text);
+ *
+ * Dela Gothic One has a single weight (400): draw it with "400", never "bold".
+ * Zen Kaku Gothic New is loaded in 400 / 700 / 900.
  */
 let loading: Promise<void> | null = null;
 
@@ -20,7 +24,7 @@ export function loadFonts(): Promise<void> {
 
 /** CSS font stacks, matching tokens.css (for canvas drawing). */
 export const FONT_STACKS = {
-  display: '"Kiwi Maru", "Hiragino Mincho ProN", "Yu Mincho", serif',
+  display: '"Dela Gothic One", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif',
   body: '"Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif',
-  num: '"Dela Gothic One", "Zen Kaku Gothic New", sans-serif',
+  num: '"Dela Gothic One", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif',
 } as const;
