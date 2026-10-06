@@ -57,7 +57,8 @@ export const LIMITS = {
 /** Per-user and global quotas (per JST day unless noted). Enforced server-side. */
 export const QUOTAS = {
   aiPerUserPerDay: 3,
-  aiGlobalPerDay: 50,
+  /** Worst case with Claude Opus 5.5 ≈ $0.03/call → about $18/month; the AWS Budgets alert ($10) fires first. */
+  aiGlobalPerDay: 20,
   recipesPerUserPerDay: 5,
   storiesPerUserPerDay: 10,
   sharesPerUserPerDay: 10,

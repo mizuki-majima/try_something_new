@@ -55,11 +55,20 @@ AI は中心ではなく、「何をやるか決められない」人への補�
 
 ## Competitors
 
-<!-- 調査中（出典付きで記入） -->
+価格は 2026-10-06 時点の App Store / 公式ページ。「重なり」は AI PM の推測。
 
 | 名前 | 内容 | 価格 | 重なり | 出典 |
 |---|---|---|---|---|
-| | | | | |
+| 30-Day Trials（Nishco） | 新しい習慣を30日「試乗」し、合わなければ戻す。SNS 機能なし。英語のみ | 無料＋$1.49/月・$3.99/年・買い切り$5.99 | **高**（考え方がほぼ同じ。1人用・レシピなし・2023年から更新なし） | https://apps.apple.com/us/app/id1255607622 |
+| 30 Day Challenge - LockIn30 | 36本のチャレンジ集＋自作。写真とストリーク、30日目にシェア用動画 | 無料＋Pro $2.99/週・$29.99/年 | **高**（チャレンジ集とゴール時のシェアが重なる。「やめる」判断はない） | https://apps.apple.com/app/id6770272031 |
+| 継続する技術（bondavi） | 目標を1つに絞って毎日記録。30日継続の達成を強調 | 無料（任意課金あり） | 中〜高（30日の単位は同じ。目的は継続、仲間・レシピなし） | https://apps.apple.com/jp/app/id1120239484 |
+| みんチャレ（A10 Lab） | 匿名5人チームで証拠写真を投稿し励まし合う | 基本無料＋500円/月・4,700円/年 | 中（仲間で進める点が1日組に近い。ゴールは習慣化） | https://apps.apple.com/jp/app/id1047462806 |
+| Dry January / Inktober | 毎年決まった月に全員で同じテーマに1か月取り組む | 無料 | 中（「1か月だけ・同じ日に開始」が同じ。テーマ固定・年1回） | https://alcoholchange.org.uk/ ／ https://inktober.com/rules |
+| Habitify / Streaks / Habitica | 習慣トラッカー・連続記録・ゲーム化 | Streaks 買い切り1,000円、Habitica $4.99/月 など | 低（ずっと続ける前提） | https://apps.apple.com/jp/app/streaks/id963034692 ／ https://apps.apple.com/us/app/habitica-gamified-taskmanager/id994882113 |
+
+**差別化**: ①30日目の「続ける／やめる／形を変える」を完了として扱う ②毎月1日の「1日組」でテーマは自由 ③日本語の実体験レシピ ④無料・匿名・インストール不要の PWA。日本語の「30日チャレンジ」専用 Web サービスは今回の調査範囲では見つからなかった。
+
+着想: Matt Cutts「Try something new for 30 days」（TED2011） https://www.ted.com/talks/matt_cutts_try_something_new_for_30_days
 
 ## Revenue Hypothesis
 

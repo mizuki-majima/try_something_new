@@ -15,7 +15,7 @@
 | ホスティング | S3 + CloudFront（静的 PWA）、API Gateway HTTP API + Lambda（Node 22 / arm64）、DynamoDB on-demand | 常時起動のサーバ（EC2・App Runner）は最低でも月数ドル〜 |
 | アカウント | メール不要の匿名アカウント＋引き継ぎコード | Cognito＋メールは SES の本番申請が要り、個人情報（メール）を持つことになる |
 | 通知 | Web Push（VAPID）＋カレンダー連携 | LINE Notify は終了。メールは SES の本番申請が必要 |
-| AI | Claude in Amazon Bedrock（IAM で呼ぶ。API キーを持たない）。既定は Claude Opus 5.5、`-c aiModel` で Haiku 4.5 に切替可。1人1日3回・全体1日50回 | Anthropic API 直は API キーの管理が増える |
+| AI | Claude in Amazon Bedrock（IAM で呼ぶ。API キーを持たない）。既定は Claude Opus 5.5、`-c aiModel` で Haiku 4.5 に切替可。1人1日3回・全体1日20回 | Anthropic API 直は API キーの管理が増える |
 | 写真 | 端末内（IndexedDB）だけ | サーバ保存は容量・モデレーション・位置情報の扱いが重い |
 | IaC | AWS CDK（TypeScript） | — |
 | ローカル・CI | dynalite（純 JS の DynamoDB 互換）で Java / Docker 不要 | DynamoDB Local は Java が必要 |
