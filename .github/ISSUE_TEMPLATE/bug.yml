@@ -1,0 +1,47 @@
+name: Bug
+description: Something is broken
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What is broken and who is affected? Does it break a Critical User Flow (CUF)?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce / expected / actual
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      value: |
+        - [ ] Fixed and covered by a regression test
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: A broken CUF is always P0 and blocks release.
+      options: [P0 — CUF broken / data or security risk, P1 — major, P2 — minor, P3 — cosmetic]
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options: [IDEA, VALIDATE, SPEC, BUILD, REVIEW, TEST, PILOT, LIVE]
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Write "なし" if none.
+    validations:
+      required: true
