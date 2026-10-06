@@ -80,6 +80,10 @@
   line-height: 1.32;
   letter-spacing: 0.01em;
 }
+/* Break the headline between phrases only. */
+.td-ph {
+  display: inline-block;
+}
 .td-hero-h mark {
   display: inline-block;
   padding: 0 0.12em;
@@ -249,7 +253,6 @@
   font-family: "Dela Gothic One", var(--font-body, sans-serif);
   line-height: 1;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 .td-count b {
   font-size: 34px;
@@ -267,11 +270,16 @@
   margin-top: 16px;
 }
 
-/* The big stamp button (shared .btn.primary.lg.stampbtn). */
-.td-stamp {
-  gap: 12px;
-  font-size: clamp(16px, 4.8vw, 20px);
+/* The big stamp button (shared .btn.primary.lg.stampbtn); sized to stay on one line at 360px+. */
+.btn.td-stamp {
+  gap: 10px;
+  padding-inline: 12px;
+  font-size: clamp(15px, 4.1vw, 20px);
+  letter-spacing: 0;
   line-height: 1.3;
+}
+.td-stamp > span:last-child {
+  text-wrap: balance;
 }
 
 /* After stamping. */

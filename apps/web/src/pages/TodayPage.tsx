@@ -113,9 +113,12 @@ function Hero({ onCustom }: { onCustom: () => void }) {
       </span>
       <p className="td-hero-kicker">新しいことを、30日だけ。</p>
       <h1 id="td-hero-h" className="td-hero-h">
-        どうせ過ぎる<mark>30日</mark>なら、
+        <span className="td-ph">どうせ過ぎる</span>
+        <span className="td-ph">
+          <mark>30日</mark>なら、
+        </span>
         <br />
-        ひとつ試してみる。
+        <span className="td-ph">ひとつ試してみる。</span>
       </h1>
       <p className="td-hero-sub">続けなくていい。30日だけ、新しいことをやってみる場所です。やめるのも、形を変えるのも、立派な結果。</p>
       <div className="td-ctas">
@@ -376,7 +379,7 @@ function DayNoteInput({ challengeId, day, note }: { challengeId: string; day: nu
   return (
     <div className="td-note">
       <TextField
-        label="きょうのひとこと（任意・自分だけに見えます）"
+        label="きょうのひとこと（自分だけに見えます）"
         value={draft}
         onChange={(value) => {
           setDraft(value);

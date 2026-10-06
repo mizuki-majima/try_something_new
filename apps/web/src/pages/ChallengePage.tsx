@@ -129,29 +129,24 @@ function ChallengeDetail({ c, today }: { c: Challenge; today: string }) {
         </p>
       </header>
 
-      <div className="cp-tools">
-        {c.status !== "done" && (
+      {c.status !== "done" && (
+        <div className="cp-tools">
           <button type="button" className="btn sm" onClick={() => setEditing(true)}>
             <EditIcon />
             編集
           </button>
-        )}
-        {v.phase === "ended" && (
-          <Link to={`/c/${c.id}/reflect`} className="btn sm primary">
-            振り返る
-          </Link>
-        )}
-        {v.phase === "active" && v.day >= EARLY_REFLECT_FROM_DAY && (
-          <Link to={`/c/${c.id}/reflect`} className="btn sm">
-            ここで区切る
-          </Link>
-        )}
-        {c.status === "done" && (
-          <Link to={`/c/${c.id}/reflect`} className="btn sm primary">
-            シェア用カード
-          </Link>
-        )}
-      </div>
+          {v.phase === "ended" && (
+            <Link to={`/c/${c.id}/reflect`} className="btn sm primary">
+              振り返る
+            </Link>
+          )}
+          {v.phase === "active" && v.day >= EARLY_REFLECT_FROM_DAY && (
+            <Link to={`/c/${c.id}/reflect`} className="btn sm">
+              ここで区切る
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="cp-card">
         <Grid30
@@ -189,7 +184,9 @@ function ChallengeDetail({ c, today }: { c: Challenge; today: string }) {
           <div className="cp-reflection">
             {c.verdict && <VerdictBadge verdict={c.verdict} size="lg" />}
             {c.reflection ? <p className="cp-quote">「{c.reflection}」</p> : <p className="note">ひとことはありません。</p>}
-            <p className="note">{c.finishedDay ? `${c.finishedDay}日目で区切りました。` : ""}</p>
+            {c.finishedDay !== null && (
+              <p className="note">{c.finishedDay >= TOTAL_DAYS ? "30日、やりきりました。" : `${c.finishedDay}日目で区切りました。`}</p>
+            )}
             <Link to={`/c/${c.id}/reflect`} className="btn primary">
               シェア用カードを見る
             </Link>

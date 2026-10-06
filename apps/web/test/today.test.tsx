@@ -1,11 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { API, addDays, jpDate, nextFirst, todayIn, type Challenge } from "@thirty/shared";
 import { ToastProvider } from "../src/components/Toast";
 import { createAppStore } from "../src/lib/appStore";
 import { deviceTimeZone } from "../src/lib/session";
 import { AppProvider } from "../src/lib/store";
+import ChallengePage from "../src/pages/ChallengePage";
+import LogPage from "../src/pages/LogPage";
 import TodayPage from "../src/pages/TodayPage";
 
 const today = todayIn(deviceTimeZone());
@@ -125,7 +127,7 @@ describe("TodayPage", () => {
     expect(store.getSnapshot().challenges[0]!.stamps["1"]).toBeTruthy();
 
     // The one-line ひとこと saves on Enter.
-    const note = screen.getByLabelText("きょうのひとこと（任意・自分だけに見えます）");
+    const note = screen.getByLabelText("きょうのひとこと（自分だけに見えます）");
     fireEvent.change(note, { target: { value: "朝の光" } });
     fireEvent.keyDown(note, { key: "Enter" });
     expect(store.getSnapshot().challenges[0]!.stamps["1"]?.note).toBe("朝の光");
@@ -216,5 +218,119 @@ describe("TodayPage", () => {
     fireEvent.click(within(alert).getByRole("button", { name: "再試行" }));
     await waitFor(() => expect(screen.queryByText("記録を読み込めませんでした")).toBeNull());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toContain("どうせ過ぎる30日なら");
+  });
+});
+
+// ---------- the pages a card links to ----------
+
+function Where() {
+  return <p data-testid="where">{useLocation().pathname}</p>;
+}
+
+function renderAt(path: string, challenges: Challenge[]) {
+  setOnline(false);
+  localStorage.setItem("thirty-days.state.v1", JSON.stringify({ v: 1, base: { user: null, challenges }, pendingNickname: null }));
+  const store = createAppStore();
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <ToastProvider>
+        <AppProvider store={store}>
+          <Where />
+          <Routes>
+            <Route path="/" element={<p>きょうのページ</p>} />
+            <Route path="c/:id" element={<ChallengePage />} />
+            <Route path="log" element={<LogPage />} />
+          </Routes>
+        </AppProvider>
+      </ToastProvider>
+    </MemoryRouter>,
+  );
+  return store;
+}
+
+describe("ChallengePage", () => {
+  it("opens a day: note, forgotten stamp, and photos that need IndexedDB", async () => {
+    const store = renderAt("/c/abc123def4567890", [ch({ startDate: addDays(today, -4), stamps: { "2": { at: 1, note: "駅まで遠回り" } } })]);
+    expect(screen.getByRole("heading", { level: 1, name: "毎日1枚、写真を撮る" })).toBeTruthy();
+    // Today (day 5) is open by default.
+    expect(screen.getByRole("heading", { name: /5日目/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "3日目" }));
+    expect(screen.getByRole("heading", { name: /3日目/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "この日の印を押す" }));
+    expect(store.getSnapshot().challenges[0]!.stamps["3"]).toBeTruthy();
+
+    // jsdom has no IndexedDB, like some private windows.
+    expect(await screen.findByText("この端末では写真を保存できません。")).toBeTruthy();
+
+    // Notes list → that day.
+    fireEvent.click(screen.getByRole("button", { name: /2日目\s*駅まで遠回り/ }));
+    const note = screen.getByLabelText("この日のひとこと（自分だけに見えます）") as HTMLTextAreaElement;
+    expect(note.value).toBe("駅まで遠回り");
+    fireEvent.change(note, { target: { value: "駅まで遠回りした" } });
+    fireEvent.blur(note);
+    expect(store.getSnapshot().challenges[0]!.stamps["2"]?.note).toBe("駅まで遠回りした");
+
+    // Calendar reminder for the remaining days.
+    const gcal = screen.getByRole("link", { name: /Googleカレンダーに入れる/ });
+    expect(gcal.getAttribute("href")).toContain("recur=RRULE%3AFREQ%3DDAILY%3BCOUNT%3D26");
+    expect(screen.getByRole("link", { name: "通知の設定" }).getAttribute("href")).toBe("/settings#reminder");
+  });
+
+  it("edits the title and seal through the store", () => {
+    const store = renderAt("/c/abc123def4567890", [ch({})]);
+    fireEvent.click(screen.getByRole("button", { name: "編集" }));
+    fireEvent.change(screen.getByLabelText("チャレンジ名"), { target: { value: "毎日2枚、写真を撮る" } });
+    fireEvent.change(screen.getByLabelText("印（1文字）"), { target: { value: "撮" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存する" }));
+    expect(store.getSnapshot().challenges[0]).toMatchObject({ title: "毎日2枚、写真を撮る", seal: "撮" });
+  });
+
+  it("deletes after confirmation and goes back to きょう", () => {
+    const store = renderAt("/c/abc123def4567890", [ch({})]);
+    fireEvent.click(screen.getByRole("button", { name: "このチャレンジを削除" }));
+    const dialog = screen.getByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "削除する" }));
+    expect(store.getSnapshot().challenges).toHaveLength(0);
+    expect(screen.getByTestId("where").textContent).toBe("/");
+  });
+
+  it("shows the reflection of a finished challenge and a not-found state for unknown ids", () => {
+    renderAt("/c/abc123def4567890", [ch({ status: "done", verdict: "stop", reflection: "合わなかった", startDate: addDays(today, -20), finishedDay: 9, finishedAt: 3 })]);
+    expect(screen.getByText("「合わなかった」")).toBeTruthy();
+    expect(screen.getByText("9日目で区切りました。")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "シェア用カードを見る" }).getAttribute("href")).toBe("/c/abc123def4567890/reflect");
+    expect(screen.queryByRole("button", { name: "編集" })).toBeNull();
+  });
+
+  it("shows a not-found state for an unknown id", () => {
+    renderAt("/c/zzzzzzzzzzzzzzzz", []);
+    expect(screen.getByText("このチャレンジはありません")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "きょうに戻る" }).getAttribute("href")).toBe("/");
+  });
+});
+
+describe("LogPage", () => {
+  it("lists finished challenges with their verdict, totals and notes (CUF-2 step 4)", () => {
+    renderAt("/log", [
+      ch({ id: "done000000000001", status: "done", verdict: "continue", reflection: "続けたい", startDate: addDays(today, -40), finishedDay: 30, finishedAt: 9, stamps: { "1": { at: 1 }, "2": { at: 2, note: "初日より楽" } } }),
+      ch({ id: "active0000000002", startDate: addDays(today, -1), stamps: { "2": { at: 3, note: "きょうのメモ" } } }),
+      ch({ id: "wait000000000003", startDate: nextFirst(today) }),
+    ]);
+    expect(screen.getByRole("heading", { level: 1, name: "記録" })).toBeTruthy();
+    const tried = document.querySelector(".lp-stat-tried")!;
+    expect(tried.textContent).toContain("2"); // the reservation is not counted yet
+    expect(document.querySelector(".lp-stat-stamps")!.textContent).toContain("3");
+    const finished = within(screen.getByRole("region", { name: "終わった30日" })).getByRole("link");
+    expect(within(finished).getByText("続ける").className).toContain("badge");
+    expect(finished.getAttribute("href")).toBe("/c/done000000000001");
+    const notes = screen.getAllByRole("listitem").filter((li) => li.className === "lp-note");
+    expect(notes.map((n) => n.textContent)).toEqual([expect.stringContaining("きょうのメモ"), expect.stringContaining("初日より楽")]);
+  });
+
+  it("shows an empty state with a way to start", () => {
+    renderAt("/log", []);
+    expect(screen.getByText("まだ記録はありません")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "レシピから選ぶ" }).getAttribute("href")).toBe("/recipes");
   });
 });

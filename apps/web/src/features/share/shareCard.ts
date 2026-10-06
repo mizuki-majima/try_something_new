@@ -242,8 +242,11 @@ export type CardLayout = {
 export const CARD = { x: 44, y: 34, w: 1100, h: 526, border: 6, shadow: 12, radius: 22, pad: 44 } as const;
 const LEFT_W = 300;
 const COL_GAP = 40;
-const GRID_COLS = 15;
-const GRID_GAP = 6;
+/** Preferred 10×3 grid with big cells; 15×2 when the ひとこと needs the room. */
+export const GRID_SHAPES = [
+  { cols: 10, gap: 8, maxCell: 54 },
+  { cols: 15, gap: 6, maxCell: 44 },
+] as const;
 
 export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayout {
   const inner = { x: CARD.x + CARD.pad, y: CARD.y + CARD.pad, w: CARD.w - CARD.pad * 2, h: CARD.h - CARD.pad * 2 };
@@ -282,22 +285,26 @@ export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayou
   const titleBlock = fitTitle(d.title, rw, measure);
   const title = { ...titleBlock, x: rx, y: inner.y + 2 };
   const titleBottom = title.y + title.lines.length * title.lineHeight;
-  const cell = Math.floor((rw - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS);
-  const gridTop = titleBottom + 22;
-  const grid = gridCells(rx, gridTop, cell, GRID_GAP, GRID_COLS, new Set(d.stampedDays), d.lastDay);
-  const gridBottom = gridTop + 2 * cell + GRID_GAP;
-  const reflTop = gridBottom + 26;
-  const text = d.reflection.trim() || (d.verdict ? VERDICTS[d.verdict].desc : "");
-  const reflection = text
-    ? d.reflection.trim()
-      ? { ...fitReflection(text, rw, bottom - reflTop, measure), x: rx, y: reflTop, color: CARD_COLORS.ink }
-      : {
-          ...fitText(text, rw, measure, (s) => `400 ${s}px ${CARD_FONTS.body}`, [24, 22], () => 2, 1.5),
-          x: rx,
-          y: reflTop,
-          color: CARD_COLORS.muted,
-        }
-    : null;
+  const own = d.reflection.trim();
+  const text = own || (d.verdict ? VERDICTS[d.verdict].desc : "");
+  const stamped = new Set(d.stampedDays);
+
+  const arrange = (shape: (typeof GRID_SHAPES)[number]) => {
+    const cell = Math.min(shape.maxCell, Math.floor((rw - shape.gap * (shape.cols - 1)) / shape.cols));
+    const rows = Math.ceil(TOTAL_DAYS / shape.cols);
+    const gridTop = titleBottom + 22;
+    const grid = gridCells(rx, gridTop, cell, shape.gap, shape.cols, stamped, d.lastDay);
+    const reflTop = gridTop + rows * cell + (rows - 1) * shape.gap + 26;
+    const reflection = !text
+      ? null
+      : own
+        ? { ...fitReflection(text, rw, bottom - reflTop, measure), x: rx, y: reflTop, color: CARD_COLORS.ink }
+        : { ...fitText(text, rw, measure, (s) => `400 ${s}px ${CARD_FONTS.body}`, [24, 22], () => 2, 1.5), x: rx, y: reflTop, color: CARD_COLORS.muted };
+    return { cell, grid, reflection };
+  };
+  let arranged = arrange(GRID_SHAPES[0]);
+  if (arranged.reflection?.truncated) arranged = arrange(GRID_SHAPES[1]);
+  const { cell, grid, reflection } = arranged;
 
   // Under the card: period (left) and logo (right).
   const stripY = CARD.y + CARD.h + CARD.shadow + (CARD_H - (CARD.y + CARD.h + CARD.shadow)) / 2 + 2;

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { API, type Challenge } from "@thirty/shared";
+import { API, addDays, todayIn, type Challenge } from "@thirty/shared";
 import { ToastProvider } from "../src/components/Toast";
 import { SharePanel } from "../src/features/share/SharePanel";
 import type * as ShareCard from "../src/features/share/shareCard";
@@ -20,8 +20,10 @@ import {
   type Measure,
 } from "../src/features/share/shareCard";
 import { cardFileName, lineShareUrl, publicShareUrl, shareText, xIntentUrl } from "../src/features/share/shareActions";
-import type { AppActions, AppSnapshot, AppStore } from "../src/lib/appStore";
+import { createAppStore, type AppActions, type AppSnapshot, type AppStore } from "../src/lib/appStore";
+import { deviceTimeZone } from "../src/lib/session";
 import { AppProvider } from "../src/lib/store";
+import ReflectPage from "../src/pages/ReflectPage";
 
 type ShareCardModule = typeof ShareCard;
 
@@ -160,6 +162,18 @@ describe("computeCardLayout", () => {
   it("falls back to the verdict description without a ひとこと", () => {
     const l = computeCardLayout(shareCardData(challenge({ reflection: null })), measure);
     expect(l.reflection?.lines.join("")).toContain("生活に残す");
+  });
+
+  it("uses big 10×3 cells when the ひとこと fits and 15×2 when it needs the room", () => {
+    const short = computeCardLayout(shareCardData(challenge({ reflection: "楽しかった" })), measure);
+    expect(short.grid[9]!.y).toBe(short.grid[0]!.y);
+    expect(short.grid[10]!.y).toBeGreaterThan(short.grid[0]!.y);
+    expect(short.reflection?.truncated).toBe(false);
+
+    const long = computeCardLayout(shareCardData(challenge({ reflection: "あ".repeat(140), title: "あ".repeat(30) })), measure);
+    expect(long.grid[14]!.y).toBe(long.grid[0]!.y);
+    expect(long.grid[15]!.y).toBeGreaterThan(long.grid[0]!.y);
+    expect(long.grid[0]!.w).toBeLessThan(short.grid[0]!.w);
   });
 
   it("lays out 15 cells per row", () => {
@@ -340,5 +354,77 @@ describe("SharePanel", () => {
     stubFetch(() => json(500, {}));
     renderPanel(challenge({ shareId: "exist1234567890a" }));
     expect(await screen.findByDisplayValue(`${location.origin}/s/exist1234567890a`)).toBeTruthy();
+  });
+});
+
+// ---------- ReflectPage: decide → share (CUF-2 step 2) ----------
+
+describe("ReflectPage", () => {
+  const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+  beforeEach(() => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    URL.createObjectURL = vi.fn(() => "blob:card-1");
+    URL.revokeObjectURL = vi.fn();
+  });
+  afterEach(() => {
+    delete (navigator as { onLine?: boolean }).onLine;
+    URL.createObjectURL = original.create;
+    URL.revokeObjectURL = original.revoke;
+  });
+
+  function renderReflect(c: Challenge) {
+    localStorage.setItem("thirty-days.state.v1", JSON.stringify({ v: 1, base: { user: null, challenges: [c] }, pendingNickname: null }));
+    const store = createAppStore();
+    render(
+      <MemoryRouter initialEntries={[`/c/${c.id}/reflect`]}>
+        <ToastProvider>
+          <AppProvider store={store}>
+            <Routes>
+              <Route path="c/:id/reflect" element={<ReflectPage />} />
+            </Routes>
+          </AppProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    return store;
+  }
+
+  const daysAgo = (n: number) => addDays(todayIn(deviceTimeZone()), -n);
+
+  it("decides 続ける with a ひとこと and shows the card, then can change the verdict", async () => {
+    const store = renderReflect(challenge({ status: "active", verdict: null, reflection: null, finishedAt: null, finishedDay: null, startDate: daysAgo(31) }));
+    expect(screen.getByRole("heading", { name: "この30日、どうする？" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "決める" }));
+    expect(screen.getByText("続ける・やめる・形を変える から1つ選んでください")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("radio", { name: /続ける/ }));
+    fireEvent.change(screen.getByLabelText(/ひとこと/), { target: { value: "果物の甘さに気づけた" } });
+    fireEvent.click(screen.getByRole("button", { name: "決める" }));
+
+    expect(await screen.findByRole("heading", { name: "シェア用カード" })).toBeTruthy();
+    expect(await screen.findByRole("img", { name: /30日カード/ })).toBeTruthy();
+    expect(store.getSnapshot().challenges[0]).toMatchObject({ status: "done", verdict: "continue", reflection: "果物の甘さに気づけた", finishedDay: 30 });
+    expect(screen.getByRole("link", { name: "次の30日を選ぶ" }).getAttribute("href")).toBe("/gacha");
+
+    // A finished challenge can change its verdict / ひとこと (the stamps stay).
+    fireEvent.click(screen.getByRole("button", { name: "判定・ひとことを変える" }));
+    fireEvent.click(screen.getByRole("radio", { name: /形を変える/ }));
+    fireEvent.click(screen.getByRole("button", { name: "この内容で更新する" }));
+    expect(await screen.findByRole("heading", { name: "シェア用カード" })).toBeTruthy();
+    expect(store.getSnapshot().challenges[0]).toMatchObject({ status: "done", verdict: "modify", finishedDay: 30 });
+  });
+
+  it("opens a finished challenge directly on the share step", async () => {
+    renderReflect(challenge({ startDate: daysAgo(40) }));
+    expect(screen.getByRole("heading", { name: "シェア用カード" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "リンクを作って共有" })).toBeTruthy();
+  });
+
+  it("explains that the reflection opens on day 7", async () => {
+    renderReflect(challenge({ status: "active", verdict: null, reflection: null, finishedDay: null, startDate: daysAgo(2) }));
+    expect(screen.getByText("振り返りは7日目からできます")).toBeTruthy();
+    expect(screen.getByText(/いま3日目です/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "決める" })).toBeNull();
   });
 });
