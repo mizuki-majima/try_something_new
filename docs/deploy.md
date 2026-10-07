@@ -2,13 +2,16 @@
 
 構成は [SPEC.md](../SPEC.md) の Architecture。IaC は `infra/`（AWS CDK、スタック名 `ThirtyDays`、リージョン `ap-northeast-1`）。生成 AI は使っていないので、Bedrock の設定やモデルの有効化は不要（[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
-> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6（実機の Live smoke と、通知メールの購読の承認の後）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
+> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6 の後（残りは実機の Live smoke [#8](https://github.com/mizuki-majima/try_something_new/issues/8)。通知メールの購読は 2026-10-07 に承認済み）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
 >
 > 2026-10-07 に `ALERT_EMAIL`（宛先は CEO のメールアドレス。リポジトリには書かない）を付けて再デプロイし、予算 `thirty-days-monthly` とアラーム5つを作った（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。
 >
 > - **次からのデプロイでも同じ宛先を付ける。** 外すと予算・SNS トピック・アラームが確認なしで消え、付け直しても購読の承認からやり直しになる。宛先はどこにも新しく書かず、`aws sns list-subscriptions-by-topic --topic-arn <ThirtyDays-CostGuardAlarmTopic… の ARN>` の `Endpoint` で確かめるか CEO に聞く
 > - 予算のメールは宛先に直接届く（承認は要らない）。アラームのメールは SNS 経由なので、AWS からの確認メール（件名「AWS Notification - Subscription Confirmation」）で購読を承認してから届く
 > - 確認メールのリンクには期限がある（数日。過ぎると承認されないまま消える）。期限が過ぎたら、同じコマンドの代わりに `aws sns subscribe --topic-arn <上の ARN> --protocol email --notification-endpoint <宛先>` で確認メールを送り直す（CloudFormation は消えた購読に気づかないので、再デプロイでは送り直されない）
+> - **購読は承認のあとでも消えることがある。** 2026-10-07 は1・2回目とも承認の直後に `Deleted` になった（メールアプリのリンク確認や、承認後のページ・通知メールの下にある unsubscribe リンクが開かれると消える。原因は特定できていない）。3回目で有効。AI PM はセッションのたびに `aws sns list-subscriptions-by-topic --topic-arn <上の ARN> --query 'Subscriptions[].SubscriptionArn'` が ARN（`PendingConfirmation` や `Deleted` ではない）であることを確かめ、消えていたら上の `subscribe` で送り直す
+> - 解除にサインインを要るようにしたいときは、確認メールのリンクを開かずにコピーしてもらい、その中の `Token` で `aws sns confirm-subscription --topic-arn <上の ARN> --token <Token> --authenticate-on-unsubscribe true` を実行する
+> - 届くかの確認: `aws cloudwatch set-alarm-state --alarm-name <ThirtyDays-CostGuardApi5xx… の名前> --state-value ALARM --state-reason "TEST"` でテストのメールが1通届く（無料。次の評価で OK に戻る。OK のメールは送らない設定）。2026-10-07 にテスト送信した
 
 ## 前提
 
