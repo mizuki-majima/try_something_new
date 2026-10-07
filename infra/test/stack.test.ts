@@ -488,6 +488,35 @@ describe("cost guard", () => {
     guarded.hasResourceProperties("AWS::SNS::Subscription", { Protocol: "email", Endpoint: "owner@example.com" });
   });
 
+  it("lets this account's CloudWatch alarms publish to the TLS-only topic (#6: alarm mail never went out)", () => {
+    const topic = logicalIdOf(guarded, "AWS::SNS::Topic", () => true);
+    guarded.resourceCountIs("AWS::SNS::TopicPolicy", 1);
+    guarded.hasResourceProperties("AWS::SNS::TopicPolicy", {
+      Topics: [{ Ref: topic }],
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({ Effect: "Deny", Action: "sns:Publish", Condition: { Bool: { "aws:SecureTransport": "false" } } }),
+          Match.objectLike({
+            Sid: "AllowThisAccountsAlarmsToPublish",
+            Effect: "Allow",
+            Principal: { Service: "cloudwatch.amazonaws.com" },
+            Action: "sns:Publish",
+            Resource: { Ref: topic },
+            Condition: {
+              StringEquals: { "aws:SourceAccount": Match.anyValue() },
+              ArnLike: { "aws:SourceArn": Match.anyValue() },
+            },
+          }),
+        ]),
+      },
+    });
+    // Only alarms of this account and region, not any CloudWatch caller.
+    const policy = Object.values(guarded.findResources("AWS::SNS::TopicPolicy"))[0] as Resource;
+    const allow = JSON.stringify(policy.Properties?.PolicyDocument);
+    expect(allow).toContain(":cloudwatch:");
+    expect(allow).toContain(":alarm:*");
+  });
+
   it("alarms on API Gateway 5xx, which counts route errors the Lambda answers with 500", () => {
     const apiId = logicalIdOf(guarded, "AWS::ApiGatewayV2::Api", () => true);
     const fiveXx = alarms().find((a) => a.MetricName === "5xx");

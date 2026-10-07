@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### 修正（運用）
+
+- アラームのメールが1通も送られていなかった。SNS トピックに TLS のみの方針（`enforceSSL`）を付けたことで既定のトピックポリシーが置き換わり、CloudWatch のアラームが `SNS:Publish` できなかった（`CloudWatch Alarms is not authorized to perform: SNS:Publish`）。このアカウント・リージョンのアラームだけに Publish を許可する文を足した（#6。2026-10-07 のテスト送信で発見、修正後のテスト送信で `Successfully executed action` を確認）
+
 ### 修正（Gate 5 の最終確認の Medium / Low、AI PM 決定 R11〜R16。詳細は [SPEC.md](SPEC.md) v1.3）
 
 - アカウント作成は、IP ごと（1時間20件）に加えてネットワークごと（IPv4 /16・IPv6 /48）に1時間60件まで。全体の上限は1時間300件から2000件に上げ（費用の天井）、1つの /48 や IPv4 の範囲で新しい人を全員締め出せないようにした。全体の上限に当たると `SessionCeiling` のアラーム（api のログのメトリクスフィルタ。`ALERT_EMAIL` 指定時）（R11）
