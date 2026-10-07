@@ -247,6 +247,50 @@ main.wrap:focus {
   background: var(--shu, #ff4b2b);
 }
 
+/* ---------- notice band (お知らせ: dismissible, in the page flow, never over the page) ---------- */
+.notice-band {
+  border-bottom: var(--border, 3px) solid var(--ink, #111);
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111);
+}
+.notice-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 8px 16px;
+}
+.notice-text {
+  /* Narrow enough that 「閉じる」 stays beside the text on a 360px phone (one row less). */
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.notice-h {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 8px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.notice-text a {
+  color: inherit;
+  font-weight: 700;
+}
+.notice-close {
+  flex: none;
+  margin-left: auto;
+}
+
 /* ---------- seals + stamp card ---------- */
 .seal {
   --s: 40px;

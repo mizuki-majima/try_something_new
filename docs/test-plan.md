@@ -55,7 +55,7 @@ npx playwright show-report               # 前回の HTML レポート
 | 同上 | `/s/<存在しないID>` がサーバ生成の HTML 404（「カードが見つかりません」） | FR-7 |
 | `csp.spec.ts` | 本番の CSP（`infra/lib/edge.ts` の `SITE_CSP`）を付けて主要画面を開き、開始と印まで進めても `securitypolicyviolation` が出ない | Architecture |
 | `pwa-recipe-cache.spec.ts` | Service Worker あり: サーバで消したレシピを、SW のキャッシュから出し続けない | FR-18, FR-20 |
-| `tap-targets.spec.ts` | 360px 幅でチップと30マスが 44px 以上 | NFR アクセシビリティ |
+| `tap-targets.spec.ts` | 360px 幅でチップと30マスが 44px 以上。「お知らせ」の帯（#17）が横にはみ出さず、閉じるボタンが 44px 以上、閉じると本文にフォーカスが移り、再読み込みしても出ない | NFR アクセシビリティ、FR-22 |
 
 ## CUF のトレーサビリティ
 
@@ -125,6 +125,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 | 進捗公開のオフは上限に数えず断らない（ニックネームと一緒でも）。オンとニックネームは数える。Web は上限中もオフを送れる（R13） | `apps/api/test/me.test.ts` "turning sharing off never uses…", "a rename sent together with turning sharing off…"；`apps/web/test/appStore.test.ts` "R13…", `apps/web/test/settings.test.tsx` "R1/R13…" |
 | 読み込みで長すぎるひとことだけを落とし、印とチャレンジは残す（`notesDropped`）。保存する大きさの上限のエラーは「あと N 文字」（R14） | `apps/api/test/me.test.ts` "drops only a note…", `packages/shared/test/schemas.test.ts` "says how many characters to remove…", `apps/api/test/challenges.test.ts`, `apps/web/test/settings.test.tsx` "R14…" |
 | 読み込みの上限 1000・書き込み 100（テーブルと GSI）。一覧と書き出しは200件より多く読まない、作成も合計200件まで。PILOT の集計は必要な項目だけ・1ページ500件・20秒で打ち切り `partial`（R15）。アラームのメトリクスの数と deploy.md の費用の記載が一致（R16） | `infra/test/stack.test.ts`；`apps/api/test/challenges.test.ts` "never reads more than 200…", "refuses a create once…"；`apps/api/test/pilot.test.ts`；`apps/web/test/admin.test.tsx` "R15…" |
+| 規約・プライバシーポリシーの改定のお知らせ（#17、ADR 0007）: 両方のページに制定日・改定日・適用日と「改定のお知らせ」、変わる文はどれも「（適用日）から」で、適用日の前も後も正しい。ほかの画面の上の「お知らせ」の帯は閉じられ、閉じたことは適用日ごとに保存（保存できなくても表示は壊れない）、適用日の14日後から出ない、規約とプライバシーポリシーのページには出ない | `apps/web/test/notice.test.tsx`；`apps/web/test/static.test.tsx`（利用規約・プライバシーポリシーの #17 の文と日付）；`tap-targets.spec.ts`（360px の帯） |
 
 ## Live smoke（手動）と品質ルーブリック
 

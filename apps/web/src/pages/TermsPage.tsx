@@ -1,8 +1,14 @@
-/** 利用規約 (SPEC FR-22). Plain Japanese; a free hobby service run by one person, with posts by users. */
+/**
+ * 利用規約 (SPEC FR-22). Plain Japanese; a free hobby service run by one person, with posts by users.
+ *
+ * Revised for #17 (ADR 0007): from EFFECTIVE, a day note its owner chose to show in 「みんな」 is
+ * public. Every changed sentence says from when, so the page is true before that day too (the notes
+ * are not public yet) and after it. Keep it to what the feature does (SPEC FR-4, FR-8, FR-18).
+ */
 import { Link } from "react-router";
 import { AUTO_HIDE_REPORTS, REPORTER_MIN_ACCOUNT_AGE_HOURS, TRANSFER_CODE_TTL_MINUTES } from "@thirty/shared";
 import { usePageTitle } from "../lib/hooks";
-import { ENACTED, InfoDoc, OPERATOR, type DocSection } from "./InfoDoc";
+import { EFFECTIVE, ENACTED, InfoDoc, OPERATOR, REVISED, type DocSection } from "./InfoDoc";
 
 const SECTIONS: readonly DocSection[] = [
   {
@@ -78,9 +84,11 @@ const SECTIONS: readonly DocSection[] = [
         <ul>
           <li>投稿したレシピと体験談（ニックネームつき）</li>
           <li>公開リンクを作った振り返りカード（ニックネームつき）</li>
-          <li>「みんなに進捗を表示する」がオンのときの、1日組の表示（ニックネーム、チャレンジのタイトルと印、印を押した日、振り返りの判定、応援の数）</li>
+          <li>「みんなに進捗を表示する」がオンのときの、1日組の表示（ニックネーム、チャレンジのタイトルと印、印を押した日、振り返りの判定、応援の数。{EFFECTIVE}からは、本人が「みんなに見せる」を選んだひとことメモも）</li>
         </ul>
-        <p>ひとことメモと写真は公開されません。</p>
+        <p>
+          ひとことメモは、{EFFECTIVE}から、本人が「みんなに見せる」を選んだものだけ公開されます（それより前は、ひとことメモは公開されません）。写真は公開されません。この規約の「投稿」には、「みんなに見せる」を選んだひとことメモも含みます。
+        </p>
         <ul>
           <li>投稿の著作権は、投稿した利用者に残ります。</li>
           <li>
@@ -89,6 +97,7 @@ const SECTIONS: readonly DocSection[] = [
           <li>利用者は、投稿する内容について必要な権利を持っていることを保証するものとします。</li>
           <li>運営者は、本規約に反する投稿や、不適切と判断した投稿を、予告なく非表示にしたり削除したりできます。</li>
           <li>自分の投稿や公開リンクは、いつでも自分で削除できます。</li>
+          <li>「みんなに見せる」を選んだひとことメモは、いつでも自分だけに戻せます（振り返りのあとも。通信できるときに行えます）。書き換えたときも、その書き換えがサーバーに届いた時点で自分だけに戻ります。</li>
         </ul>
       </>
     ),
@@ -99,7 +108,9 @@ const SECTIONS: readonly DocSection[] = [
     body: (
       <>
         <ul>
-          <li>レシピ・体験談・公開カード・1日組の表示には「通報」があります（公開カードは、そのページの「このカードを通報する」から）。問題のある投稿を見つけたら知らせてください。</li>
+          <li>
+            レシピ・体験談・公開カード・1日組の表示（「みんなに見せる」を選んだひとことメモを含みます）には「通報」があります（公開カードは、そのページの「このカードを通報する」から）。問題のある投稿を見つけたら知らせてください。
+          </li>
           <li>通報はすべて運営者が確認し、必要なら投稿を非表示にしたり削除したりします。</li>
           <li>
             一定の条件（利用を始めて{REPORTER_MIN_ACCOUNT_AGE_HOURS}時間以上たっていることなど）を満たす{AUTO_HIDE_REPORTS}
@@ -182,10 +193,19 @@ export default function TermsPage() {
   return (
     <InfoDoc
       title="利用規約"
-      meta={`制定日 ${ENACTED} ／ 運営者 ${OPERATOR}`}
+      meta={`制定日 ${ENACTED} ／ 改定日 ${REVISED}（${EFFECTIVE}から適用） ／ 運営者 ${OPERATOR}`}
+      notice={
+        <p>
+          {EFFECTIVE}から、本人が「みんなに見せる」を選んだひとことメモを公開する内容に改めます（<a href="#posts">投稿の扱い</a>・<a href="#report">通報と削除</a>）。選ばないひとことメモは、これまでどおり公開しません。それまでは、ひとことメモは公開されません。同じ日に<Link to="/privacy">プライバシーポリシー</Link>も改めます。
+        </p>
+      }
       lead={<p>「30日だけ」を気持ちよく使ってもらうための約束ごとです。できるだけ短く、わかりやすく書いています。</p>}
       sections={SECTIONS}
-      footer={<p>{ENACTED} 制定</p>}
+      footer={
+        <p>
+          {ENACTED} 制定 ／ {REVISED} 改定（{EFFECTIVE}から適用）
+        </p>
+      }
     />
   );
 }

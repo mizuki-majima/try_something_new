@@ -1,6 +1,7 @@
 /**
- * Layout for the long text pages (利用規約・プライバシーポリシー): title, lead, a table of contents
- * and numbered sections with anchors. Used by TermsPage and PrivacyPage only.
+ * Layout for the long text pages (利用規約・プライバシーポリシー): title, dates, an optional notice
+ * of a revision, lead, a table of contents and numbered sections with anchors. Used by TermsPage
+ * and PrivacyPage only.
  */
 import type { ReactNode } from "react";
 import { Link } from "react-router";
@@ -13,17 +14,27 @@ type Props = {
   lead?: ReactNode;
   /** e.g. "制定日 2026年10月6日" */
   meta?: ReactNode;
+  /** 改定のお知らせ: what a revision changes and from when (the Terms promise it before that day). */
+  notice?: ReactNode;
   sections: readonly DocSection[];
   /** Shown after the sections (dates, contact). */
   footer?: ReactNode;
 };
 
-export function InfoDoc({ title, lead, meta, sections, footer }: Props) {
+export function InfoDoc({ title, lead, meta, notice, sections, footer }: Props) {
   return (
     <article className="info-page info-doc">
       <header className="info-head">
         <h1 className="info-title">{title}</h1>
         {meta && <p className="info-meta">{meta}</p>}
+        {notice && (
+          <section className="info-notice" aria-labelledby="revision-notice-h">
+            <h2 id="revision-notice-h" className="info-notice-h">
+              改定のお知らせ
+            </h2>
+            {notice}
+          </section>
+        )}
         {lead && <div className="info-lead">{lead}</div>}
       </header>
 
@@ -66,4 +77,5 @@ export function InfoDoc({ title, lead, meta, sections, footer }: Props) {
 
 /** The operator, as shown on every legal page (no personal name or address on the site). */
 export const OPERATOR = "30日だけ 運営事務局（個人運営）";
-export const ENACTED = "2026年10月6日";
+/** 制定日・改定日・適用日 ("2026年10月6日"); the dates themselves live in lib/legal.ts. */
+export { EFFECTIVE, ENACTED, REVISED } from "../lib/legal";

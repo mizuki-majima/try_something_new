@@ -7,6 +7,7 @@ import { Layout } from "../src/components/Layout";
 import { ToastProvider } from "../src/components/Toast";
 import { resumeText } from "../src/components/OfflineBanner";
 import { createAppStore, type AppActions, type AppSnapshot, type AppStore } from "../src/lib/appStore";
+import { EFFECTIVE } from "../src/lib/legal";
 import { clearSession, getToken } from "../src/lib/session";
 import { AppProvider } from "../src/lib/store";
 import AboutPage from "../src/pages/AboutPage";
@@ -77,6 +78,39 @@ describe("TermsPage", () => {
     expect(text).toContain("一定の条件（利用を始めて24時間以上たっていることなど）を満たす3人から通報があった投稿は、運営者の確認の前に自動で非表示になることがあります。");
     expect(text).not.toContain("3人から通報された投稿は、自動で非表示になります");
   });
+
+  it("#17: dates the revision (改定日・適用日) and says, from that day, only day notes their owner chose are public", () => {
+    renderPage(<TermsPage />);
+    const text = document.body.textContent ?? "";
+    expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 2026年10月7日（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
+    expect(text).toContain(`2026年10月6日 制定 ／ 2026年10月7日 改定（${EFFECTIVE}から適用）`);
+
+    const notice = screen.getByRole("region", { name: "改定のお知らせ" });
+    expect(notice.textContent).toBe(
+      `改定のお知らせ${EFFECTIVE}から、本人が「みんなに見せる」を選んだひとことメモを公開する内容に改めます（投稿の扱い・通報と削除）。選ばないひとことメモは、これまでどおり公開しません。それまでは、ひとことメモは公開されません。同じ日にプライバシーポリシーも改めます。`,
+    );
+    expect(within(notice).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["投稿の扱い", "#posts"],
+      ["通報と削除", "#report"],
+      ["プライバシーポリシー", "/privacy"],
+    ]);
+
+    // True before the effective date too: every new statement says from when.
+    const posts = screen.getByRole("region", { name: /投稿の扱い/ }).textContent ?? "";
+    expect(posts).toContain(
+      `「みんなに進捗を表示する」がオンのときの、1日組の表示（ニックネーム、チャレンジのタイトルと印、印を押した日、振り返りの判定、応援の数。${EFFECTIVE}からは、本人が「みんなに見せる」を選んだひとことメモも）`,
+    );
+    expect(posts).toContain(
+      `ひとことメモは、${EFFECTIVE}から、本人が「みんなに見せる」を選んだものだけ公開されます（それより前は、ひとことメモは公開されません）。写真は公開されません。この規約の「投稿」には、「みんなに見せる」を選んだひとことメモも含みます。`,
+    );
+    expect(posts).toContain("「みんなに見せる」を選んだひとことメモは、いつでも自分だけに戻せます（振り返りのあとも。通信できるときに行えます）。書き換えたときも、その書き換えがサーバーに届いた時点で自分だけに戻ります。");
+    expect(screen.getByRole("region", { name: /通報と削除/ }).textContent).toContain(
+      "レシピ・体験談・公開カード・1日組の表示（「みんなに見せる」を選んだひとことメモを含みます）には「通報」があります",
+    );
+    expect(text).not.toContain("ひとことメモと写真は公開されません");
+    // The promise this notice keeps.
+    expect(text).toContain("変えるときは、変更後の内容と、変更が効力を持つ日を、その日より前に本サービスの画面でお知らせします。");
+  });
 });
 
 describe("PrivacyPage", () => {
@@ -110,6 +144,44 @@ describe("PrivacyPage", () => {
     // Public cards carry the nickname; the Google Calendar link sends the title to Google.
     expect(screen.getByText(/公開リンクを作った振り返りカード：ニックネーム/)).toBeTruthy();
     expect(screen.getByText(/「Google カレンダーに追加」のリンク/)).toBeTruthy();
+  });
+
+  it("#17: dates the revision and says what is stored and public for a day note its owner chose to show", () => {
+    renderPage(<PrivacyPage />);
+    const text = document.body.textContent ?? "";
+    expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 2026年10月7日（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
+    expect(text).toContain(`2026年10月6日 制定 ／ 2026年10月7日 改定（${EFFECTIVE}から適用）`);
+
+    const notice = screen.getByRole("region", { name: "改定のお知らせ" });
+    expect(notice.textContent).toBe(
+      `改定のお知らせ${EFFECTIVE}から、本人が「みんなに見せる」を選んだひとことメモを公開する内容に改めます（保存する情報・公開される情報・削除と、開示などのご請求）。選ばないひとことメモは、これまでどおり公開しません。それまでは、ひとことメモは公開されません。同じ日に利用規約も改めます。`,
+    );
+    expect(within(notice).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["#collect", "#public", "#delete", "/terms"]);
+
+    // Stored: the choice is a copy of the chosen text.
+    const table = screen.getByRole("table", { name: "サーバーに保存する情報" });
+    expect(within(table).getByRole("rowheader", { name: "ひとことメモ" }).nextElementSibling?.textContent).toBe(
+      `毎日の印に添えたメモ。ふだんは本人だけが見られます。${EFFECTIVE}からは、本人が「みんなに見せる」を選んだメモは、進捗の表示がオンで1日組に表示されているあいだ、誰でも見られます（選んだことの記録として、選んだときのメモの写しも保存します）`,
+    );
+
+    // Public: dated; what stays private; how it goes private again.
+    const pub = screen.getByRole("region", { name: /公開される情報/ }).textContent ?? "";
+    expect(pub).toContain(
+      `「みんなに進捗を表示する」がオンのときの1日組の表示：ニックネーム、チャレンジのタイトルと印、印を押した日、振り返りの判定、応援の数。${EFFECTIVE}からは、本人が「みんなに見せる」を選んだひとことメモ（何日目のメモか、見せている数）も`,
+    );
+    expect(pub).toContain(`「みんなに見せる」を選んでいないひとことメモ、写真、設定、通知の登録は公開しません（${EFFECTIVE}より前は、ひとことメモはすべて公開しません）。`);
+    expect(pub).toContain(
+      "見せたひとことメモは、書き換えると非公開に戻ります。進捗の表示をオフにすると、見せたひとことメモも表示されなくなり、オンに戻すとまた表示されます。書き換え・オフ・オンは、変更がサーバーに届いた時点で反映されます（通信できないあいだは、前の状態のままです）。",
+    );
+    expect(pub).toContain("バックアップから読み込んだひとことメモは、すべて非公開になります。");
+    expect(pub).toContain("進捗の表示は設定で、見せたひとことメモはその日のひとことの欄で、いつでも非公開に戻せます（振り返りのあとも。通信できるときに行えます）。");
+    expect(screen.getByRole("region", { name: /削除と、開示などのご請求/ }).textContent).toContain(
+      "「みんなに見せる」を選んだひとことメモは、その日のひとことの欄から、いつでも自分だけに戻せます（振り返りのあとも。通信できるときに行えます）。",
+    );
+    expect(text).not.toContain("毎日の印に添えたメモ。本人だけが見られます");
+    expect(text).not.toContain("ひとことメモ、写真、設定、通知の登録は公開しません。");
+    // Photos stay on the device.
+    expect(text).toContain("写真はサーバーに送りません");
   });
 });
 

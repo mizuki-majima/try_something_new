@@ -1,11 +1,15 @@
 /**
  * プライバシーポリシー (SPEC FR-22, "Data Model"). Lists exactly what the API stores and for how
  * long; keep it in sync with SPEC.md when the data model changes.
+ *
+ * Revised for #17 (ADR 0007): from EFFECTIVE, a day note its owner chose to show in 「みんな」 is
+ * public, and the choice is stored as a copy of the chosen text. Every changed sentence says from
+ * when, so the page is true before that day too (the notes are not public yet) and after it.
  */
 import { Link } from "react-router";
 import { TRANSFER_CODE_TTL_MINUTES } from "@thirty/shared";
 import { usePageTitle } from "../lib/hooks";
-import { ENACTED, InfoDoc, OPERATOR, type DocSection } from "./InfoDoc";
+import { EFFECTIVE, ENACTED, InfoDoc, OPERATOR, REVISED, type DocSection } from "./InfoDoc";
 
 const SECTIONS: readonly DocSection[] = [
   {
@@ -55,7 +59,9 @@ const SECTIONS: readonly DocSection[] = [
               </tr>
               <tr>
                 <th scope="row">ひとことメモ</th>
-                <td>毎日の印に添えたメモ。本人だけが見られます</td>
+                <td>
+                  毎日の印に添えたメモ。ふだんは本人だけが見られます。{EFFECTIVE}からは、本人が「みんなに見せる」を選んだメモは、進捗の表示がオンで1日組に表示されているあいだ、誰でも見られます（選んだことの記録として、選んだときのメモの写しも保存します）
+                </td>
               </tr>
               <tr>
                 <th scope="row">投稿</th>
@@ -131,10 +137,19 @@ const SECTIONS: readonly DocSection[] = [
           <li>投稿したレシピと体験談（ニックネームつき）</li>
           <li>公開リンクを作った振り返りカード：ニックネーム、カードの画像、タイトル、印、判定、ひとこと（リンクを知っている人が見られます）</li>
           <li>
-            「みんなに進捗を表示する」がオンのときの1日組の表示：ニックネーム、チャレンジのタイトルと印、印を押した日、振り返りの判定、応援の数
+            「みんなに進捗を表示する」がオンのときの1日組の表示：ニックネーム、チャレンジのタイトルと印、印を押した日、振り返りの判定、応援の数。{EFFECTIVE}からは、本人が「みんなに見せる」を選んだひとことメモ（何日目のメモか、見せている数）も
           </li>
         </ul>
-        <p>ひとことメモ、写真、設定、通知の登録は公開しません。進捗の表示は、設定でいつでもオフにできます。</p>
+        <p>
+          「みんなに見せる」を選んでいないひとことメモ、写真、設定、通知の登録は公開しません（{EFFECTIVE}より前は、ひとことメモはすべて公開しません）。
+        </p>
+        <ul>
+          <li>
+            見せたひとことメモは、書き換えると非公開に戻ります。進捗の表示をオフにすると、見せたひとことメモも表示されなくなり、オンに戻すとまた表示されます。書き換え・オフ・オンは、変更がサーバーに届いた時点で反映されます（通信できないあいだは、前の状態のままです）。
+          </li>
+          <li>バックアップから読み込んだひとことメモは、すべて非公開になります。</li>
+          <li>進捗の表示は設定で、見せたひとことメモはその日のひとことの欄で、いつでも非公開に戻せます（振り返りのあとも。通信できるときに行えます）。</li>
+        </ul>
       </>
     ),
   },
@@ -185,7 +200,9 @@ const SECTIONS: readonly DocSection[] = [
             で、アカウント、チャレンジ、ひとことメモ、投稿、振り返りカード、通知の登録をすぐに削除できます。この端末の写真も消します。
           </li>
           <li>投稿や公開リンクは、それぞれの画面からいつでも削除できます。</li>
-          <li>進捗の表示とリマインドは、設定からいつでもオフにできます。</li>
+          <li>
+            進捗の表示とリマインドは、設定からいつでもオフにできます。「みんなに見せる」を選んだひとことメモは、その日のひとことの欄から、いつでも自分だけに戻せます（振り返りのあとも。通信できるときに行えます）。
+          </li>
           <li>
             保存している情報の開示、訂正、利用の停止などのご請求は、<Link to="/contact">お問い合わせ</Link>
             からお送りください。匿名のサービスのため、ご本人の確認として、設定で発行する引き継ぎコードなどをお願いすることがあります。手数料はかかりません。
@@ -233,14 +250,23 @@ export default function PrivacyPage() {
   return (
     <InfoDoc
       title="プライバシーポリシー"
-      meta={`制定日 ${ENACTED} ／ 運営者 ${OPERATOR}`}
+      meta={`制定日 ${ENACTED} ／ 改定日 ${REVISED}（${EFFECTIVE}から適用） ／ 運営者 ${OPERATOR}`}
+      notice={
+        <p>
+          {EFFECTIVE}から、本人が「みんなに見せる」を選んだひとことメモを公開する内容に改めます（<a href="#collect">保存する情報</a>・<a href="#public">公開される情報</a>・<a href="#delete">削除と、開示などのご請求</a>）。選ばないひとことメモは、これまでどおり公開しません。それまでは、ひとことメモは公開されません。同じ日に<Link to="/terms">利用規約</Link>も改めます。
+        </p>
+      }
       lead={
         <p>
           「30日だけ」は匿名で使えます。アカウントにメールアドレスは使わず、写真はお使いの端末の中だけに保存します。何を保存し、何に使い、どう消せるのかをまとめました。
         </p>
       }
       sections={SECTIONS}
-      footer={<p>{ENACTED} 制定</p>}
+      footer={
+        <p>
+          {ENACTED} 制定 ／ {REVISED} 改定（{EFFECTIVE}から適用）
+        </p>
+      }
     />
   );
 }
