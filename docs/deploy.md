@@ -2,7 +2,9 @@
 
 構成は [SPEC.md](../SPEC.md) の Architecture。IaC は `infra/`（AWS CDK、スタック名 `ThirtyDays`、リージョン `ap-northeast-1`）。生成 AI は使っていないので、Bedrock の設定やモデルの有効化は不要（[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
-> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT の環境。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
+> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6（実機の Live smoke と通知メールの後）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
+>
+> **2026-10-07 時点の環境は `ALERT_EMAIL` なしでデプロイしてあり、予算 `thirty-days-monthly` とアラームは無い**（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。
 
 ## 前提
 

@@ -3,7 +3,7 @@
  * horizontal scrolling; unknown paths get the 404 page; /s/<unknown> is the server's HTML 404.
  */
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, test, watchRequests } from "./fixtures";
 
 type Route = { path: string; heading: string | RegExp };
 
@@ -43,10 +43,11 @@ async function horizontalOverflow(page: Page): Promise<number> {
 for (const route of ROUTES) {
   test(`${route.path} loads without console errors or horizontal overflow`, async ({ page }) => {
     const errors = watchErrors(page);
+    const settled = watchRequests(page);
     await page.goto(route.path);
     await expect(page.getByRole("main").getByRole("heading", { level: 1, name: route.heading })).toBeVisible();
     // Let the screen finish its requests (lists, counters) before measuring it.
-    await page.waitForLoadState("networkidle");
+    await settled();
     await expect(page.getByRole("main").getByRole("status").filter({ hasText: /読み込んでいます|確認しています/ })).toHaveCount(0);
     expect(await horizontalOverflow(page), "horizontal overflow in px").toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);

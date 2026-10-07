@@ -6,7 +6,7 @@
  */
 import type { Page } from "@playwright/test";
 import { SITE_CSP } from "../../infra/lib/edge";
-import { expect, syncStatus, test, uniqueNickname } from "./fixtures";
+import { expect, syncStatus, test, uniqueNickname, watchRequests } from "./fixtures";
 
 type Violation = { directive: string; blocked: string; source: string };
 
@@ -35,12 +35,13 @@ async function withProductionCsp(page: Page): Promise<{ violations: Violation[];
 
 test("no CSP violation on the main screens, while starting and stamping a challenge (CUF-1)", async ({ page }) => {
   const { violations, consoleErrors } = await withProductionCsp(page);
+  const settled = watchRequests(page);
 
   // The production CSP is on the document.
   const res = await page.goto("/");
   expect(res?.headers()["content-security-policy"]).toBe(SITE_CSP);
   await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
-  await page.waitForLoadState("networkidle");
+  await settled();
   expect(violations, "violations on /").toEqual([]);
 
   await page.goto("/recipes/photo");
@@ -56,7 +57,7 @@ test("no CSP violation on the main screens, while starting and stamping a challe
   for (const path of ["/recipes", "/gacha", "/together", "/settings", "/contact"]) {
     await page.goto(path);
     await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
-    await page.waitForLoadState("networkidle");
+    await settled();
   }
 
   expect(violations).toEqual([]);

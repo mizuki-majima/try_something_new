@@ -4,7 +4,7 @@
  * what the screen shows was really saved on the server.
  */
 import { randomUUID } from "node:crypto";
-import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test";
+import { test as base, expect, type APIRequestContext, type Page, type Request } from "@playwright/test";
 import {
   API,
   addDays,
@@ -127,6 +127,38 @@ export async function waitForToken(page: Page): Promise<string> {
 /** Load the app as an existing account: the token is on the device before the first script runs. */
 export async function useToken(page: Page, token: string): Promise<void> {
   await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [TOKEN_KEY, token] as const);
+}
+
+/** Request types a screen loads after the document: API calls, lazy chunks, styles and images. */
+const SETTLE_TYPES = new Set(["fetch", "xhr", "script", "stylesheet", "image"]);
+
+/**
+ * Start watching the page's requests (call before goto). The returned function waits until none of
+ * the screen's own requests has been in flight for `quietMs`, then until the fonts have loaded.
+ *
+ * Use it instead of page.waitForLoadState("networkidle"): in CI that event sometimes never fired
+ * although every request in the trace had finished (csp.spec.ts on desktop, /settings on mobile),
+ * and Playwright discourages it. On a timeout this names the requests still in flight.
+ */
+export function watchRequests(page: Page): (quietMs?: number) => Promise<void> {
+  const inflight = new Set<Request>();
+  page.on("request", (r) => {
+    if (SETTLE_TYPES.has(r.resourceType())) inflight.add(r);
+  });
+  page.on("requestfinished", (r) => inflight.delete(r));
+  page.on("requestfailed", (r) => inflight.delete(r));
+  return async (quietMs = 500) => {
+    await expect
+      .poll(
+        async () => {
+          if (inflight.size === 0) await page.waitForTimeout(quietMs);
+          return [...inflight].map((r) => r.url());
+        },
+        { message: "requests still in flight", timeout: 15_000 },
+      )
+      .toEqual([]);
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  };
 }
 
 /** The header sync pill (Layout.tsx). */
