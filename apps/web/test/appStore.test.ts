@@ -353,6 +353,7 @@ describe("app store", () => {
   it("R1: a profile change refused by the daily quota is rolled back, explained, and further profile changes wait until the reset", async () => {
     start();
     await store.actions.flush();
+    const before = store.getSnapshot().user?.nickname;
     api.fail((method, url) =>
       method === "PATCH" && url === API.me
         ? new Response(JSON.stringify({ error: { code: "rate_limited", message: "今日はここまでです。日本時間の0時を過ぎると、また使えます" } }), {
@@ -361,11 +362,11 @@ describe("app store", () => {
           })
         : null,
     );
-    expect(store.actions.updateMe({ shareProgress: false }).ok).toBe(true);
-    expect(store.getSnapshot().user?.shareProgress).toBe(false); // optimistic
+    expect(store.actions.updateMe({ nickname: "あたらしい" }).ok).toBe(true);
+    expect(store.getSnapshot().user?.nickname).toBe("あたらしい"); // optimistic
     await store.actions.flush();
     const snap = store.getSnapshot();
-    expect(snap.user?.shareProgress).toBe(true); // rolled back
+    expect(snap.user?.nickname).toBe(before); // rolled back
     expect(snap.pending).toBe(0);
     expect(notices).toEqual([{ kind: "error", message: `今日はここまで（あすの0時にリセット）。${PROFILE_LIMIT_MESSAGE}` }]);
     expect(snap.profileLimitedUntil).toBeGreaterThan(Date.now() + 39_000_000);
@@ -379,6 +380,33 @@ describe("app store", () => {
     await store.actions.flush();
     expect(api.calls.slice(calls).filter((c) => c === `PATCH ${API.me}`)).toHaveLength(1);
     expect(api.bodies[api.calls.lastIndexOf(`PATCH ${API.me}`)]).toEqual({ reminder: { enabled: true, time: "21:00" } });
+  });
+
+  it("R13: while the profile quota refuses changes, turning 「みんなに表示」 off still goes out; turning it on waits", async () => {
+    start();
+    await store.actions.flush();
+    api.fail((method, url) =>
+      method === "PATCH" && url === API.me
+        ? new Response(JSON.stringify({ error: { code: "rate_limited", message: "今日はここまでです" } }), {
+            status: 429,
+            headers: { "Content-Type": "application/json", "Retry-After": "40000" },
+          })
+        : null,
+    );
+    store.actions.updateMe({ nickname: "みず" });
+    await store.actions.flush();
+    expect(store.getSnapshot().profileLimitedUntil).not.toBeNull();
+    api.fail(null);
+
+    const calls = api.calls.length;
+    // A privacy action: the API never refuses it (R13), so neither does the device (before: refused here).
+    expect(store.actions.updateMe({ shareProgress: false })).toMatchObject({ ok: true });
+    await store.actions.flush();
+    expect(api.bodies[api.calls.lastIndexOf(`PATCH ${API.me}`)]).toEqual({ shareProgress: false });
+    expect(api.calls.length).toBeGreaterThan(calls);
+    expect(store.getSnapshot().user?.shareProgress).toBe(false);
+    // Turning it back on publishes again, so it waits for the reset like a rename.
+    expect(store.actions.updateMe({ shareProgress: true })).toMatchObject({ ok: false, message: PROFILE_LIMIT_MESSAGE });
   });
 
   it("R1: the profile limit clears by itself when the quota resets", async () => {

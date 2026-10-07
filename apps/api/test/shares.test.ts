@@ -315,7 +315,8 @@ describe("POST /api/shares", () => {
       expect((await api.request("/api/reports", { token: r.token, body: { targetType: "share", targetId: card.id } })).status).toBe(204);
     }
     expect((await api.request(`/s/${card.id}`)).status).toBe(404);
-    expect(await getItem(`MOD#${c.id}`, "META")).toMatchObject({ shareModerated: true, gsi2pk: `AUTHOR#${s.user.id}` });
+    expect(await getItem(`MOD#${c.id}`, "META")).toMatchObject({ shareModerated: true, challengeId: c.id });
+    expect((await getItem(`MOD#${c.id}`, "META"))?.gsi2pk).toBeUndefined(); // not tied to the account (R12)
     await roundTrip(s, c.id);
     const res = await tryShare(s, c.id); // before: 201 and the moderated card was public again
     expect(res.status).toBe(403);
@@ -337,6 +338,28 @@ describe("POST /api/shares", () => {
     expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "share", targetId: hiddenCard.id, action: "restore" } })).status).toBe(204);
     expect((await getItem(`MOD#${r3.id}`, "META"))?.shareModerated).toBeUndefined();
     expect((await tryShare(third, r3.id)).status).toBe(201);
+  });
+
+  it("a stopped card stays stopped after export → delete the account → new session → import → share (R12)", async () => {
+    const s = await api.createSession("消して作り直す");
+    const c = await seedChallenge(s, challenge());
+    const card = await share(s, c.id);
+    for (let i = 0; i < AUTO_HIDE_REPORTS; i++) {
+      const r = await api.trustedSession();
+      expect((await api.request("/api/reports", { token: r.token, body: { targetType: "share", targetId: card.id } })).status).toBe(204);
+    }
+    expect((await api.request(`/s/${card.id}`)).status).toBe(404);
+    const file = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
+    expect((await api.request("/api/me", { method: "DELETE", token: s.token })).status).toBe(204);
+    // The marker survives the account (it holds the challenge id and flags, nothing personal).
+    expect(await getItem(`MOD#${c.id}`, "META")).toMatchObject({ shareModerated: true });
+
+    const fresh = await api.createSession("別の人のふり");
+    expect(await json<ImportResponse>(await api.request("/api/me/import", { token: fresh.token, body: file }))).toMatchObject({ imported: 1 });
+    expect((await getChallengeItem(api.deps, fresh.user.id, c.id))?.id).toBe(c.id); // the id was free again
+    const res = await api.request("/api/shares", { token: fresh.token, body: { challengeId: c.id, imageBase64: PNG_B64 } });
+    expect(res.status).toBe(403); // before R12: 201, and /s/<new> showed the moderated card
+    expect(await errorOf(res)).toMatchObject({ code: "forbidden", message: SHARE_MODERATED });
   });
 
   it("allows sharesPerUserPerDay", async () => {

@@ -74,10 +74,16 @@ export const QUOTAS = {
   /** Per client: an IPv4 address or an IPv6 /56 (a Japanese IPoE home gets a /56). */
   sessionsPerIpPerHour: 20,
   /**
-   * New anonymous accounts per hour across ALL clients (a ceiling for many-address abuse; the API
-   * logs a warning when it trips).
+   * Per network: an IPv4 /16 or an IPv6 /48 (what one actor can easily hold: a VPS range, a free
+   * tunnel broker's /48 = 256 /56s). Keeps one network from using up the global ceiling (R11).
    */
-  sessionsGlobalPerHour: 300,
+  sessionsPerNetworkPerHour: 60,
+  /**
+   * New anonymous accounts per hour across ALL clients: a cost bound only (a session is a few writes),
+   * far above real sign-ups. The API logs ALARMED_LOGS.sessionCeiling when it trips, and an alarm
+   * mails the operator (R7, R11).
+   */
+  sessionsGlobalPerHour: 2000,
   /**
    * PATCH /api/me requests that change the nickname or shareProgress. Each one rewrites the user's
    * cohort projection, so it is bounded (cost: NF-1).

@@ -11,7 +11,7 @@ import {
   text,
   textByteLimit,
 } from "../src/schemas";
-import { utf8Length } from "../src/text";
+import { graphemesOverByteLimit, utf8Length } from "../src/text";
 
 const FAMILY = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
 const ZWSP = String.fromCodePoint(0x200b);
@@ -70,12 +70,36 @@ describe("text()", () => {
     // Exactly at the raw UTF-16 cap (496 units), one grapheme, ~1.5 KB of UTF-8: refused.
     const fat = "a" + String.fromCodePoint(0x20dd).repeat(LIMITS.note * 4 + 15);
     expect(fat.length).toBe(rawTextLimit(LIMITS.note));
-    expect(messages(note.safeParse(fat))).toEqual(["ひとことが長すぎます"]);
+    expect(messages(note.safeParse(fat))).toEqual([tooBig("ひとこと", 1)]);
     // Ordinary text at the grapheme limit fits: Japanese is 3 bytes, a plain emoji 4.
     expect(note.safeParse("あ".repeat(LIMITS.note)).success).toBe(true);
     expect(note.safeParse(String.fromCodePoint(0x1f600).repeat(LIMITS.note)).success).toBe(true);
     // Heavy ZWJ sequences count by their bytes: 5 families (90 bytes) do not fit in max 8 (64 bytes).
-    expect(messages(text({ max: 8, label: "x" }).safeParse(FAMILY.repeat(5)))).toEqual(["xが長すぎます"]);
+    expect(messages(text({ max: 8, label: "x" }).safeParse(FAMILY.repeat(5)))).toEqual([tooBig("x", 2)]);
+  });
+
+  it("says how many characters to remove when the stored size is over (R14)", () => {
+    const note = text({ min: 0, max: LIMITS.note, label: "ひとこと" });
+    // 70 thumbs-up with a skin tone: 70 characters (within 120) but 560 bytes (over 512): 64 fit.
+    const THUMB = String.fromCodePoint(0x1f44d, 0x1f3fd);
+    expect(messages(note.safeParse(THUMB.repeat(70)))).toEqual([tooBig("ひとこと", 6)]); // before: no count
+    expect(note.safeParse(THUMB.repeat(64)).success).toBe(true);
+    // The raw-length cap (before normalising) keeps the plain message.
+    expect(messages(note.safeParse("a" + String.fromCodePoint(0x20dd).repeat(1023)))).toEqual(["ひとことが長すぎます"]);
+  });
+});
+
+/** The byte-cap message of text() (R14). */
+const tooBig = (label: string, n: number) => `${label}が長すぎます（絵文字などが多いため、あと${n}文字減らしてください）`;
+
+describe("graphemesOverByteLimit", () => {
+  it("counts the characters to drop from the end so the rest fits in the byte limit", () => {
+    expect(graphemesOverByteLimit("abc", 3)).toBe(0);
+    expect(graphemesOverByteLimit("abcd", 3)).toBe(1);
+    expect(graphemesOverByteLimit("あいう", 6)).toBe(1);
+    expect(graphemesOverByteLimit(FAMILY.repeat(5), 64)).toBe(2);
+    expect(graphemesOverByteLimit("a" + String.fromCodePoint(0x20dd).repeat(10), 5)).toBe(1);
+    expect(graphemesOverByteLimit("", 0)).toBe(0);
   });
 });
 

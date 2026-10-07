@@ -5,23 +5,44 @@ import type { Key } from "./keys";
 export type Item = Record<string, unknown>;
 
 /** Query every page. Use only for partitions known to stay small (one user's items, a recipe's stories). */
-export async function queryAll(deps: Pick<DbDeps, "db" | "tableName">, input: Omit<QueryCommandInput, "TableName">): Promise<Item[]> {
+/**
+ * Every page of a Query, or at most `maxItems` items (each page's Limit is what is left, so no more
+ * than that is read: a cap on read units per request, R15). Without a FilterExpression, items read
+ * and items returned are the same.
+ */
+export async function queryAll(
+  deps: Pick<DbDeps, "db" | "tableName">,
+  input: Omit<QueryCommandInput, "TableName">,
+  maxItems = Infinity,
+): Promise<Item[]> {
   const items: Item[] = [];
   let start: Record<string, unknown> | undefined;
   do {
-    const res = await deps.db.send(new QueryCommand({ ...input, TableName: deps.tableName, ExclusiveStartKey: start }));
+    const left = maxItems - items.length;
+    const res = await deps.db.send(
+      new QueryCommand({
+        ...input,
+        TableName: deps.tableName,
+        ExclusiveStartKey: start,
+        ...(Number.isFinite(left) ? { Limit: Math.min(left, input.Limit ?? left) } : {}),
+      }),
+    );
     items.push(...((res.Items ?? []) as Item[]));
     start = res.LastEvaluatedKey;
-  } while (start);
+  } while (start && items.length < maxItems);
   return items;
 }
 
-/** All items of a partition whose sort key starts with `skPrefix`. */
-export function queryPrefix(deps: Pick<DbDeps, "db" | "tableName">, pk: string, skPrefix: string): Promise<Item[]> {
-  return queryAll(deps, {
-    KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
-    ExpressionAttributeValues: { ":pk": pk, ":sk": skPrefix },
-  });
+/** All items of a partition whose sort key starts with `skPrefix` (at most `maxItems`). */
+export function queryPrefix(deps: Pick<DbDeps, "db" | "tableName">, pk: string, skPrefix: string, maxItems = Infinity): Promise<Item[]> {
+  return queryAll(
+    deps,
+    {
+      KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+      ExpressionAttributeValues: { ":pk": pk, ":sk": skPrefix },
+    },
+    maxItems,
+  );
 }
 
 export function keyOf(item: Item): Key {

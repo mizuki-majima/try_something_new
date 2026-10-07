@@ -26,7 +26,7 @@ import { requireUser } from "../auth";
 import {
   bumpRecipeStarts,
   claimChallengeId,
-  countOpenChallenges,
+  countChallenges,
   deleteChallenge,
   getChallengeItem,
   getChallengeOwner,
@@ -49,6 +49,7 @@ export const CHALLENGE_MESSAGES = {
   idTaken: "このIDはすでに使われています。画面を読み込み直して、もう一度お試しください",
   startDate: "開始日は「今日」か「次の1日」を選んでください",
   openLimit: `同時に進められるチャレンジは${LIMITS.openChallenges}件までです。振り返るか削除してから始めてください`,
+  totalLimit: `持てるチャレンジは全部で${LIMITS.challengesPerUser}件までです。終わったチャレンジを削除してから始めてください`,
   done: "振り返りが済んだチャレンジは変更できません",
   started: "始まったチャレンジの開始日は変えられません",
   futureDay: "まだ来ていない日には印を押せません",
@@ -137,7 +138,11 @@ export function challengesRoutes(deps: Deps) {
     const nowDate = deps.now();
     const today = todayIn(user.tz, nowDate);
     if (!isAllowedStartDate(input.startDate, today)) throw badRequest(M.startDate, { startDate: M.startDate });
-    if ((await countOpenChallenges(deps, user.id)) >= LIMITS.openChallenges) throw conflict(M.openLimit);
+    const held = await countChallenges(deps, user.id);
+    if (held.open >= LIMITS.openChallenges) throw conflict(M.openLimit);
+    // An account holds at most LIMITS.challengesPerUser (like an import), so the list and the export
+    // never need to read more than that (R15).
+    if (held.total >= LIMITS.challengesPerUser) throw conflict(M.totalLimit);
 
     // Counted only for a create that passed every check above (a replay returned earlier); given
     // back below when it turns out not to create after all.

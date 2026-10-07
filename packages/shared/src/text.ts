@@ -52,6 +52,20 @@ export function utf8Length(s: string): number {
   return n;
 }
 
+/**
+ * How many characters (graphemes) must go from the end of `s` for the rest to fit in `maxBytes` of
+ * UTF-8 (0 when it fits). Used to tell the user how much to remove when emoji make a text too large.
+ */
+export function graphemesOverByteLimit(s: string, maxBytes: number): number {
+  const parts = segmenter ? Array.from(segmenter.segment(s), (seg) => seg.segment) : Array.from(s);
+  let bytes = 0;
+  for (let i = 0; i < parts.length; i++) {
+    bytes += utf8Length(parts[i]!);
+    if (bytes > maxBytes) return parts.length - i;
+  }
+  return 0;
+}
+
 /** A seal (印) is exactly one visible character that is not whitespace or punctuation-only ASCII. */
 export function isValidSeal(s: string): boolean {
   if (graphemeLength(s) !== 1) return false;

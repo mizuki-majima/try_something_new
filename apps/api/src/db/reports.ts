@@ -342,17 +342,15 @@ async function removeMember(deps: MD, ownerId: string, chId: string): Promise<vo
   }
 }
 
-/** The challenge a card was made from, and its owner (undefined on cards that predate challengeId). */
-function cardChallenge(share: Item): { chId: string; ownerUid: string } | undefined {
-  return typeof share.challengeId === "string" && typeof share.userId === "string"
-    ? { chId: share.challengeId, ownerUid: share.userId }
-    : undefined;
+/** The challenge a card was made from (undefined on cards that predate challengeId). */
+function cardChallenge(share: Item): { chId: string } | undefined {
+  return typeof share.challengeId === "string" ? { chId: share.challengeId } : undefined;
 }
 
 /** MOD#<chId> for a card's challenge (see db/moderation.ts). */
 async function markCard(deps: D, share: Item, flags: ModerationFlag[]): Promise<void> {
   const ch = cardChallenge(share);
-  if (ch) await markModeration(deps, ch.chId, ch.ownerUid, flags);
+  if (ch) await markModeration(deps, ch.chId, flags);
 }
 
 /**
@@ -371,7 +369,7 @@ export async function hideTarget(deps: MD, t: Target): Promise<boolean> {
       await setChallengeModerated(deps, t.item, true);
       return setShareStatus(deps, t.id, "hidden");
     case "member":
-      await markModeration(deps, t.id, t.ownerId!, ["memberHidden"]);
+      await markModeration(deps, t.id, ["memberHidden"]);
       return hideMember(deps, t.ownerId!, t.id);
   }
 }
@@ -411,7 +409,7 @@ export async function deleteTarget(deps: Deps, t: Target): Promise<void> {
       return deleteShare(deps, t.item);
     case "member":
       // removeMember also hides the card and blocks a new one (moderated).
-      await markModeration(deps, t.id, t.ownerId!, ["memberHidden", "shareModerated"]);
+      await markModeration(deps, t.id, ["memberHidden", "shareModerated"]);
       return removeMember(deps, t.ownerId!, t.id);
   }
 }

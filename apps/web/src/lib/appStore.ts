@@ -66,10 +66,11 @@ export const RATE_LIMIT_NOTICE = "今日はここまで（あすの0時にリセ
 
 /**
  * Shown when the profile quota refused a change (toast, Settings, and updateMe's own refusal).
- * PATCH /api/me is limited per JST day when the nickname or 「みんなに表示」 changes, because each
- * change rewrites the user's public records (QUOTAS.profileChangesPerUserPerDay, R1).
+ * PATCH /api/me is limited per JST day for a rename or turning 「みんなに表示」 on, because each
+ * rewrites the user's public records (QUOTAS.profileChangesPerUserPerDay, R1). Turning it off is a
+ * privacy action the API never counts or refuses (R13).
  */
-export const PROFILE_LIMIT_MESSAGE = `ニックネームと「みんなに表示」の変更は1日${QUOTAS.profileChangesPerUserPerDay}回までです。あすの0時（日本時間）を過ぎると、また変えられます。`;
+export const PROFILE_LIMIT_MESSAGE = `ニックネームの変更と「みんなに表示」をオンにするのは1日${QUOTAS.profileChangesPerUserPerDay}回までです。あすの0時（日本時間）を過ぎると、また変えられます。オフにするのはいつでもできます。`;
 
 /** Band reason when the server asked us to wait without saying why in its own words. */
 export const BUSY_REASON = "混み合っています。";
@@ -203,9 +204,13 @@ function browserOnline(): boolean {
   return typeof navigator === "undefined" || navigator.onLine !== false;
 }
 
-/** A me.patch that changes what the profile quota counts (nickname, 「みんなに表示」). */
+/**
+ * A me.patch the profile quota counts and may refuse: a rename or turning 「みんなに表示」 on. One that
+ * turns it off is never refused, even with a rename merged in by the queue (R13).
+ */
 function isProfileChange(op: OutboxOp | undefined): boolean {
-  return op?.kind === "me.patch" && (op.body.nickname !== undefined || op.body.shareProgress !== undefined);
+  if (op?.kind !== "me.patch" || op.body.shareProgress === false) return false;
+  return op.body.nickname !== undefined || op.body.shareProgress === true;
 }
 
 function withPeriod(text: string): string {

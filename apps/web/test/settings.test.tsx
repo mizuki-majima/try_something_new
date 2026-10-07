@@ -7,7 +7,7 @@ import { ApiClientError, THROTTLED_MESSAGE } from "../src/lib/api";
 import { PROFILE_LIMIT_MESSAGE, type AppActions, type AppSnapshot, type AppStore } from "../src/lib/appStore";
 import { KEYS, writeString } from "../src/lib/storage";
 import { AppProvider } from "../src/lib/store";
-import SettingsPage, { REMINDER_TIMES, importErrorMessage, readBackupFile } from "../src/pages/SettingsPage";
+import SettingsPage, { REMINDER_TIMES, importErrorMessage, importResultMessage, readBackupFile } from "../src/pages/SettingsPage";
 
 const photos = vi.hoisted(() => ({ clearAllPhotos: vi.fn(async () => {}) }));
 vi.mock("../src/lib/photos", () => photos);
@@ -155,18 +155,30 @@ describe("SettingsPage — profile and reminder", () => {
     expect(actions.updateMe).toHaveBeenCalledWith({ shareProgress: false });
   });
 
-  it("R1: while the profile quota refuses changes, says why and locks the nickname and 「みんなに表示」", () => {
+  it("R1/R13: while the profile quota refuses changes, says why, locks the nickname and turning 「みんなに表示」 on, but not off", () => {
     const { store, actions } = fakeStore({ profileLimitedUntil: Date.now() + 3_600_000 });
     renderSettings(store);
     expect(screen.getByTestId("profile-limit").textContent).toBe(PROFILE_LIMIT_MESSAGE);
-    expect(PROFILE_LIMIT_MESSAGE).toMatch(/^ニックネームと「みんなに表示」の変更は1日\d+回までです。あすの0時（日本時間）を過ぎると、また変えられます。$/);
+    expect(PROFILE_LIMIT_MESSAGE).toMatch(
+      /^ニックネームの変更と「みんなに表示」をオンにするのは1日\d+回までです。あすの0時（日本時間）を過ぎると、また変えられます。オフにするのはいつでもできます。$/,
+    );
+    // Sharing is on: turning it off is a privacy action the quota never blocks (R13; before: disabled).
     const toggle = screen.getByRole("checkbox", { name: "みんなに進捗を表示する" }) as HTMLInputElement;
-    expect(toggle.disabled).toBe(true);
+    expect(toggle.disabled).toBe(false);
+    fireEvent.click(toggle);
+    expect(actions.updateMe).toHaveBeenCalledWith({ shareProgress: false });
+    actions.updateMe.mockClear();
     fireEvent.change(screen.getByLabelText("ニックネーム"), { target: { value: "みずき" } });
     expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
     expect(actions.updateMe).not.toHaveBeenCalled();
     // The reminder is not part of the quota.
     expect((screen.getByRole("checkbox", { name: "毎日リマインドする" }) as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it("R13: while the profile quota refuses changes and sharing is off, turning it on is locked", () => {
+    const { store } = fakeStore({ profileLimitedUntil: Date.now() + 3_600_000, user: { ...USER, shareProgress: false } });
+    renderSettings(store);
+    expect((screen.getByRole("checkbox", { name: "みんなに進捗を表示する" }) as HTMLInputElement).disabled).toBe(true);
   });
 
   it("R1: no limit note while profile changes are allowed", () => {
@@ -297,6 +309,24 @@ describe("SettingsPage — backup import", () => {
     // The edge throttle is not the daily quota.
     expect(importErrorMessage(new ApiClientError(429, "rate_limited", THROTTLED_MESSAGE))).toBe(`読み込めませんでした。${THROTTLED_MESSAGE}`);
     expect(importErrorMessage(new ApiClientError(413, "payload_too_large"))).toBe("読み込めませんでした。データが大きすぎます。");
+  });
+
+  it("R14: says when notes that were too long were left out (their stamps and the challenge were kept)", async () => {
+    expect(importResultMessage({ imported: 3, skipped: 0 })).toBe("3件を読み込みました");
+    expect(importResultMessage({ imported: 3, skipped: 1 })).toBe("3件を読み込みました（1件はそのままにしました）");
+    expect(importResultMessage({ imported: 1, skipped: 0, notesDropped: 2 })).toBe("1件を読み込みました（長すぎるひとこと2件は読み込みませんでした）");
+    expect(importResultMessage({ imported: 1, skipped: 1, notesDropped: 1 })).toBe(
+      "1件を読み込みました（1件はそのままにしました。長すぎるひとこと1件は読み込みませんでした）",
+    );
+    fetchMock.mockImplementation(async (input) => (String(input) === API.meImport ? json(200, { imported: 1, skipped: 0, notesDropped: 1 }) : json(404, {})));
+    const { store, actions } = fakeStore();
+    renderSettings(store);
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("バックアップファイル"), { target: { files: [file(JSON.stringify({ ...BACKUP, challenges: [CHALLENGE] }))] } });
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "読み込む" }));
+    expect(await screen.findByText("1件を読み込みました（長すぎるひとこと1件は読み込みませんでした）")).toBeTruthy();
+    await waitFor(() => expect(actions.refresh).toHaveBeenCalled());
   });
 
   it("shows the error and does not upload a bad file", async () => {

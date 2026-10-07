@@ -20,7 +20,7 @@ import { acquireLock, releaseLock } from "../db/lock";
 import { reminderSlot, updateUserSlots } from "../db/push";
 import { enforceQuota } from "../db/rate";
 import { createTransferCode, updateUser, type UserPatch } from "../db/users";
-import { conflict, unauthorized } from "../errors";
+import { conflict, HttpError, unauthorized } from "../errors";
 import { log } from "../log";
 import type { Deps } from "../ports";
 import type { AppEnv } from "../types";
@@ -50,12 +50,22 @@ export function meRoutes(deps: Deps) {
   r.patch(API.me, auth, async (c) => {
     const input = await readJson(c, MePatchSchema);
     const before = c.var.user;
-    // A nickname or shareProgress change rewrites the cohort projection of the user's challenges:
-    // bounded per day (cost, NF-1). Changing the reminder or time zone, or sending the same value, is free.
-    const changesProfile =
-      (input.nickname !== undefined && input.nickname !== before.nickname) ||
-      (input.shareProgress !== undefined && input.shareProgress !== before.shareProgress);
-    if (changesProfile) await enforceQuota(deps, PROFILE_CHANGE_SCOPE, before.id, QUOTAS.profileChangesPerUserPerDay, "day");
+    // A rename or turning sharing on rewrites (publishes) the cohort projection of the user's
+    // challenges: bounded per day (cost, NF-1). Turning sharing OFF is a privacy action and is never
+    // counted or refused (R13): it only removes listed items, which only grow by creates (10 a day).
+    // Changing the reminder or time zone, or sending the same value, is free.
+    const renames = input.nickname !== undefined && input.nickname !== before.nickname;
+    const turnsOn = input.shareProgress === true && !before.shareProgress;
+    const turnsOff = input.shareProgress === false && before.shareProgress;
+    if (renames || turnsOn) {
+      try {
+        await enforceQuota(deps, PROFILE_CHANGE_SCOPE, before.id, QUOTAS.profileChangesPerUserPerDay, "day");
+      } catch (err) {
+        // A rename merged with turning sharing off (the client's queue merges profile patches) still
+        // goes through: with sharing off it rewrites no listed item, so it costs nothing more.
+        if (!(turnsOff && err instanceof HttpError && err.status === 429)) throw err;
+      }
+    }
     const patch: UserPatch = {
       ...input,
       ...(input.reminder ? { reminder: { enabled: input.reminder.enabled, time: floorToStep(input.reminder.time) } } : {}),

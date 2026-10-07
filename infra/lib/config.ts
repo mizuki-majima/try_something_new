@@ -47,12 +47,16 @@ export const TABLE_KEYS = {
 
 /**
  * On-demand throughput cap of the table and of each GSI (request units per second), as a cost
- * circuit breaker (AI PM decision R1): DynamoDB throttles above it instead of billing without limit.
- * 100 users need a few units a second. At the cap, writes cost at most about $1/hour and reads about
- * $0.8/hour in Tokyo (table + 3 GSIs), instead of growing with the attacker. A throttled request is
- * retried by the SDK and alarmed on (cost-guard.ts DynamoThrottles).
+ * circuit breaker (AI PM decisions R1, R15): DynamoDB throttles above it instead of billing without
+ * limit. 100 users need a few units a second. The caps bound the hourly RATE, not a monthly total:
+ * in Tokyo ($0.1425 per million RRU, $0.715 per million WRU) one table or index at its cap costs
+ * about $0.51/hour in reads and $0.26/hour in writes (table + 3 GSIs all at their caps: about
+ * $3.1/hour). Traffic kept just under the caps is never throttled; the budget mail is what notices
+ * sustained use. Reads are cheap and every authenticated request reads the table, so the read cap is
+ * well above what one client draws in ordinary use (R15). A throttled request is retried by the SDK
+ * and alarmed on (cost-guard.ts DynamoThrottles).
  */
-export const TABLE_MAX_THROUGHPUT = { maxReadRequestUnits: 400, maxWriteRequestUnits: 100 } as const;
+export const TABLE_MAX_THROUGHPUT = { maxReadRequestUnits: 1000, maxWriteRequestUnits: 100 } as const;
 
 /**
  * DynamoDB operations (CloudWatch "Operation" dimension) the Lambdas use. The throttle alarm sums
@@ -69,6 +73,16 @@ export const TABLE_OPERATIONS = [
   "BatchGetItem",
   "BatchWriteItem",
 ] as const;
+
+/**
+ * The API's warning when POST /api/session turns new visitors away at the global ceiling (R11). Must
+ * equal apps/api/src/log-events.ts ALARMED_LOGS.sessionCeiling (infra/test checks it): the metric
+ * filter matches this phrase in the api log group.
+ */
+export const SESSION_CEILING_LOG = "global session ceiling reached";
+
+/** CloudWatch namespace of the custom metrics our log metric filters publish. */
+export const ALARM_METRIC_NAMESPACE = "ThirtyDays";
 
 /** Web files that must be revalidated on every load (they point at the hashed bundles). */
 export const NO_CACHE_FILES = ["index.html", "sw.js", "registerSW.js", "manifest.webmanifest"] as const;

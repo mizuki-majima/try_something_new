@@ -23,13 +23,13 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 |---|---|
 | Web | React 19 + React Router、Vite、PWA（vite-plugin-pwa、Service Worker）。デザインはネオ・ブルータリズム（[docs/design.md](docs/design.md)） |
 | API | Hono（TypeScript）を AWS Lambda（Node.js 22 / arm64）で動かす。入力検証は zod（`packages/shared` のスキーマを Web と共用） |
-| データ | DynamoDB 1テーブル（オンデマンド。費用の上限として最大スループットを設定、PITR）。ローカルとテストは dynalite（Java / Docker 不要） |
+| データ | DynamoDB 1テーブル（オンデマンド。費用が増える速さの上限として最大スループットを設定、PITR）。ローカルとテストは dynalite（Java / Docker 不要） |
 | 配信 | CloudFront → S3（Web）／API Gateway HTTP API `ThirtyDaysApi`（`/api/*` `/s/*`）／S3（公開カード画像 `/media/share/*` だけ） |
 | 通知 | EventBridge（15分ごと）→ Lambda → Web Push（VAPID） |
 | 秘密情報 | SSM Parameter Store（VAPID 秘密鍵・管理トークン・IP のハッシュ鍵は SecureString。`scripts/setup-secrets.mjs`） |
-| IaC | AWS CDK（`infra/`、スタック `ThirtyDays`、リージョン `ap-northeast-1`）。`ALERT_EMAIL` 指定時は予算（`Project` タグの費用だけ）と API・リマインド・DynamoDB のスロットルのアラーム |
+| IaC | AWS CDK（`infra/`、スタック `ThirtyDays`、リージョン `ap-northeast-1`）。`ALERT_EMAIL` 指定時は予算（`Project` タグの費用だけ）と API・リマインド・DynamoDB のスロットル・アカウント作成の全体の上限のアラーム |
 
-生成 AI・課金される外部 API は使わない。AWS 費用は月 $1 未満が目標で、100人規模なら月約 $0.1（[docs/deploy.md](docs/deploy.md) の「費用の目安」）。
+生成 AI・課金される外部 API は使わない。AWS 費用は月 $1 未満が目標で、100人規模なら月約 $0.1。アラームを付けると、アカウントの無料枠が使われていれば最大 月 約 $1.2 が加わる（[docs/deploy.md](docs/deploy.md) の「費用の目安」）。
 
 ## Setup
 

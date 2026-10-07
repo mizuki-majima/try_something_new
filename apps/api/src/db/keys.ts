@@ -115,12 +115,12 @@ export const reporterKey = (type: string, id: string, uid: string): Key => ({ pk
 export const reportListGsi1 = (lastAt: number) => ({ gsi1pk: "REPORTS", gsi1sk: ts13(lastAt) });
 
 /**
- * Moderation of a challenge id that outlives the challenge item (NF-2): the owner can delete the
- * item and import it again from a backup, but a card stopped by moderation stays stopped and a
- * member hidden from the cohort stays hidden. gsi2 AUTHOR#<owner> so it goes with the account.
+ * Moderation of a challenge id that outlives the challenge item (NF-2) and the owner's account (R12):
+ * the owner can delete the item, or the whole account, and import it again from a backup, but a card
+ * stopped by moderation stays stopped and a member hidden from the cohort stays hidden. Not indexed
+ * under the owner (it holds the challenge id and flags only).
  */
 export const moderationKey = (chId: string): Key => ({ pk: `MOD#${chId}`, sk: "META" });
-export const moderationAuthorGsi2 = (uid: string, chId: string) => ({ gsi2pk: `AUTHOR#${uid}`, gsi2sk: `MOD#${chId}` });
 
 export const contactKey = (id: string): Key => ({ pk: `CONTACT#${id}`, sk: "META" });
 export const contactListGsi1 = (createdAt: number) => ({ gsi1pk: "CONTACTS", gsi1sk: ts13(createdAt) });

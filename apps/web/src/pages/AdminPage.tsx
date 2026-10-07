@@ -269,6 +269,10 @@ function judgeRate(n: number, d: number, targetPercent: number): Judge {
   return n * 100 >= targetPercent * d ? "pass" : "fail";
 }
 
+/** Shown when the API stopped the pilot scan early (AdminStats.pilot.partial, R15). */
+export const PILOT_PARTIAL_NOTE =
+  "集計が途中までです。テーブルが大きく、20秒で読み込みを打ち切りました。下の数字は読めたチャレンジだけから数えています（実際より少なめ）。";
+
 /** An API from before the pilot metrics (only during a deploy) answers without them. */
 const NO_PILOT: AdminStats["pilot"] = { starters: 0, eligible7: 0, retained7: 0, reflected: 0, sharers: 0 };
 
@@ -357,6 +361,11 @@ function StatsView({ stats: s }: { stats: AdminStats }) {
         <h3 id="adm-pilot-h" className="adm-sub">
           PILOT の合格ライン
         </h3>
+        {s.pilot?.partial && (
+          <p className="note err" role="status" data-testid="pilot-partial">
+            {PILOT_PARTIAL_NOTE}
+          </p>
+        )}
         <div className="adm-table-wrap">
           <table className="adm-table">
             <thead>

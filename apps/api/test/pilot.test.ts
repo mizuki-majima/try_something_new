@@ -2,11 +2,18 @@
  * PILOT metrics on GET /api/admin/stats (docs/validation-plan.md). A file of its own: one fresh
  * dynalite, so the numbers are exact.
  */
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
-import { describe, expect, it } from "vitest";
+import { PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { describe, expect, it, vi } from "vitest";
 import { newId, type AdminStats, type Challenge, type PilotStats, type SessionResponse, type Stamp } from "@thirty/shared";
 import { toChallengeItem } from "../src/db/challenges";
-import { computePilotStats, pilotStats, toPilotChallenge, type PilotChallenge } from "../src/db/pilot";
+import {
+  PILOT_PAGE_LIMIT,
+  PILOT_TIME_BUDGET_MS,
+  computePilotStats,
+  pilotStats,
+  toPilotChallenge,
+  type PilotChallenge,
+} from "../src/db/pilot";
 import { ADMIN_TOKEN, json, setupApi } from "./helpers";
 
 const api = setupApi();
@@ -159,9 +166,62 @@ describe("GET /api/admin/stats → pilot", () => {
   it("paginates the scan and stops at the cap", async () => {
     api.clock.set(NOW);
     const full = await computePilotStats(api.deps);
+    expect(full.partial).toBeUndefined();
     expect(await computePilotStats(api.deps, { pageSize: 2 })).toEqual(full);
     const capped = await computePilotStats(api.deps, { pageSize: 2, cap: 2 });
     expect(capped.starters).toBeLessThanOrEqual(2);
+    expect(capped.partial).toBe(true);
     expect(full.starters).toBeGreaterThan(2);
+  });
+
+  it("reads only what the metrics need (no notes, stamps of days 1–7 only) in pages of a bounded size (R15)", async () => {
+    api.clock.set(NOW);
+    const s = await api.createSession("メモ多め");
+    await seed(s, challenge("2026-10-01", [1, 2, 3, 4, 5, 6, 8, 9]));
+    const db = api.deps.db;
+    const original = db.send.bind(db) as (cmd: unknown) => Promise<{ Items?: unknown[] }>;
+    const scans: { input: ScanCommand["input"]; items: unknown[] }[] = [];
+    const send = vi.spyOn(db, "send").mockImplementation((async (cmd: unknown) => {
+      const out = await original(cmd);
+      if (cmd instanceof ScanCommand) scans.push({ input: cmd.input, items: out.Items ?? [] });
+      return out;
+    }) as typeof db.send);
+    let result: PilotStats;
+    try {
+      result = await computePilotStats(api.deps);
+    } finally {
+      send.mockRestore();
+    }
+    expect(result.retained7).toBeGreaterThan(0);
+    expect(scans.length).toBeGreaterThan(0);
+    for (const scan of scans) {
+      expect(scan.input.Limit).toBe(PILOT_PAGE_LIMIT);
+      // Before: the whole stamps map came back, notes ("ひみつ") included.
+      expect(JSON.stringify(scan.items)).not.toContain("ひみつ");
+    }
+    const mine = scans.flatMap((x) => x.items as Record<string, unknown>[]).find((i) => i.pk === `USER#${s.user.id}`);
+    expect(Object.keys(mine?.stamps as object).sort()).toEqual(["1", "2", "3", "4", "5", "6"]);
+  });
+
+  it(`stops after ${PILOT_TIME_BUDGET_MS / 1000} seconds and says the numbers are partial (R15)`, async () => {
+    api.clock.set(NOW);
+    expect(PILOT_TIME_BUDGET_MS).toBe(20_000);
+    // A fake monotonic clock: every read of it is 7 seconds later, so the 4th page is never read.
+    let t = 0;
+    const elapsed = () => (t += 7_000);
+    const db = api.deps.db;
+    const send = vi.spyOn(db, "send");
+    let result: PilotStats;
+    let pages: number;
+    try {
+      result = await computePilotStats(api.deps, { pageSize: 1, elapsed });
+      pages = send.mock.calls.filter(([cmd]) => cmd instanceof ScanCommand).length;
+    } finally {
+      send.mockRestore();
+    }
+    expect(pages).toBeLessThanOrEqual(3); // before: every page of the table
+    expect(result.partial).toBe(true);
+    // A scan that finishes in time is not marked (the admin page shows a note only when partial).
+    expect((await stats()).pilot.partial).toBeUndefined();
   });
 });

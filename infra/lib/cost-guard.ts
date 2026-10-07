@@ -5,9 +5,11 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import type * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import type * as lambda from "aws-cdk-lib/aws-lambda";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import { Construct } from "constructs";
+import { ALARM_METRIC_NAMESPACE, SESSION_CEILING_LOG, TABLE_OPERATIONS } from "./config";
 
 export type CostGuardProps = {
   alertEmail: string;
@@ -18,6 +20,8 @@ export type CostGuardProps = {
    */
   costAllocationTag: string;
   apiFunction: lambda.IFunction;
+  /** The api Lambda's log group: a metric filter turns its "global session ceiling" warning into an alarm (R11). */
+  apiLogGroup: logs.ILogGroup;
   /** The HTTP API stage ($default): its 5xx count includes route errors the Lambda turns into 500s. */
   apiStage: apigw.IHttpStage;
   reminderFunction: lambda.IFunction;
@@ -27,7 +31,13 @@ export type CostGuardProps = {
   tableOperations: readonly string[];
 };
 
-/** Alarm thresholds (docs/deploy.md). Each alarm costs $0.10/month beyond the account's free 10. */
+/**
+ * Alarm thresholds (docs/deploy.md). CloudWatch bills alarms per METRIC: an alarm on one metric is
+ * one alarm metric, a metric-math alarm counts every metric in its expression (DynamoThrottles sums
+ * one per DynamoDB operation). $0.10 per alarm metric per month beyond the account's 10 free ones,
+ * which the shared account has probably used already. The log metric filter's custom metric only has
+ * data (and only bills, $0.30 per metric-month prorated by the hour) while the warning appears.
+ */
 export const ALARMS = {
   /** API Gateway 5xx responses, or api Lambda errors (init, SSM, timeout), in 5 minutes. */
   apiPerFiveMinutes: 5,
@@ -38,7 +48,15 @@ export const ALARMS = {
    * throttle means the cost circuit breaker tripped (abuse, or a burst a legitimate user will feel).
    */
   dynamoThrottlesPerFiveMinutes: 1,
+  /**
+   * "global session ceiling reached" warnings in 5 minutes: new visitors are being turned away
+   * (QUOTAS.sessionsGlobalPerHour, R11). Any one means a flood from many networks, or a real spike.
+   */
+  sessionCeilingPerFiveMinutes: 1,
 } as const;
+
+/** Alarm metrics the stack bills for: Api5xx, ApiErrors, ReminderErrors, SessionCeiling + DynamoThrottles' operations. */
+export const ALARM_METRIC_COUNT = 4 + TABLE_OPERATIONS.length;
 
 /** Monthly cost budget plus alarms on the API, the reminder and the table, all mailed to alertEmail. */
 export class CostGuard extends Construct {
@@ -121,6 +139,22 @@ export class CostGuard extends Construct {
       "thirty-days: DynamoDB のスロットル（費用の上限に当たった）が5分間に1回以上",
       throttledRequests(props.table, props.tableOperations),
       ALARMS.dynamoThrottlesPerFiveMinutes,
+    );
+    // The API logs a warning each time the global new-session ceiling refuses someone (R11). The
+    // filter publishes 1 per matching line and nothing otherwise (no default value), so the custom
+    // metric is empty, and free, in hours without it.
+    const ceiling = new logs.MetricFilter(this, "SessionCeilingFilter", {
+      logGroup: props.apiLogGroup,
+      filterPattern: logs.FilterPattern.allTerms(SESSION_CEILING_LOG),
+      metricNamespace: ALARM_METRIC_NAMESPACE,
+      metricName: "SessionCeilingReached",
+      metricValue: "1",
+    });
+    alarm(
+      "SessionCeiling",
+      "thirty-days: アカウント作成の全体の上限（1時間あたり）に当たり、新しく来た人を断っている（5分間に1回以上）",
+      ceiling.metric(fiveMinutes),
+      ALARMS.sessionCeilingPerFiveMinutes,
     );
   }
 }

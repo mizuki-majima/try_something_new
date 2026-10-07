@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { ToastHost, ToastProvider } from "../src/components/Toast";
 import { adminRequest, getAdminToken, setAdminToken } from "../src/lib/admin";
 import { KEYS, writeString } from "../src/lib/storage";
-import AdminPage, { actionMessage, pilotRows } from "../src/pages/AdminPage";
+import AdminPage, { PILOT_PARTIAL_NOTE, actionMessage, pilotRows } from "../src/pages/AdminPage";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -117,6 +117,23 @@ describe("AdminPage", () => {
     expect(within(table).getByText("62.5%")).toBeTruthy(); // 7日継続 5/8
     expect(within(table).getByText("60%以上")).toBeTruthy();
     expect(table.textContent).not.toMatch(/代用|出せません|チャレンジ数）/);
+  });
+
+  it("R15: says when the pilot numbers are partial (the scan stopped after 20 seconds)", async () => {
+    setAdminToken("secret");
+    fetchMock.mockResolvedValue(json(200, { ...STATS, pilot: { ...STATS.pilot, partial: true } }));
+    renderAdmin();
+    expect(await screen.findByText("PILOT の合格ライン")).toBeTruthy();
+    expect(screen.getByTestId("pilot-partial").textContent).toBe(PILOT_PARTIAL_NOTE);
+    expect(PILOT_PARTIAL_NOTE).toContain("途中まで");
+  });
+
+  it("R15: no partial note for a complete scan", async () => {
+    setAdminToken("secret");
+    fetchMock.mockResolvedValue(json(200, STATS));
+    renderAdmin();
+    expect(await screen.findByText("PILOT の合格ライン")).toBeTruthy();
+    expect(screen.queryByTestId("pilot-partial")).toBeNull();
   });
 
   it("lists reports and restores one after confirming", async () => {

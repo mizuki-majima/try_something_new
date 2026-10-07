@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { CATEGORY_KEYS, LIMITS, PLACE_KEYS, TOTAL_DAYS, VERDICT_KEYS } from "./constants";
 import { isValidDate, isValidTimeZone } from "./dates";
-import { cleanLine, cleanText, containsUrl, graphemeLength, isValidSeal, utf8Length } from "./text";
+import { cleanLine, cleanText, containsUrl, graphemeLength, graphemesOverByteLimit, isValidSeal, utf8Length } from "./text";
 
 // ---------- primitives ----------
 
@@ -42,7 +42,8 @@ export const textByteLimit = (max: number) => max * 4 + 32;
 
 /**
  * Normalised text with a grapheme-based length check, a UTF-16 cap on the raw input (rawTextLimit)
- * and a UTF-8 byte cap on what is stored (textByteLimit).
+ * and a UTF-8 byte cap on what is stored (textByteLimit). Over the byte cap the message says how many
+ * characters to remove (R14): the text is within `max` characters, so heavy emoji are the cause.
  */
 export function text({ min = 1, max, multiline = false, noUrl = false, label }: TextOpts) {
   return z
@@ -53,7 +54,10 @@ export function text({ min = 1, max, multiline = false, noUrl = false, label }: 
       const n = graphemeLength(s);
       if (n < min) ctx.addIssue({ code: "custom", message: min === 1 ? `${label}を入力してください` : `${label}は${min}文字以上で入力してください` });
       if (n > max) ctx.addIssue({ code: "custom", message: `${label}は${max}文字以内で入力してください` });
-      else if (utf8Length(s) > textByteLimit(max)) ctx.addIssue({ code: "custom", message: `${label}が長すぎます` });
+      else if (utf8Length(s) > textByteLimit(max)) {
+        const over = graphemesOverByteLimit(s, textByteLimit(max));
+        ctx.addIssue({ code: "custom", message: `${label}が長すぎます（絵文字などが多いため、あと${over}文字減らしてください）` });
+      }
       if (noUrl && containsUrl(s)) ctx.addIssue({ code: "custom", message: `${label}にURLは入れられません` });
     });
 }
@@ -380,6 +384,11 @@ export type PilotStats = {
   reflected: number;
   /** People with at least one done challenge that currently has a public card: the 共有 numerator. */
   sharers: number;
+  /**
+   * true when the scan stopped before the end of the table (after 20 seconds, or at its cap): the
+   * numbers count only the challenges read so far (R15). Absent when complete.
+   */
+  partial?: boolean;
 };
 
 export type AdminStats = {
@@ -411,7 +420,11 @@ export const BackupFileSchema = z.object({
   challenges: z.array(ChallengeSchema).max(LIMITS.importChallenges),
 });
 export type BackupFile = z.infer<typeof BackupFileSchema>;
-export type ImportResponse = { imported: number; skipped: number };
+/**
+ * `notesDropped` (only when > 0): day notes that break today's text rules (e.g. a backup written
+ * before the UTF-8 cap) were left out; their stamps and the challenge were kept (R14).
+ */
+export type ImportResponse = { imported: number; skipped: number; notesDropped?: number };
 
 // ---------- errors ----------
 

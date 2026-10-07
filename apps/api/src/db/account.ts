@@ -16,6 +16,7 @@ import {
   userPk,
   type Key,
 } from "./keys";
+import { detachModeration } from "./moderation";
 import { shareMediaKeys } from "./shares";
 import { bumpStats } from "./stats";
 import { batchDelete, isConditionFailed, keyOf, queryAll, type Item } from "./util";
@@ -29,6 +30,8 @@ export async function deleteAccount(deps: Deps, uid: string): Promise<DeleteAcco
   const deletedRecipes = new Set<string>();
   const storyDecrements = new Map<string, number>();
   const mediaKeys: string[] = [];
+  /** MOD#<chId> markers from before R12 (indexed under the owner): kept, only detached. */
+  const markers: string[] = [];
 
   // 1. Public things the user authored (recipes, stories, share cards, ...), found through gsi2.
   const authored = await queryAll(deps, {
@@ -59,6 +62,9 @@ export async function deleteAccount(deps: Deps, uid: string): Promise<DeleteAcco
         const rid = after(pk, "RECIPE#");
         storyDecrements.set(rid, (storyDecrements.get(rid) ?? 0) + 1);
       }
+    } else if (pk.startsWith("MOD#")) {
+      // Moderation outlives the account (R12): a new account importing the same id stays stopped.
+      markers.push(after(pk, "MOD#"));
     } else {
       keys.push(keyOf(item));
     }
@@ -100,6 +106,7 @@ export async function deleteAccount(deps: Deps, uid: string): Promise<DeleteAcco
     }
   }
   if (mediaFailures > 0) throw new Error(`account delete: ${mediaFailures} media object(s) could not be deleted`);
+  for (const chId of markers) await detachModeration(deps, chId);
   await batchDelete(deps, keys);
 
   for (const [rid, n] of storyDecrements) {

@@ -3,7 +3,7 @@
  * Shared core only; the challenge routes build on these helpers.
  */
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { findOfficialRecipe, monthKey, type Challenge, type Stamp } from "@thirty/shared";
+import { LIMITS, findOfficialRecipe, monthKey, type Challenge, type Stamp } from "@thirty/shared";
 import type { DbDeps, Deps } from "../ports";
 import { authorPk, challengeKey, challengeRefKey, cohortGsi1, recipeKey, recipeStatsKey, userPk, type Key } from "./keys";
 import { deleteShare, getShareItem } from "./shares";
@@ -99,23 +99,37 @@ export async function getChallengeItem(deps: Pick<DbDeps, "db" | "tableName">, u
   return res.Item;
 }
 
+/**
+ * A user's challenge items, at most LIMITS.challengesPerUser (R15): an account cannot hold more
+ * (create and import stop there), and the cap bounds the read units of GET /api/challenges, the
+ * export and the reminder however large the items are.
+ */
 export function listChallengeItems(deps: Pick<DbDeps, "db" | "tableName">, uid: string): Promise<Item[]> {
-  return queryPrefix(deps, userPk(uid), "CH#");
+  return queryPrefix(deps, userPk(uid), "CH#", LIMITS.challengesPerUser);
 }
 
 /**
  * The status (and any other named top-level attributes) of each of a user's challenges, without
- * the stamps and notes.
+ * the stamps and notes. Uncapped by default: syncUserProjection must see every listed item.
  */
-export function listChallengeStatuses(deps: Pick<DbDeps, "db" | "tableName">, uid: string, more: string[] = []): Promise<Item[]> {
+export function listChallengeStatuses(
+  deps: Pick<DbDeps, "db" | "tableName">,
+  uid: string,
+  more: string[] = [],
+  maxItems = Infinity,
+): Promise<Item[]> {
   const names: Record<string, string> = { "#s": "status" };
   more.forEach((a, i) => (names[`#a${i}`] = a));
-  return queryAll(deps, {
-    KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
-    ExpressionAttributeValues: { ":pk": userPk(uid), ":sk": "CH#" },
-    ProjectionExpression: ["#s", ...more.map((_, i) => `#a${i}`)].join(", "),
-    ExpressionAttributeNames: names,
-  });
+  return queryAll(
+    deps,
+    {
+      KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+      ExpressionAttributeValues: { ":pk": userPk(uid), ":sk": "CH#" },
+      ProjectionExpression: ["#s", ...more.map((_, i) => `#a${i}`)].join(", "),
+      ExpressionAttributeNames: names,
+    },
+    maxItems,
+  );
 }
 
 /** All of a user's challenges, newest first. */
@@ -250,10 +264,13 @@ export async function syncUserProjection(
 
 type Owner = { nickname: string; shareProgress: boolean };
 
-/** Challenges that are not finished yet (waiting, active, or ended but not reflected). */
-export async function countOpenChallenges(deps: Pick<DbDeps, "db" | "tableName">, uid: string): Promise<number> {
-  const items = await listChallengeItems(deps, uid);
-  return items.filter((i) => i.status !== "done").length;
+/**
+ * How many challenges the user holds (`total`, counted up to LIMITS.challengesPerUser) and how many
+ * are not finished yet (`open`: waiting, active, or ended but not reflected). Statuses only.
+ */
+export async function countChallenges(deps: Pick<DbDeps, "db" | "tableName">, uid: string): Promise<{ open: number; total: number }> {
+  const items = await listChallengeStatuses(deps, uid, [], LIMITS.challengesPerUser);
+  return { open: items.filter((i) => i.status !== "done").length, total: items.length };
 }
 
 /** Put a new challenge. Returns false when the item already exists (a concurrent replay of the same create). */

@@ -173,6 +173,18 @@ export function networkKey(raw: string): string {
 }
 
 /**
+ * A wider network than networkKey, for the per-network new-session limit (R11): an IPv4 /16 or an
+ * IPv6 /48. One actor can hold many /56s (a tunnel broker's /48) or many IPv4 addresses in one range,
+ * but rarely many /16s or /48s, so no single network can use up the global ceiling.
+ */
+export function wideNetworkKey(raw: string): string {
+  const p = parseIp(raw);
+  if ("raw" in p) return p.raw;
+  if ("v4" in p) return `${p.v4.slice(0, 2).join(".")}.0.0/16`;
+  return `${p.v6.slice(0, 3).map(hex16).join(":")}::/48`;
+}
+
+/**
  * The secret for the HMACs below. On AWS it comes from SSM (/thirty-days/ip-hash-key, loadSecrets
  * fails without it); local.ts passes DEFAULT_IP_HASH_KEY itself. The public default is used only
  * under tests: anywhere else a missing key is a 500, never a reversible hash (NF-4).
@@ -194,6 +206,11 @@ export function hashNetwork(ip: string, secret: string): string {
   return createHmac("sha256", secret).update(`net:${networkKey(ip)}`).digest("hex").slice(0, 32);
 }
 
+/** HMAC of wideNetworkKey(ip), domain-separated: 2^16 IPv4 /16s are trivial to enumerate without the key. */
+export function hashWideNetwork(ip: string, secret: string): string {
+  return createHmac("sha256", secret).update(`wide:${wideNetworkKey(ip)}`).digest("hex");
+}
+
 /** The viewer's address as CloudFront passes it (x-viewer-ip), or the first x-forwarded-for hop. */
 function clientIp(c: Context): string {
   const viewer = c.req.header("x-viewer-ip")?.trim();
@@ -212,4 +229,9 @@ export function clientIpHash(deps: Pick<Deps, "secrets" | "config">, c: Context)
 /** The client's network (see networkKey), as a keyed hash. */
 export function clientNetworkHash(deps: Pick<Deps, "secrets" | "config">, c: Context): string {
   return hashNetwork(clientIp(c), ipHashSecret(deps));
+}
+
+/** The client's wider network (see wideNetworkKey), as a keyed hash: the per-network session limit. */
+export function clientWideNetworkHash(deps: Pick<Deps, "secrets" | "config">, c: Context): string {
+  return hashWideNetwork(clientIp(c), ipHashSecret(deps));
 }

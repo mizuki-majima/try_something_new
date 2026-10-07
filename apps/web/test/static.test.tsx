@@ -101,6 +101,8 @@ describe("PrivacyPage", () => {
     expect(text).not.toContain("保存しないもの：メールアドレス");
     // Rate-limit keys: a keyed hash, IPv6 by /56 (R7: Japanese IPoE homes get a /56), 2 days — not "cannot be reversed".
     expect(screen.getByText(/秘密鍵つきのハッシュ（HMAC）。IPv6 は上位56ビット/)).toBeTruthy();
+    // R11: new accounts are also counted per network (IPv4 /16, IPv6 /48), with the same kind of keyed hash.
+    expect(screen.getByText(/アカウントの作成は、ネットワーク（IPv4 は上位16ビット、IPv6 は上位48ビット）ごとにも数えます/)).toBeTruthy();
     // R8: a report keeps a keyed hash of the reporter's network, until the account is deleted.
     expect(screen.getByText(/通報したネットワークを見分ける値（IP\s*アドレスから作った秘密鍵つきのハッシュ値）も、通報の記録と一緒に保存します/)).toBeTruthy();
     expect(screen.getByText("通報した記録（通報したネットワークを見分ける値を含む）：アカウントを削除するまで")).toBeTruthy();

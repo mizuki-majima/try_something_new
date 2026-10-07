@@ -30,7 +30,8 @@ import { acquireLock, releaseLock } from "../src/db/lock";
 import { computePilotStats } from "../src/db/pilot";
 import { getStats } from "../src/db/stats";
 import type { Item } from "../src/db/util";
-import { IMPORT_BUSY, IMPORT_LOCK_SECONDS } from "../src/routes/me";
+import { getQuotaUsage } from "../src/db/rate";
+import { IMPORT_BUSY, IMPORT_LOCK_SECONDS, PROFILE_CHANGE_SCOPE } from "../src/routes/me";
 import { ADMIN_TOKEN, json, setupApi } from "./helpers";
 
 const api = setupApi();
@@ -192,23 +193,75 @@ describe("PATCH /api/me", () => {
     expect(item?.gsi1pk).toBeUndefined();
   });
 
-  it(`allows ${QUOTAS.profileChangesPerUserPerDay} nickname / sharing changes per JST day; other fields stay free (NF-1)`, async () => {
+  it(`allows ${QUOTAS.profileChangesPerUserPerDay} nickname changes / turning sharing on per JST day; other fields stay free (NF-1, R13)`, async () => {
     api.clock.set("2026-10-06T03:00:00.000Z"); // 12:00 JST
     const s = await api.createSession("かえる");
+    const patch = (body: unknown) => api.request("/api/me", { method: "PATCH", token: s.token, body });
     for (let i = 0; i < QUOTAS.profileChangesPerUserPerDay; i++) {
-      const body = i % 2 === 0 ? { shareProgress: i % 4 !== 0 } : { nickname: `名前${i}` };
-      expect((await api.request("/api/me", { method: "PATCH", token: s.token, body })).status, String(i)).toBe(200);
+      if (i % 2 === 0) {
+        expect((await patch({ shareProgress: false })).status, `off ${i}`).toBe(200); // free (R13)
+        expect((await patch({ shareProgress: true })).status, `on ${i}`).toBe(200); // counted
+      } else {
+        expect((await patch({ nickname: `名前${i}` })).status, `rename ${i}`).toBe(200); // counted
+      }
     }
-    const limited = await api.request("/api/me", { method: "PATCH", token: s.token, body: { nickname: "もう一回" } });
+    expect((await getQuotaUsage(api.deps, PROFILE_CHANGE_SCOPE, s.user.id, QUOTAS.profileChangesPerUserPerDay, "day")).count).toBe(
+      QUOTAS.profileChangesPerUserPerDay,
+    );
+    const limited = await patch({ nickname: "もう一回" });
     expect(limited.status).toBe(429);
     expect((await json<ApiError>(limited)).error.code).toBe("rate_limited");
     expect(limited.headers.get("retry-after")).toBe(String(12 * 3600)); // until 00:00 JST
     // The same values again, the reminder and the time zone are not changes of the profile.
     const me = (await json<MeResponse>(await api.request("/api/me", { token: s.token }))).user;
-    expect((await api.request("/api/me", { method: "PATCH", token: s.token, body: { nickname: me.nickname, shareProgress: me.shareProgress } })).status).toBe(200);
-    expect((await api.request("/api/me", { method: "PATCH", token: s.token, body: { reminder: { enabled: true, time: "07:00" }, tz: "Asia/Tokyo" } })).status).toBe(200);
+    expect((await patch({ nickname: me.nickname, shareProgress: me.shareProgress })).status).toBe(200);
+    expect((await patch({ reminder: { enabled: true, time: "07:00" }, tz: "Asia/Tokyo" })).status).toBe(200);
     api.clock.set("2026-10-06T15:00:00.000Z"); // 00:00 JST
-    expect((await api.request("/api/me", { method: "PATCH", token: s.token, body: { nickname: "もう一回" } })).status).toBe(200);
+    expect((await patch({ nickname: "もう一回" })).status).toBe(200);
+  });
+
+  it("turning sharing off never uses or waits for the profile quota (a privacy action, R13); turning it on still does", async () => {
+    api.clock.set("2026-10-07T03:00:00.000Z");
+    const s = await api.createSession("やめたい");
+    const c = challenge({ startDate: "2026-10-01" });
+    await seedChallenge(s, c);
+    const patch = (body: unknown) => api.request("/api/me", { method: "PATCH", token: s.token, body });
+    const usage = async () =>
+      (await getQuotaUsage(api.deps, PROFILE_CHANGE_SCOPE, s.user.id, QUOTAS.profileChangesPerUserPerDay, "day")).count;
+    const listed = async () =>
+      (await json<CohortResponse>(await api.request("/api/cohorts/2026-10"))).members.some((m) => m.challengeId === c.id);
+
+    expect((await patch({ shareProgress: false })).status).toBe(200);
+    expect(await usage()).toBe(0); // before R13: 1
+    expect((await patch({ shareProgress: true })).status).toBe(200);
+    expect(await usage()).toBe(1);
+    for (let i = 1; i < QUOTAS.profileChangesPerUserPerDay; i++) expect((await patch({ nickname: `試す${i}` })).status).toBe(200);
+    expect((await patch({ nickname: "まだ変えたい" })).status).toBe(429);
+    expect(await listed()).toBe(true);
+
+    // The quota is used up, and the user wants out of 1日組 now (before: 429 until 00:00 JST, still listed).
+    const off = await patch({ shareProgress: false });
+    expect(off.status).toBe(200);
+    expect((await json<MeResponse>(off)).user.shareProgress).toBe(false);
+    expect(await listed()).toBe(false);
+    expect(await usage()).toBe(QUOTAS.profileChangesPerUserPerDay);
+    // Turning it on again publishes: it waits for the reset.
+    expect((await patch({ shareProgress: true })).status).toBe(429);
+  });
+
+  it("a rename sent together with turning sharing off (merged in the client's queue) is not refused by the quota (R13)", async () => {
+    api.clock.set("2026-10-08T03:00:00.000Z");
+    const s = await api.createSession("まとめて");
+    const c = challenge({ startDate: "2026-10-01" });
+    await seedChallenge(s, c);
+    const patch = (body: unknown) => api.request("/api/me", { method: "PATCH", token: s.token, body });
+    for (let i = 0; i < QUOTAS.profileChangesPerUserPerDay; i++) expect((await patch({ nickname: `名${i}` })).status).toBe(200);
+    expect((await patch({ nickname: "あと" })).status).toBe(429);
+    const res = await patch({ nickname: "あと", shareProgress: false });
+    expect(res.status).toBe(200);
+    expect((await json<MeResponse>(res)).user).toMatchObject({ nickname: "あと", shareProgress: false });
+    const item = await getChallengeItem(api.deps, s.user.id, c.id);
+    expect(item?.gsi1pk).toBeUndefined();
   });
 
   it("puts push subscriptions on the UTC reminder slot (floored to 15 minutes)", async () => {
@@ -462,6 +515,29 @@ describe("import follows the live rules (FR-16 abuse)", () => {
     expect(byTitle.get("知らないレシピ")?.recipeId).toBeNull();
   });
 
+  it("drops only a note that is too long for today's rules and keeps the challenge and its stamp (R14)", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("古いバックアップ");
+    // Written before the UTF-8 cap: 70 skin-tone thumbs are 70 characters but 560 bytes (over 512).
+    const heavy = String.fromCodePoint(0x1f44d, 0x1f3fd).repeat(70);
+    const old = challenge({
+      title: "30日の記録",
+      startDate: "2026-09-01",
+      status: "done",
+      verdict: "continue",
+      reflection: "続ける",
+      finishedAt: 1,
+      finishedDay: 30,
+      stamps: { "1": { at: 1, note: "初日" }, "5": { at: 5, note: heavy }, "6": { at: 6 } },
+    });
+    const res = await importFile(s, [old]);
+    // Before: { imported: 0, skipped: 1 } and the whole 30-day record was gone.
+    expect(await json<ImportResponse>(res)).toEqual({ imported: 1, skipped: 0, notesDropped: 1 });
+    const [restored] = await listUserChallenges(api.deps, s.user.id);
+    expect(restored).toMatchObject({ id: old.id, status: "done", verdict: "continue", reflection: "続ける" });
+    expect(restored?.stamps).toEqual({ "1": { at: 1, note: "初日" }, "5": { at: 5 }, "6": { at: 6 } });
+  });
+
   it("keeps imported challenges private (no cohort, no PILOT metrics) until the owner stamps one", async () => {
     api.clock.set("2026-10-06T03:00:00.000Z");
     const s = await api.createSession("ひっそり");
@@ -569,7 +645,11 @@ describe("import follows the live rules (FR-16 abuse)", () => {
     await seedChallenge(s, c);
     expect(await cohortIds("2026-10")).toContain(c.id);
     expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "member", targetId: c.id, action: "hide" } })).status).toBe(204);
-    expect(await getItem(`MOD#${c.id}`, "META")).toMatchObject({ memberHidden: true, gsi2pk: `AUTHOR#${s.user.id}` });
+    // The marker holds the challenge id and flags only: no owner (R12).
+    const marker = await getItem(`MOD#${c.id}`, "META");
+    expect(marker).toMatchObject({ memberHidden: true, challengeId: c.id });
+    expect(marker?.gsi2pk).toBeUndefined();
+    expect(JSON.stringify(marker)).not.toContain(s.user.id);
 
     const file = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
     expect((await api.request(`/api/challenges/${c.id}`, { method: "DELETE", token: s.token })).status).toBe(204);
@@ -589,12 +669,36 @@ describe("import follows the live rules (FR-16 abuse)", () => {
     expect((await api.request("/api/me/import", { token: s.token, body: again })).status).toBe(200);
     expect((await getChallengeItem(api.deps, s.user.id, c.id))?.hiddenFromCohort).toBeUndefined();
 
-    // The marker goes with the owner's account.
+    // The marker outlives the owner's account (R12): a new account importing the same id stays hidden.
     expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "member", targetId: c.id, action: "hide" } })).status).toBe(204);
-    expect(await getItem(`MOD#${c.id}`, "META")).toBeDefined();
+    const backup = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
     expect((await api.request("/api/me", { method: "DELETE", token: s.token })).status).toBe(204);
-    expect(await getItem(`MOD#${c.id}`, "META")).toBeUndefined();
+    expect(await getItem(`MOD#${c.id}`, "META")).toMatchObject({ memberHidden: true }); // before R12: deleted with the account
+    expect(await getItem(`CHREF#${c.id}`, "REF")).toBeUndefined();
+    const fresh = await api.createSession("新しい名前");
+    expect(await json<ImportResponse>(await api.request("/api/me/import", { token: fresh.token, body: backup }))).toEqual({ imported: 1, skipped: 0 });
+    expect(await getChallengeItem(api.deps, fresh.user.id, c.id)).toMatchObject({ hiddenFromCohort: true });
+    expect((await api.request(`/api/challenges/${c.id}/stamps/4`, { method: "PUT", token: fresh.token, body: {} })).status).toBe(200);
+    expect(await cohortIds("2026-10")).not.toContain(c.id);
     api.clock.set("2026-10-06T03:00:00.000Z");
+  });
+
+  it("account deletion keeps a moderation marker written before R12 (with the owner's gsi2) and detaches it from the account", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("古い印");
+    const c = challenge({ title: "前の版で隠された" });
+    await seedChallenge(s, c, { hiddenFromCohort: true });
+    // The R2 format: gsi2 AUTHOR#<owner>, so the account deletion's gsi2 query finds it.
+    await put({ pk: `MOD#${c.id}`, sk: "META", type: "moderation", challengeId: c.id, memberHidden: true, gsi2pk: `AUTHOR#${s.user.id}`, gsi2sk: `MOD#${c.id}`, updatedAt: 1 });
+    const backup = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
+    expect((await api.request("/api/me", { method: "DELETE", token: s.token })).status).toBe(204);
+    const marker = await getItem(`MOD#${c.id}`, "META");
+    expect(marker).toMatchObject({ memberHidden: true, challengeId: c.id });
+    expect(marker?.gsi2pk).toBeUndefined();
+    expect(marker?.gsi2sk).toBeUndefined();
+    const fresh = await api.createSession();
+    expect((await api.request("/api/me/import", { token: fresh.token, body: backup })).status).toBe(200);
+    expect(await getChallengeItem(api.deps, fresh.user.id, c.id)).toMatchObject({ hiddenFromCohort: true });
   });
 
   it("a member a moderator removed for good stays removed after export, delete and re-import", async () => {

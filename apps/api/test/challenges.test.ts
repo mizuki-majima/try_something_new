@@ -1,5 +1,5 @@
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { beforeEach, describe, expect, it } from "vitest";
+import { BatchWriteCommand, GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LIMITS,
   QUOTAS,
@@ -11,7 +11,7 @@ import {
   type ChallengeResponse,
   type SessionResponse,
 } from "@thirty/shared";
-import { claimChallengeId } from "../src/db/challenges";
+import { claimChallengeId, toChallengeItem } from "../src/db/challenges";
 import { getQuotaUsage } from "../src/db/rate";
 import { getStats } from "../src/db/stats";
 import { CHALLENGE_MESSAGES, CREATE_QUOTA_SCOPE } from "../src/routes/challenges";
@@ -154,6 +154,70 @@ describe("POST /api/challenges", () => {
     const [saved] = (await list(s)).challenges;
     expect(saved).toMatchObject({ id: body.id, startDate: "2026-10-03" });
     expect(Object.keys(saved!.stamps).sort()).toEqual(["1", "2"]);
+  });
+
+  /** Done challenges written straight to the table (as an account full of records would have). */
+  async function putDone(s: SessionResponse, n: number, offset = 0): Promise<void> {
+    const now = api.clock.now().getTime();
+    const items = Array.from({ length: n }, (_, k): Challenge => {
+      const i = offset + k;
+      return {
+        ...createBody({ title: `終わった${i}`, startDate: "2026-08-01" }),
+        recipeId: "photo",
+        status: "done",
+        stamps: { "1": { at: now, note: "メモ" } },
+        verdict: "stop",
+        reflection: null,
+        finishedAt: now,
+        finishedDay: 30,
+        cheers: 0,
+        shareId: null,
+        createdAt: now - i,
+        updatedAt: now - i,
+      };
+    });
+    for (let i = 0; i < items.length; i += 25) {
+      await api.deps.db.send(
+        new BatchWriteCommand({
+          RequestItems: { [api.deps.tableName]: items.slice(i, i + 25).map((c) => ({ PutRequest: { Item: toChallengeItem(s.user.id, s.user, c) } })) },
+        }),
+      );
+    }
+  }
+
+  it(`refuses a create once the account holds ${LIMITS.challengesPerUser} challenges in total (R15)`, async () => {
+    const s = await api.createSession("ためこむ");
+    await putDone(s, LIMITS.challengesPerUser - 1);
+    expect((await postChallenge(s, createBody({ title: "200件め" }))).status).toBe(201);
+    // The total is a limit like the open one (before: 201, and the account kept growing).
+    const res = await postChallenge(s, createBody({ title: "201件め" }));
+    expect(res.status).toBe(409);
+    expect((await errorOf(res)).message).toBe(CHALLENGE_MESSAGES.totalLimit);
+    expect(CHALLENGE_MESSAGES.totalLimit).toContain(String(LIMITS.challengesPerUser));
+  });
+
+  it(`never reads more than ${LIMITS.challengesPerUser} challenge items for the list or the export (R15)`, async () => {
+    const s = await api.createSession("読みすぎない");
+    // Even an account over the limit (written before it, or some other way) is read up to it only.
+    await putDone(s, LIMITS.challengesPerUser + 5);
+    const db = api.deps.db;
+    const original = db.send.bind(db) as (cmd: unknown) => Promise<{ Count?: number }>;
+    let read = 0;
+    const send = vi.spyOn(db, "send").mockImplementation((async (cmd: unknown) => {
+      const out = await original(cmd);
+      if (cmd instanceof QueryCommand && cmd.input.ExpressionAttributeValues?.[":pk"] === `USER#${s.user.id}`) read += out.Count ?? 0;
+      return out;
+    }) as typeof db.send);
+    try {
+      expect((await list(s)).challenges).toHaveLength(LIMITS.challengesPerUser); // before: 205
+      expect(read).toBeLessThanOrEqual(LIMITS.challengesPerUser);
+      read = 0;
+      const exported = await json<{ challenges: Challenge[] }>(await api.request("/api/me/export", { token: s.token }));
+      expect(exported.challenges).toHaveLength(LIMITS.challengesPerUser);
+      expect(read).toBeLessThanOrEqual(LIMITS.challengesPerUser);
+    } finally {
+      send.mockRestore();
+    }
   });
 
   it("allows at most 5 open challenges; finished ones do not count", async () => {
@@ -445,7 +509,7 @@ describe("stamps", () => {
     const fat = "a" + String.fromCodePoint(0x20dd).repeat(LIMITS.note * 4 + 15);
     const res = await stamp(s, c.id, 1, { note: fat });
     expect(res.status).toBe(400);
-    expect((await errorOf(res)).fields?.note).toBe("ひとことが長すぎます");
+    expect((await errorOf(res)).fields?.note).toBe("ひとことが長すぎます（絵文字などが多いため、あと1文字減らしてください）");
     expect((await stamp(s, c.id, 1, { note: "あ".repeat(LIMITS.note) })).status).toBe(200);
   });
 

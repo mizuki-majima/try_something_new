@@ -29,7 +29,8 @@ export function windowFor(kind: WindowKind, now: Date): { id: string; resetAt: n
   return { id, resetAt: start + 3_600_000 };
 }
 
-function counterKey(scope: string, key: string, window: string) {
+/** The counter item of (scope, key, window); the key is stored hashed. */
+export function quotaCounterKey(scope: string, key: string, window: string) {
   return rateKey(scope, createHash("sha256").update(key).digest("hex").slice(0, 32), window);
 }
 
@@ -62,7 +63,7 @@ export async function enforceQuota(
     const res = await deps.db.send(
       new UpdateCommand({
         TableName: deps.tableName,
-        Key: counterKey(scope, key, id),
+        Key: quotaCounterKey(scope, key, id),
         UpdateExpression: "SET #ttl = :ttl ADD #count :one",
         ConditionExpression: "attribute_not_exists(#count) OR #count < :limit",
         ExpressionAttributeNames: { "#count": "count", "#ttl": "ttl" },
@@ -88,7 +89,7 @@ export async function refundQuota(deps: DbDeps, scope: string, key: string, kind
     await deps.db.send(
       new UpdateCommand({
         TableName: deps.tableName,
-        Key: counterKey(scope, key, id),
+        Key: quotaCounterKey(scope, key, id),
         UpdateExpression: "ADD #count :minus",
         ConditionExpression: "#count > :zero",
         ExpressionAttributeNames: { "#count": "count" },
@@ -109,7 +110,7 @@ export async function getQuotaUsage(
   kind: WindowKind,
 ): Promise<QuotaResult> {
   const { id, resetAt } = windowFor(kind, deps.now());
-  const res = await deps.db.send(new GetCommand({ TableName: deps.tableName, Key: counterKey(scope, key, id) }));
+  const res = await deps.db.send(new GetCommand({ TableName: deps.tableName, Key: quotaCounterKey(scope, key, id) }));
   const count = Number(res.Item?.count ?? 0);
   return { count, limit, remaining: Math.max(0, limit - count), resetAt };
 }

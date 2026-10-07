@@ -128,6 +128,7 @@ export class ThirtyDaysStack extends Stack {
     const logGroup = (logId: string) =>
       new logs.LogGroup(this, logId, { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });
 
+    const apiLogs = logGroup("ApiLogs");
     const apiFn = new lambda.Function(this, "ApiFunction", {
       description: "thirty-days API (Hono)",
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -136,7 +137,7 @@ export class ThirtyDaysStack extends Stack {
       handler: "index.handler",
       memorySize: 512,
       timeout: Duration.seconds(30),
-      logGroup: logGroup("ApiLogs"),
+      logGroup: apiLogs,
       environment: {
         TABLE_NAME: table.tableName,
         MEDIA_BUCKET: mediaBucket.bucketName,
@@ -334,6 +335,7 @@ export class ThirtyDaysStack extends Stack {
         monthlyBudgetUsd: MONTHLY_BUDGET_USD,
         costAllocationTag: COST_ALLOCATION_TAG,
         apiFunction: apiFn,
+        apiLogGroup: apiLogs,
         apiStage,
         reminderFunction: reminderFn,
         table,

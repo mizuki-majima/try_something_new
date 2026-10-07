@@ -188,7 +188,8 @@ type ProfileProps = {
 
 function ProfileSection({ user, updateMe, limitedUntil }: ProfileProps) {
   const toast = useToast();
-  // Nickname and 「みんなに表示」 changes are limited per day (each rewrites the public records).
+  // Renaming and turning 「みんなに表示」 on are limited per day (each rewrites the public records).
+  // Turning it off is a privacy action the quota never blocks (R13).
   const limited = limitedUntil !== null;
   const onShare = (e: ChangeEvent<HTMLInputElement>) => {
     const next = e.target.checked;
@@ -212,7 +213,7 @@ function ProfileSection({ user, updateMe, limitedUntil }: ProfileProps) {
             className="set-toggle"
             checked={user.shareProgress}
             onChange={onShare}
-            disabled={limited}
+            disabled={limited && !user.shareProgress}
             aria-describedby="share-explain"
           />
           <span>
@@ -777,6 +778,15 @@ export function importErrorMessage(err: unknown): string {
   return `読み込めませんでした。${errorMessage(err)}`;
 }
 
+/** The toast after an import: what was read, what was left as it was, and notes left out (R14). */
+export function importResultMessage(res: ImportResponse): string {
+  const extra = [
+    res.skipped > 0 ? `${res.skipped}件はそのままにしました` : "",
+    res.notesDropped ? `長すぎるひとこと${res.notesDropped}件は読み込みませんでした` : "",
+  ].filter(Boolean);
+  return `${res.imported}件を読み込みました${extra.length > 0 ? `（${extra.join("。")}）` : ""}`;
+}
+
 function BackupSection({ app }: { app: AppContextValue }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -829,7 +839,7 @@ function BackupSection({ app }: { app: AppContextValue }) {
     try {
       const res = await request<ImportResponse>("POST", API.meImport, { body: pending, auth: "required" });
       setPending(null);
-      toast(res.skipped > 0 ? `${res.imported}件を読み込みました（${res.skipped}件はそのままにしました）` : `${res.imported}件を読み込みました`);
+      toast(importResultMessage(res));
       await app.refresh();
     } catch (err) {
       setPending(null);

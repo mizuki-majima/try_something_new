@@ -1,11 +1,20 @@
+import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { QUOTAS, type ApiError } from "@thirty/shared";
-import { hashIp, hashNetwork, ipKey, networkKey, requireAdmin, sha256 } from "../src/auth";
+import { hashIp, hashNetwork, hashWideNetwork, ipKey, networkKey, requireAdmin, sha256, wideNetworkKey } from "../src/auth";
 import { MAX_BODY_BYTES, originVerifyValues } from "../src/app";
 import { DEFAULT_IP_HASH_KEY } from "../src/config";
-import { enforceQuota, getQuotaUsage, refundQuota, windowFor } from "../src/db/rate";
-import { SESSION_GLOBAL_KEY, SESSION_GLOBAL_SCOPE, SESSIONS_BUSY } from "../src/routes/session";
+import { enforceQuota, getQuotaUsage, quotaCounterKey, refundQuota, windowFor } from "../src/db/rate";
+import { log } from "../src/log";
+import { ALARMED_LOGS } from "../src/log-events";
+import {
+  SESSION_GLOBAL_KEY,
+  SESSION_GLOBAL_SCOPE,
+  SESSION_IP_SCOPE,
+  SESSION_NETWORK_SCOPE,
+  SESSIONS_BUSY,
+} from "../src/routes/session";
 import { onError } from "../src/errors";
 import type { AppEnv } from "../src/types";
 import { ADMIN_TOKEN, json, setupApi } from "./helpers";
@@ -204,20 +213,96 @@ describe("client IP keys for rate limits", () => {
     expect(JSON.stringify(await api.scanAll())).not.toContain("2001:db8:77");
   });
 
-  it(`stops new sessions from all clients together at ${QUOTAS.sessionsGlobalPerHour} an hour, with a message and Retry-After (R7)`, async () => {
-    api.clock.set("2026-10-09T07:40:00Z");
-    // Fill the global counter up to one below the ceiling (as if many other clients had signed up).
-    for (let i = 0; i < QUOTAS.sessionsGlobalPerHour - 1; i++) {
-      await enforceQuota(api.deps, SESSION_GLOBAL_SCOPE, SESSION_GLOBAL_KEY, QUOTAS.sessionsGlobalPerHour, "hour");
+  it("groups clients into wider networks for the new-session limit: IPv4 /16, IPv6 /48 (R11)", () => {
+    expect(wideNetworkKey("203.0.113.9")).toBe("203.0.0.0/16");
+    expect(wideNetworkKey("203.0.250.1")).toBe(wideNetworkKey("203.0.113.9"));
+    expect(wideNetworkKey("203.1.113.9")).not.toBe(wideNetworkKey("203.0.113.9"));
+    expect(wideNetworkKey("::ffff:203.0.113.7")).toBe("203.0.0.0/16");
+    expect(wideNetworkKey("2001:db8:1:2::1")).toBe("2001:db8:1::/48");
+    expect(wideNetworkKey("2001:db8:1:ff00::1")).toBe(wideNetworkKey("2001:db8:1:2::1"));
+    expect(wideNetworkKey("2001:db8:2::1")).not.toBe(wideNetworkKey("2001:db8:1::1"));
+    expect(wideNetworkKey("unknown")).toBe("unknown");
+    // Keyed (2^16 IPv4 /16s are easy to enumerate) and domain-separated from the other hashes.
+    const h = hashWideNetwork("203.0.1.1", "k");
+    expect(h).toMatch(/^[0-9a-f]{64}$/);
+    expect(h).toBe(hashWideNetwork("203.0.200.9", "k"));
+    expect(h).not.toBe(hashWideNetwork("203.0.1.1", "other"));
+    expect(h).not.toBe(hashIp("203.0.1.1", "k"));
+    expect(h.slice(0, 32)).not.toBe(hashNetwork("203.0.1.1", "k"));
+  });
+
+  it(`one IPv6 /48 cannot use up the global ceiling: ${QUOTAS.sessionsPerNetworkPerHour} new sessions an hour per network (R11)`, async () => {
+    api.clock.set("2026-10-09T09:10:00Z");
+    expect(QUOTAS.sessionsPerNetworkPerHour).toBe(60);
+    expect(QUOTAS.sessionsGlobalPerHour).toBe(2000);
+    // Four /56s of one /48 (a free tunnel broker hands out a /48 = 256 of them), 20 sessions each.
+    const statuses: number[] = [];
+    const ipOf = (n: number, i: number) => `2001:db8:48:${(n << 8).toString(16)}::${(i + 1).toString(16)}`;
+    for (let n = 0; n < 4; n++) {
+      for (let i = 0; i < QUOTAS.sessionsPerIpPerHour; i++) {
+        statuses.push((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: ipOf(n, i) })).status);
+      }
     }
+    // Before R11 all 80 got an account (and 2,000 /56s would have emptied the global ceiling).
+    expect(statuses.filter((s) => s === 201)).toHaveLength(QUOTAS.sessionsPerNetworkPerHour);
+    expect(statuses.slice(QUOTAS.sessionsPerNetworkPerHour).every((s) => s === 429)).toBe(true);
+    // The refused /56 keeps its own allowance (given back), and the global ceiling only saw the 60.
+    const usage = (scope: string, key: string, limit: number) => getQuotaUsage(api.deps, scope, key, limit, "hour");
+    expect((await usage(SESSION_IP_SCOPE, hashIp(ipOf(3, 0), DEFAULT_IP_HASH_KEY), QUOTAS.sessionsPerIpPerHour)).count).toBe(0);
+    expect((await usage(SESSION_GLOBAL_SCOPE, SESSION_GLOBAL_KEY, QUOTAS.sessionsGlobalPerHour)).count).toBe(QUOTAS.sessionsPerNetworkPerHour);
+    // Everyone else still gets in: another /48, and an IPv4 visitor.
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: "2001:db8:49::1" })).status).toBe(201);
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: "198.51.100.42" })).status).toBe(201);
+    // The next hour the network starts again.
+    api.clock.set("2026-10-09T10:00:00Z");
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: ipOf(3, 0) })).status).toBe(201);
+  });
+
+  it("counts an IPv4 /16 as one network for new sessions (R11)", async () => {
+    api.clock.set("2026-10-09T11:10:00Z");
+    let created = 0;
+    for (let n = 1; n <= 4; n++) {
+      for (let i = 0; i < QUOTAS.sessionsPerIpPerHour; i++) {
+        if ((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: `203.0.${n}.9` })).status === 201) created++;
+      }
+    }
+    expect(created).toBe(QUOTAS.sessionsPerNetworkPerHour);
+    expect((await getQuotaUsage(api.deps, SESSION_NETWORK_SCOPE, hashWideNetwork("203.0.77.1", DEFAULT_IP_HASH_KEY), QUOTAS.sessionsPerNetworkPerHour, "hour")).count).toBe(
+      QUOTAS.sessionsPerNetworkPerHour,
+    );
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: "203.1.0.9" })).status).toBe(201);
+  });
+
+  it(`stops new sessions from all clients together at ${QUOTAS.sessionsGlobalPerHour} an hour, with a message, Retry-After and the alarmed warning (R7, R11)`, async () => {
+    api.clock.set("2026-10-09T07:40:00Z");
+    // The global counter one below the ceiling (as if many other networks had signed up this hour).
+    await api.deps.db.send(
+      new UpdateCommand({
+        TableName: api.deps.tableName,
+        Key: quotaCounterKey(SESSION_GLOBAL_SCOPE, SESSION_GLOBAL_KEY, windowFor("hour", api.clock.now()).id),
+        UpdateExpression: "SET #count = :n",
+        ExpressionAttributeNames: { "#count": "count" },
+        ExpressionAttributeValues: { ":n": QUOTAS.sessionsGlobalPerHour - 1 },
+      }),
+    );
     expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" } })).status).toBe(201);
     const ip = "198.51.100.77";
-    const refused = await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip });
-    expect(refused.status).toBe(429);
-    expect(await errorOf(refused)).toMatchObject({ code: "rate_limited", message: SESSIONS_BUSY });
-    expect(refused.headers.get("retry-after")).toBe(String(20 * 60)); // until 08:00 UTC
-    // The refused client keeps its own per-IP allowance for the next hour.
-    expect((await getQuotaUsage(api.deps, "session-ip", hashIp(ip, DEFAULT_IP_HASH_KEY), QUOTAS.sessionsPerIpPerHour, "hour")).count).toBe(0);
+    const warn = vi.spyOn(log, "warn");
+    try {
+      const refused = await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip });
+      expect(refused.status).toBe(429);
+      expect(await errorOf(refused)).toMatchObject({ code: "rate_limited", message: SESSIONS_BUSY });
+      expect(refused.headers.get("retry-after")).toBe(String(20 * 60)); // until 08:00 UTC
+      // The CloudWatch metric filter (infra cost-guard SessionCeiling) matches this exact message.
+      expect(warn).toHaveBeenCalledWith(ALARMED_LOGS.sessionCeiling, expect.objectContaining({ limit: QUOTAS.sessionsGlobalPerHour }));
+    } finally {
+      warn.mockRestore();
+    }
+    // The refused client keeps its own per-IP and per-network allowance for the next hour.
+    expect((await getQuotaUsage(api.deps, SESSION_IP_SCOPE, hashIp(ip, DEFAULT_IP_HASH_KEY), QUOTAS.sessionsPerIpPerHour, "hour")).count).toBe(0);
+    expect(
+      (await getQuotaUsage(api.deps, SESSION_NETWORK_SCOPE, hashWideNetwork(ip, DEFAULT_IP_HASH_KEY), QUOTAS.sessionsPerNetworkPerHour, "hour")).count,
+    ).toBe(0);
     api.clock.set("2026-10-09T08:00:00Z");
     expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip })).status).toBe(201);
   });

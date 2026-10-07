@@ -60,9 +60,11 @@ export async function exportBackup(deps: DbDeps, user: User): Promise<BackupFile
 
 /**
  * BackupFileSchema only checks the shape. Imported titles and seals become public in the
- * cohort list, so they go through the same rules as a normal create.
+ * cohort list, so they go through the same rules as a normal create. A day note is private and is
+ * checked on its own (NoteSchema): one that breaks today's rules is dropped, not the challenge (R14).
  */
 const DAY_KEY_RE = new RegExp(`^([1-9]|[12]\\d|${TOTAL_DAYS})$`);
+const NoteSchema = text({ min: 0, max: LIMITS.note, label: "ひとこと" });
 const ImportedChallengeSchema = z.object({
   id: IdSchema,
   recipeId: RecipeIdSchema.nullable(),
@@ -72,7 +74,7 @@ const ImportedChallengeSchema = z.object({
   status: z.enum(["active", "done"]),
   stamps: z.record(
     z.string().regex(DAY_KEY_RE),
-    z.object({ at: z.number().nonnegative(), note: text({ min: 0, max: LIMITS.note, label: "ひとこと" }).optional() }),
+    z.object({ at: z.number().nonnegative(), note: z.string().optional() }),
   ),
   verdict: VerdictSchema.nullable(),
   reflection: text({ min: 0, max: LIMITS.reflection, multiline: true, noUrl: true, label: "ひとこと" }).nullable(),
@@ -82,15 +84,19 @@ const ImportedChallengeSchema = z.object({
   updatedAt: z.number().nonnegative(),
 });
 
+export type Sanitised = { challenge: Challenge; notesDropped: number };
+
 /**
  * Strict re-validation plus the rules of the live API, for `today` in the owner's time zone:
  * - startDate no later than the next 1st (null: the item is skipped);
  * - stamps only on days 1..min(30, today's day + 1) (later ones are dropped);
+ * - a day note that fails today's text rules (too long, e.g. emoji over the UTF-8 cap of a backup
+ *   written before it) is dropped and counted; the stamp stays (R14);
  * - "done" only from day EARLY_REFLECT_FROM_DAY with a verdict; otherwise imported as active and the
  *   verdict / reflection dropped; finishedDay within EARLY_REFLECT_FROM_DAY..min(30, today's day);
  * - timestamps from the future are clamped so they cannot win every merge.
  */
-export function sanitise(c: Challenge, nowMs: number, today: string): Challenge | null {
+export function sanitise(c: Challenge, nowMs: number, today: string): Sanitised | null {
   const parsed = ImportedChallengeSchema.safeParse(c);
   if (!parsed.success) return null;
   const v = parsed.data;
@@ -99,13 +105,16 @@ export function sanitise(c: Challenge, nowMs: number, today: string): Challenge 
   const lastStampDay = Math.min(TOTAL_DAYS, day + 1);
   const clamp = (n: number) => Math.min(n, nowMs);
   const stamps: Challenge["stamps"] = {};
+  let notesDropped = 0;
   for (const [d, s] of Object.entries(v.stamps)) {
     if (Number(d) > lastStampDay) continue;
-    stamps[d] = s.note ? { at: clamp(s.at), note: s.note } : { at: clamp(s.at) };
+    const note = s.note === undefined ? undefined : NoteSchema.safeParse(s.note);
+    if (note && !note.success) notesDropped++;
+    stamps[d] = note?.success && note.data ? { at: clamp(s.at), note: note.data } : { at: clamp(s.at) };
   }
   const done = v.status === "done" && v.verdict !== null && day >= EARLY_REFLECT_FROM_DAY;
   const lastDay = Math.min(TOTAL_DAYS, day);
-  return {
+  const challenge: Challenge = {
     id: v.id,
     recipeId: v.recipeId,
     title: v.title,
@@ -122,6 +131,7 @@ export function sanitise(c: Challenge, nowMs: number, today: string): Challenge 
     createdAt: clamp(v.createdAt),
     updatedAt: clamp(v.updatedAt),
   };
+  return { challenge, notesDropped };
 }
 
 type Outcome = "imported" | "skipped";
@@ -210,27 +220,31 @@ export async function importBackup(deps: DbDeps, user: User, file: BackupFile): 
   const today = todayIn(user.tz, now);
   let skipped = 0;
   // Same id twice in one file: keep the newest.
-  const byId = new Map<string, Challenge>();
+  const byId = new Map<string, Sanitised>();
   for (const raw of file.challenges.slice(0, LIMITS.importChallenges)) {
-    const c = sanitise(raw, nowMs, today);
-    if (!c) {
+    const s = sanitise(raw, nowMs, today);
+    if (!s) {
       skipped++;
       continue;
     }
-    const prev = byId.get(c.id);
+    const prev = byId.get(s.challenge.id);
     if (prev) skipped++;
-    if (!prev || c.updatedAt > prev.updatedAt) byId.set(c.id, c);
+    if (!prev || s.challenge.updatedAt > prev.challenge.updatedAt) byId.set(s.challenge.id, s);
   }
   // Checked before anything is written: what the account holds now.
   const slots = slotsFor(await listChallengeStatuses(deps, user.id));
   let imported = 0;
+  let notesDropped = 0;
   const list = [...byId.values()];
   for (let i = 0; i < list.length; i += 10) {
-    const outcomes = await Promise.all(list.slice(i, i + 10).map((c) => importOne(deps, user, c, slots)));
-    for (const o of outcomes) {
-      if (o === "imported") imported++;
-      else skipped++;
-    }
+    const batch = list.slice(i, i + 10);
+    const outcomes = await Promise.all(batch.map((s) => importOne(deps, user, s.challenge, slots)));
+    outcomes.forEach((o, j) => {
+      if (o === "imported") {
+        imported++;
+        notesDropped += batch[j]!.notesDropped;
+      } else skipped++;
+    });
   }
-  return { imported, skipped };
+  return notesDropped > 0 ? { imported, skipped, notesDropped } : { imported, skipped };
 }

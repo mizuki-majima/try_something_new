@@ -1,6 +1,6 @@
 # Test Plan — 30日だけ
 
-Owner: AI QA ／ 対象: SPEC v1.2 ／ 最終更新: 2026-10-07
+Owner: AI QA ／ 対象: SPEC v1.3 ／ 最終更新: 2026-10-07
 
 方針: MVP では Critical User Flow（CUF）を最優先。網羅より「CUF が壊れたら必ず CI が赤になる」こと。次に過去の不具合の回帰、最後にエッジケース。課金される外部 API はどのテストからも呼ばない（このサービスには AI も課金 API も無い。[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
@@ -116,8 +116,13 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 | IP のハッシュ鍵が無いと起動しない（R4）、`ORIGIN_VERIFY` が空なら全部 403（R6） | `apps/api/test/config.test.ts`, `apps/api/test/http.test.ts`, `apps/api/test/lambda.test.ts` |
 | 読み込みは1人ずつ（同時は 409。R5） | `apps/api/test/me.test.ts`, `apps/web/test/settings.test.tsx` |
 | origin-verify の手順 3 はデプロイ済みの CloudFront が新しい値を送るまで進まない（R6） | `infra/test/stack.test.ts` |
-| IPv6 は /56 で数える、アカウント作成は全体で1時間300件まで（R7）、自動非表示は2つ以上のネットワークからの通報が要る（R8） | `apps/api/test/http.test.ts`, `apps/api/test/reports.test.ts`, `apps/web/test/report.test.tsx` |
+| IPv6 は /56 で数える、アカウント作成は全体で上限あり（R7。R11 で1時間2000件）、自動非表示は2つ以上のネットワークからの通報が要る（R8） | `apps/api/test/http.test.ts`, `apps/api/test/reports.test.ts`, `apps/web/test/report.test.tsx` |
 | 429 は `Retry-After` で決める（1時間を超えるときだけ捨てる。R9）、API の上限の 429 には必ず `Retry-After` | `apps/web/test/outbox.test.ts`, `apps/web/test/appStore.test.ts`, `apps/api/test/http.test.ts`；E2E `rate-limit-429` |
+| アカウント作成はネットワーク（IPv4 /16・IPv6 /48）ごとに1時間60件、全体は2000件。1つの /48 では全体を使い切れない。断られた要求は狭いほうの数を戻す。全体の上限の警告ログとメトリクスフィルタ・アラーム `SessionCeiling` の文字列が一致（R11） | `apps/api/test/http.test.ts` "one IPv6 /48 cannot use up the global ceiling…", "counts an IPv4 /16…", "stops new sessions from all clients together…"；`infra/test/stack.test.ts` "alarms when the global new-session ceiling…"；`apps/web/test/static.test.tsx`（プライバシーポリシー） |
+| `MOD#<chId>` はアカウントを消しても残り（gsi2 なし）、新しいアカウントで読み込んでも止めたまま。前の版の印は gsi2 だけ外す（R12） | `apps/api/test/shares.test.ts` "a stopped card stays stopped after export → delete the account…", `apps/api/test/me.test.ts` "account deletion keeps a moderation marker…" |
+| 進捗公開のオフは上限に数えず断らない（ニックネームと一緒でも）。オンとニックネームは数える。Web は上限中もオフを送れる（R13） | `apps/api/test/me.test.ts` "turning sharing off never uses…", "a rename sent together with turning sharing off…"；`apps/web/test/appStore.test.ts` "R13…", `apps/web/test/settings.test.tsx` "R1/R13…" |
+| 読み込みで長すぎるひとことだけを落とし、印とチャレンジは残す（`notesDropped`）。保存する大きさの上限のエラーは「あと N 文字」（R14） | `apps/api/test/me.test.ts` "drops only a note…", `packages/shared/test/schemas.test.ts` "says how many characters to remove…", `apps/api/test/challenges.test.ts`, `apps/web/test/settings.test.tsx` "R14…" |
+| 読み込みの上限 1000・書き込み 100（テーブルと GSI）。一覧と書き出しは200件より多く読まない、作成も合計200件まで。PILOT の集計は必要な項目だけ・1ページ500件・20秒で打ち切り `partial`（R15）。アラームのメトリクスの数と deploy.md の費用の記載が一致（R16） | `infra/test/stack.test.ts`；`apps/api/test/challenges.test.ts` "never reads more than 200…", "refuses a create once…"；`apps/api/test/pilot.test.ts`；`apps/web/test/admin.test.tsx` "R15…" |
 
 ## Live smoke（手動）と品質ルーブリック
 
@@ -155,8 +160,8 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] `/admin` に管理トークンで入り、統計（開始した人・7日継続・完走）とお問い合わせが見える。別アカウントで通報した項目が一覧に出る
 - [ ] 設定 →「すべてのデータを削除」で、アカウント・公開カード（`/s/<id>` が 404）・1日組の表示が消える
 - [ ] CloudWatch Logs に 5xx が無い。ログにトークン・ひとこと・投稿本文・Push の宛先・IP が出ていない
-- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム4つ（`Api5xx`・`ApiErrors`・`ReminderErrors`・`DynamoThrottles`）がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている
-- [ ] DynamoDB のテーブルと GSI 3つに最大オンデマンドスループット（読み込み 400・書き込み 100）が付いている。`DynamoThrottles` が「OK」（Live smoke の操作で上限に当たらない）
+- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム5つ（`Api5xx`・`ApiErrors`・`ReminderErrors`・`DynamoThrottles`・`SessionCeiling`）、api のロググループのメトリクスフィルタ `SessionCeilingFilter` がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている
+- [ ] DynamoDB のテーブルと GSI 3つに最大オンデマンドスループット（読み込み 1000・書き込み 100）が付いている。`DynamoThrottles` と `SessionCeiling` が「OK」（Live smoke の操作で上限に当たらない）
 - [ ] `node scripts/setup-secrets.mjs --check` が「6 個がそろっています」
 
 **品質ルーブリック（判定）**

@@ -1,7 +1,9 @@
 /**
  * PILOT metrics for the admin page (docs/validation-plan.md), per person: computed from the challenge
  * items (USER#<uid> / CH#<chId>) that exist now, with a paginated Scan. A Scan reads the whole table, so
- * it is capped; at pilot scale (tens of users) it is a handful of pages.
+ * it is bounded (R15): it returns only the attributes the metrics use (no notes; the stamps of days
+ * 1–7 only), in pages of at most PILOT_PAGE_LIMIT items, and stops after PILOT_TIME_BUDGET_MS (or
+ * PILOT_SCAN_CAP challenges) with `partial: true`. At pilot scale (tens of users) it is one page.
  */
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DEFAULT_TIMEZONE, dayIndex, isValidDate, todayIn, type PilotStats } from "@thirty/shared";
@@ -12,6 +14,15 @@ import type { Item } from "./util";
 
 /** Challenge items read at most per request (a safety cap, far above pilot scale). */
 export const PILOT_SCAN_CAP = 20_000;
+
+/** Items evaluated per Scan page: each call stays short, so the time budget is checked often. */
+export const PILOT_PAGE_LIMIT = 500;
+
+/**
+ * The scan answers with what it has after this long (`partial: true`): the API Lambda times out at
+ * 30 s, and a long scan holds the table's read capacity (R15, N3-2).
+ */
+export const PILOT_TIME_BUDGET_MS = 20_000;
 
 /** "7日継続" (validation-plan.md): at least RETENTION_MIN_STAMPS stamps within days 1..RETENTION_DAYS. */
 export const RETENTION_DAYS = 7;
@@ -80,13 +91,29 @@ export function pilotStats(challenges: Iterable<PilotChallenge>, today: string):
 export type PilotScanOptions = {
   /** Stop after this many challenge items (default PILOT_SCAN_CAP). */
   cap?: number;
-  /** Items evaluated per Scan page (default: DynamoDB's 1MB pages). Tests use it to force pagination. */
+  /** Items evaluated per Scan page (default PILOT_PAGE_LIMIT). Tests use a small one to force pagination. */
   pageSize?: number;
+  /** Stop starting new pages after this many milliseconds (default PILOT_TIME_BUDGET_MS). */
+  timeBudgetMs?: number;
+  /** A monotonic clock in milliseconds (default performance.now). Tests pass a fake one. */
+  elapsed?: () => number;
 };
 
-/** Scan every challenge item (paginated, capped) and compute PilotStats for `deps.now()`. */
+/**
+ * The stamps of days 1..RETENTION_DAYS, their `at` only: the retention metric counts these days and
+ * nothing else, and the notes never leave the table.
+ */
+const RETENTION_DAY_NAMES = Object.fromEntries(Array.from({ length: RETENTION_DAYS }, (_, i) => [`#d${i + 1}`, String(i + 1)]));
+const RETENTION_STAMPS = Object.keys(RETENTION_DAY_NAMES).map((d) => `#stamps.${d}.#at`);
+
+/**
+ * Scan the challenge items (paginated, bounded) and compute PilotStats for `deps.now()`. `partial` is
+ * set when the scan stopped before the end of the table (time budget or cap).
+ */
 export async function computePilotStats(deps: DbDeps, opts: PilotScanOptions = {}): Promise<PilotStats> {
   const cap = opts.cap ?? PILOT_SCAN_CAP;
+  const elapsed = opts.elapsed ?? (() => performance.now());
+  const deadline = elapsed() + (opts.timeBudgetMs ?? PILOT_TIME_BUDGET_MS);
   const challenges: PilotChallenge[] = [];
   let start: Record<string, unknown> | undefined;
   do {
@@ -94,20 +121,23 @@ export async function computePilotStats(deps: DbDeps, opts: PilotScanOptions = {
       new ScanCommand({
         TableName: deps.tableName,
         FilterExpression: "begins_with(#pk, :user) AND begins_with(#sk, :ch)",
-        // Only what the metrics need (stamps are counted, never returned).
-        ProjectionExpression: "#pk, #sk, #start, #status, #stamps, #share, #imported",
+        // Only what the metrics need. Read units are charged on whole items all the same; this keeps
+        // notes out of the response and the Lambda's memory.
+        ProjectionExpression: ["#pk", "#sk", "#start", "#status", "#share", "#imported", ...RETENTION_STAMPS].join(", "),
         ExpressionAttributeNames: {
           "#pk": "pk",
           "#sk": "sk",
           "#start": "startDate",
           "#status": "status",
           "#stamps": "stamps",
+          "#at": "at",
           "#share": "shareId",
           "#imported": "imported",
+          ...RETENTION_DAY_NAMES,
         },
         ExpressionAttributeValues: { ":user": PREFIX.user, ":ch": PREFIX.challenge },
         ExclusiveStartKey: start,
-        ...(opts.pageSize ? { Limit: opts.pageSize } : {}),
+        Limit: opts.pageSize ?? PILOT_PAGE_LIMIT,
       }),
     );
     for (const item of (res.Items ?? []) as Item[]) {
@@ -115,7 +145,9 @@ export async function computePilotStats(deps: DbDeps, opts: PilotScanOptions = {
       if (c) challenges.push(c);
     }
     start = res.LastEvaluatedKey;
-  } while (start && challenges.length < cap);
-  if (start || challenges.length > cap) log.warn("pilot stats: scan cap reached, numbers are partial", { cap });
-  return pilotStats(challenges.slice(0, cap), todayIn(DEFAULT_TIMEZONE, deps.now()));
+  } while (start && challenges.length < cap && elapsed() < deadline);
+  const partial = start !== undefined || challenges.length > cap;
+  if (partial) log.warn("pilot stats: scan stopped early, numbers are partial", { cap, read: challenges.length });
+  const stats = pilotStats(challenges.slice(0, cap), todayIn(DEFAULT_TIMEZONE, deps.now()));
+  return partial ? { ...stats, partial: true } : stats;
 }

@@ -5,12 +5,16 @@ import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it, vi } from "vitest";
 import { TABLE } from "../../apps/api/src/db/table";
+import { ALARMED_LOGS } from "../../apps/api/src/log-events";
+import { ALARMS, ALARM_METRIC_COUNT } from "../lib/cost-guard";
 import {
+  ALARM_METRIC_NAMESPACE,
   CACHE_CONTROL,
   COST_ALLOCATION_TAG,
   HTTP_API_NAME,
   NO_CACHE_FILES,
   PARAM,
+  SESSION_CEILING_LOG,
   STACK_DESCRIPTION,
   STACK_NAME,
   TABLE_KEYS,
@@ -113,9 +117,12 @@ describe("DynamoDB table", () => {
     });
   });
 
-  it("caps on-demand throughput on the table and on every GSI: a cost circuit breaker (NF-1, R1)", () => {
-    expect(TABLE_MAX_THROUGHPUT).toEqual({ maxReadRequestUnits: 400, maxWriteRequestUnits: 100 });
-    const cap = { MaxReadRequestUnits: 400, MaxWriteRequestUnits: 100 };
+  it("caps on-demand throughput on the table and on every GSI: a cost circuit breaker (NF-1, R1; reads raised in R15)", () => {
+    // Reads are cheap (1,000 RRU/s ≈ $0.51/h per table or index) and every authenticated request
+    // reads the table, so the read cap sits well above what the stage throttle lets one client draw
+    // in ordinary use; writes stay at 100 WRU/s (≈ $0.26/h each).
+    expect(TABLE_MAX_THROUGHPUT).toEqual({ maxReadRequestUnits: 1000, maxWriteRequestUnits: 100 });
+    const cap = { MaxReadRequestUnits: 1000, MaxWriteRequestUnits: 100 };
     const [table] = resourcesOf(template, "AWS::DynamoDB::Table");
     expect(table?.Properties?.BillingMode).toBe("PAY_PER_REQUEST");
     expect(table?.Properties?.OnDemandThroughput).toEqual(cap);
@@ -455,6 +462,7 @@ describe("cost guard", () => {
     template.resourceCountIs("AWS::Budgets::Budget", 0);
     template.resourceCountIs("AWS::SNS::Topic", 0);
     template.resourceCountIs("AWS::CloudWatch::Alarm", 0);
+    template.resourceCountIs("AWS::Logs::MetricFilter", 0);
   });
 
   const guarded = synth({ alertEmail: "owner@example.com" });
@@ -507,7 +515,7 @@ describe("cost guard", () => {
       [3600, 2],
     ]);
     const topic = logicalIdOf(guarded, "AWS::SNS::Topic", () => true);
-    expect(alarms()).toHaveLength(4);
+    expect(alarms()).toHaveLength(5);
     for (const a of alarms()) expect(a.AlarmActions).toEqual([{ Ref: topic }]);
     // The Lambda alarm kept its logical id (no replacement on deploy).
     expect(Object.keys(guarded.findResources("AWS::CloudWatch::Alarm")).some((id) => id.startsWith("CostGuardApiErrors"))).toBe(true);
@@ -552,6 +560,47 @@ describe("cost guard", () => {
     expect(sum?.ReturnData).toBe(true);
     expect(sum?.Expression).toBe(stats.map((q) => `FILL(${q.Id}, 0)`).join(" + "));
     expect(Object.keys(guarded.findResources("AWS::CloudWatch::Alarm")).some((id) => id.startsWith("CostGuardDynamoThrottles"))).toBe(true);
+  });
+
+  it("alarms when the global new-session ceiling turns visitors away: a metric filter on the API's warning (R11)", () => {
+    // The API logs exactly this text when POST /api/session refuses at the global ceiling.
+    expect(SESSION_CEILING_LOG).toBe(ALARMED_LOGS.sessionCeiling);
+    // The api Lambda's own log group (the reminder logs elsewhere).
+    const apiFn = appFunctions(guarded).find((fn) => envOf(fn).ORIGIN_VERIFY !== undefined);
+    const apiLogs = (apiFn?.Properties?.LoggingConfig as { LogGroup?: { Ref?: string } } | undefined)?.LogGroup?.Ref;
+    expect(apiLogs).toMatch(/^ApiLogs/);
+    const filters = resourcesOf(guarded, "AWS::Logs::MetricFilter");
+    expect(filters).toHaveLength(1);
+    expect(filters[0]?.Properties).toMatchObject({
+      LogGroupName: { Ref: apiLogs },
+      FilterPattern: `"${ALARMED_LOGS.sessionCeiling}"`,
+      MetricTransformations: [{ MetricNamespace: ALARM_METRIC_NAMESPACE, MetricName: "SessionCeilingReached", MetricValue: "1" }],
+    });
+    // No DefaultValue: the custom metric only has data (and only costs) in hours the warning appears.
+    expect(JSON.stringify(filters[0]?.Properties)).not.toContain("DefaultValue");
+    const ceiling = alarms().find((a) => a.MetricName === "SessionCeilingReached");
+    expect(ceiling).toMatchObject({
+      Namespace: ALARM_METRIC_NAMESPACE,
+      Statistic: "Sum",
+      Period: 300,
+      EvaluationPeriods: 1,
+      Threshold: ALARMS.sessionCeilingPerFiveMinutes,
+      ComparisonOperator: "GreaterThanOrEqualToThreshold",
+      TreatMissingData: "notBreaching",
+    });
+    expect(ALARMS.sessionCeilingPerFiveMinutes).toBe(1);
+    expect(Object.keys(guarded.findResources("AWS::CloudWatch::Alarm")).some((id) => id.startsWith("CostGuardSessionCeiling"))).toBe(true);
+  });
+
+  it("documents what the alarms cost: CloudWatch bills every metric of a metric-math alarm (N3-5)", () => {
+    // An alarm on one metric is one alarm metric; a math alarm is billed for every metric it uses.
+    const billed = alarms().reduce((n, a) => n + (a.MetricName ? 1 : ((a.Metrics as MetricQuery[] | undefined) ?? []).filter((q) => q.MetricStat).length), 0);
+    expect(billed).toBe(ALARM_METRIC_COUNT);
+    expect(ALARM_METRIC_COUNT).toBe(4 + TABLE_OPERATIONS.length);
+    // docs/deploy.md states the same count in the cost table.
+    const deployMd = readFileSync(path.join(here, "../../docs/deploy.md"), "utf8");
+    expect(deployMd).toContain(`アラームのメトリクス ${ALARM_METRIC_COUNT}個`);
+    expect(deployMd).not.toMatch(/アラーム・SNS・Budgets（`ALERT_EMAIL` 指定時） \| \$0 \|/);
   });
 
   it("the throttle alarm covers every DynamoDB operation the Lambdas use (apps/api/src)", () => {
