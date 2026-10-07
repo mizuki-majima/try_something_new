@@ -471,7 +471,9 @@ function MemberDetailSheet({
           </div>
         </dl>
         <Grid30 seal={m.seal} stampedDays={stamped} today={gridDay} locked={locked} label={`${who}の30日のカード`} readOnly />
-        {m.done && gridDay < TOTAL_DAYS && <p className="note">最後に押した日より後は、斜線で表示しています。</p>}
+        {m.done && gridDay < TOTAL_DAYS && (
+          <p className="note">{lastStamped > 0 ? "最後に押した日より後は、斜線で表示しています。" : "押した日がないので、すべて斜線で表示しています。"}</p>
+        )}
         <div className="row between gap fw tg-actions">
           {/* aria-disabled, not disabled: focus stays on the button after cheering (inside the dialog). */}
           <button
