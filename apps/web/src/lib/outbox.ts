@@ -6,6 +6,7 @@
  *
  * - 5xx / 429 / network / timeout → keep the item, stop, retry later with backoff
  * - 401 → keep everything, stop (the session must be restored first)
+ * - 404 to a challenge delete → it is already gone: counts as sent (no rollback, no message)
  * - other 4xx → drop the item (it will never succeed); the caller refetches to roll back
  *
  * Everything here is pure except drain(), which takes its I/O as arguments.
@@ -210,6 +211,15 @@ export function classifyError(err: unknown): FailureKind {
   return "drop";
 }
 
+/**
+ * A failure that means the op already took effect: deleting a challenge that the server no longer
+ * has (404: deleted on another device, or an earlier send whose response was lost). Treated as sent
+ * — no rollback, no error message.
+ */
+export function isAlreadyDone(op: OutboxOp, err: unknown): boolean {
+  return op.kind === "challenge.delete" && (err as { status?: unknown } | null)?.status === 404;
+}
+
 /** 2s, 4s, 8s … capped at 5 minutes. */
 export function backoffMs(attempts: number): number {
   return Math.min(5 * 60_000, 2_000 * 2 ** Math.max(0, attempts - 1));
@@ -253,6 +263,12 @@ export async function drain(deps: DrainDeps): Promise<DrainResult> {
     try {
       response = await deps.send(item);
     } catch (error) {
+      if (isAlreadyDone(item.op, error)) {
+        deps.save(deps.load().filter((i) => i.key !== item.key));
+        sent++;
+        deps.onSent?.(item, undefined);
+        continue;
+      }
       const kind = classifyError(error);
       const current = deps.load();
       if (kind === "drop") {

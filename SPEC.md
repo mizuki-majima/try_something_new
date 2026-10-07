@@ -68,7 +68,7 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 |---|---|
 | FR-1 | **アカウント**: メール不要の匿名アカウント。最初に書き込む操作（開始・投稿など）で `POST /api/session` を呼び、トークンを端末に保存。閲覧（レシピ・みんな・ガチャ）はアカウント不要 |
 | FR-2 | **端末の引き継ぎ**: 設定で8文字の引き継ぎコード（15分有効・1回限り）を発行し、別端末で入力すると同じアカウントで使える |
-| FR-3 | **チャレンジ**: 開始日は「今日」か「次の1日」。同時に開いておけるのは5件まで。タイトル・印（1文字）を編集でき、開始前なら開始日を変えられる。削除できる |
+| FR-3 | **チャレンジ**: 開始日は「今日」か「次の1日」。同時に開いておけるのは5件まで。新しく始められるのは1人1日10件まで（`QUOTAS.challengesPerUserPerDay`、日本時間の日付。同じ `id` の再送は数えない。作っては消すことで「人気」の並びを水増しさせないため）。タイトル・印（1文字）を編集でき、開始前なら開始日を変えられる。削除できる（公開カードがあれば、その画像と公開ページも消える） |
 | FR-4 | **1日1タップ記録**: 1〜「今日の日数」のマスに印を押せる（押し忘れた過去の日も押せる。未来は不可）。取り消し可。各日にひとこと（120字、本人だけに見える） |
 | FR-5 | **写真メモ**: 各日に写真を1枚添えられる。写真は端末内（IndexedDB）だけに保存し、サーバに送らない。保存前に縮小・再エンコードし、位置情報などのメタデータを残さない |
 | FR-6 | **振り返り**: 30日目以降、または7日目以降の「ここで区切る」で、判定（続ける／やめる／形を変える）とひとこと（140字）を決める。判定後は記録が確定（印は変えられない） |
@@ -83,7 +83,7 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 | FR-15 | **記録**: 終わったチャレンジの一覧（判定バッジ・押せた日数・ひとこと）、合計（試した数・押した印の数・判定の内訳）、日ごとのメモ一覧 |
 | FR-16 | **バックアップ**: JSON の書き出し・読み込み（読み込みは自分のアカウントにマージ） |
 | FR-17 | **データ削除**: 設定の「すべてのデータを削除」で、アカウント・チャレンジ・投稿・公開カード・通知登録を消す |
-| FR-18 | **通報とモデレーション**: レシピ・体験談・公開カード・1日組の表示に「通報」。3人から通報で自動非表示。管理画面（`/admin`、管理トークン）で一覧・非表示・復元・削除、おすすめ指定、統計、お問い合わせ閲覧 |
+| FR-18 | **通報とモデレーション**: レシピ・体験談・公開カード・1日組の表示に「通報」。3人から通報で自動非表示。管理画面（`/admin`、管理トークン）で一覧・非表示・復元・削除、おすすめ指定、統計、お問い合わせ閲覧。**削除**はレシピ・体験談・公開カードでは本当に消す。**1日組（member）の削除は本人の記録（印・メモ）を消さない**（AI PM 決定）: そのチャレンジを1日組の一覧から恒久的に外し（`hiddenFromCohort`、gsi1 を外す）、公開カードがあれば非表示にする。どの種類でも通報に削除済みの印（`deletedAt`）を付け、以後の「復元」は受け付けない（409）。統計には PILOT の指標（開始した人・7日継続・完走。[docs/validation-plan.md](docs/validation-plan.md)）を、いまあるチャレンジから集計して出す |
 | FR-19 | **お問い合わせ**: フォーム（返信先は任意入力）。管理画面で読む |
 | FR-20 | **PWA**: ホーム画面に追加でき、オフラインでも「きょう」と公式レシピが開ける。オフライン中の操作は端末に溜め、復帰時に送る |
 | FR-21 | **表示**: **ネオ・ブルータリズム**（太い黒線・ずらし影・フラットな原色・太い見出し。詳細は [docs/design.md](docs/design.md)）。ライト／ダーク（端末設定に追従、手動切替可）。スマホは下のタブバー、PC は上のタブ。30マスと朱色の印、方眼の背景は前回のアーティファクトから引き継ぐ |
@@ -113,7 +113,7 @@ EventBridge rule (15分ごと) → Lambda "reminder" → Web Push (VAPID)
 Lambda "api" → DynamoDB（1テーブル, on-demand, PITR） / S3 media / SSM Parameter Store
 ```
 
-- リージョン `ap-northeast-1`。IaC は AWS CDK（`infra/`）。Lambda は Node.js 22 / arm64、esbuild で自前バンドル（`apps/api/build.mjs`）
+- リージョン `ap-northeast-1`。IaC は AWS CDK（`infra/`、スタック `ThirtyDays`、説明「30日だけ (try_something_new)」）。AWS アカウントは他のプロジェクトと共用なので、HTTP API の名前は `ThirtyDaysApi`。Lambda は Node.js 22 / arm64、esbuild で自前バンドル（`apps/api/build.mjs`）
 - `/api/*` と `/s/*` には CloudFront Function（viewer-request）で `x-forwarded-host`（公開 URL の組み立て用）と `x-viewer-ip`（レート制限用）を付ける。オリジンには秘密ヘッダ `x-origin-verify` を付け、API は一致しないリクエストを 403 にする（API Gateway の直接呼び出しを防ぐ）
 - キャッシュ: `/api/*` `/s/*` はキャッシュしない。`/assets/*` は 1年 immutable。`index.html` と `sw.js` は no-cache
 - セキュリティヘッダ（CloudFront Response Headers Policy）: CSP `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'`、HSTS、nosniff、Referrer-Policy `strict-origin-when-cross-origin`
@@ -154,7 +154,8 @@ Lambda "api" → DynamoDB（1テーブル, on-demand, PITR） / S3 media / SSM P
 - 認証: `Authorization: Bearer <token>`。トークンは 32 バイトの乱数（base64url）。サーバは SHA-256 だけを保存する
 - エラー: `{ "error": { "code", "message", "fields?" } }`。400 bad_request / 401 unauthorized / 403 forbidden / 404 not_found / 409 conflict / 413 payload_too_large / 415 unsupported_media_type / 429 rate_limited / 503 ai_unavailable / 500 internal
 - 日付の判定はユーザーのタイムゾーン（`tz`）での「今日」。端末とずれる場合に備えて、印は「今日の日数 + 1」まで受け付ける
-- `POST /api/challenges` はクライアント生成の `id` で冪等（同じ `id` の再送は既存を返す）。印の `PUT` / `DELETE` も冪等
+- `POST /api/challenges` はクライアント生成の `id` で冪等（同じ `id` の再送は既存を返し、作成の上限 `QUOTAS.challengesPerUserPerDay` にも数えない。上限を超えた作成は 429）。印の `PUT` / `DELETE` も冪等
+- Web クライアントは `POST` `PUT` `PATCH` に本文が無くても `{}` を `Content-Type: application/json` で送る（`apps/web/src/lib/http.ts`）
 - 公開レスポンスにトークン・ユーザー ID・ひとことメモ・通知の登録情報を含めない
 
 ## Data Model
@@ -165,18 +166,18 @@ DynamoDB 1テーブル（`pk`, `sk`）＋ GSI 3つ（`gsi1pk/gsi1sk`, `gsi2pk/gs
 |---|---|---|---|---|
 | ユーザー | `USER#<uid>` | `PROFILE` | | nickname, tz, shareProgress, reminder |
 | トークン | `TOKEN#<sha256>` | `TOKEN` | | userId。逆引き用に `USER#<uid>` / `TOKEN#<sha256>` も置く |
-| チャレンジ | `USER#<uid>` | `CH#<chId>` | gsi1: `COHORT#<YYYY-MM>` / `<updatedAt13>#<chId>`（進捗公開 ON かつ非表示でないときだけ） | stamps は `{ "1": { at, note? } }` |
-| チャレンジ参照 | `CHREF#<chId>` | `REF` | | userId（応援・通報で使う） |
-| 応援の記録 | `CHEER#<chId>#<date>` | `BY#<uid>` | | TTL 2日。1日1回の判定 |
+| チャレンジ | `USER#<uid>` | `CH#<chId>` | gsi1: `COHORT#<YYYY-MM>` / `<updatedAt13>#<chId>`（進捗公開 ON かつ非表示でないときだけ） | stamps は `{ "1": { at, note? } }`。hiddenFromCohort（通報・管理で1日組から外した）、shareId（公開カード） |
+| チャレンジ参照 | `CHREF#<chId>` | `REF` | gsi2: `AUTHOR#<uid>` / `CHREF#<chId>` | userId（応援・通報で使う）。チャレンジ本体が無くてもアカウント削除で見つかるように gsi2 を持つ |
+| 応援の記録 | `CHEER#<chId>#<date>` | `BY#<uid>` | gsi2: `AUTHOR#<uid>` / `CHEER#<chId>#<date>` | TTL 2日。1日1回の判定。gsi2 は応援した人のアカウント削除用 |
 | みんなのレシピ | `RECIPE#<rid>` | `META` | gsi1: `RECIPES` / `<createdAt13>#<rid>`（公開中のみ）; gsi2: `AUTHOR#<uid>` / `RECIPE#<rid>` | status: published / hidden |
 | レシピの集計 | `RSTATS` | `<rid>` | | startCount, storyCount, featured（公式・みんな共通） |
 | 体験談 | `RECIPE#<rid>` | `STORY#<createdAt13>#<sid>` | gsi2: `AUTHOR#<uid>` / `STORY#<rid>#<sid>` | |
-| 公開カード | `SHARE#<sid>` | `META` | gsi2: `AUTHOR#<uid>` / `SHARE#<sid>` | 画像は S3 `share/<sid>.png` |
+| 公開カード | `SHARE#<sid>` | `META` | gsi2: `AUTHOR#<uid>` / `SHARE#<sid>` | 画像は S3 `share/<sid>.png`。元のチャレンジを削除すると一緒に消える |
 | 通知の登録 | `USER#<uid>` | `PUSH#<sha256(endpoint)>` | gsi3: `SLOT#<HH:MM UTC>` / `<uid>#<hash>`（リマインド ON のときだけ） | endpoint, keys |
 | 引き継ぎコード | `TRANSFER#<code>` | `META` | | TTL 15分 |
 | レート制限 | `RATE#<scope>#<key>#<window>` | `RATE` | | TTL 2日 |
-| 通報 | `REPORT#<type>#<id>` | `META` | gsi1: `REPORTS` / `<lastAt13>` | count, reasons（直近10件） |
-| 通報者 | `REPORT#<type>#<id>` | `BY#<uid>` | | 同じ人の重複通報を数えない |
+| 通報 | `REPORT#<type>#<id>` | `META` | gsi1: `REPORTS` / `<lastAt13>` | count, reasons（直近10件）, deletedAt（管理画面で削除した。復元不可）。通報されていない対象を削除したときは gsi1 なしで作る（一覧には出ない） |
+| 通報者 | `REPORT#<type>#<id>` | `BY#<uid>` | gsi2: `AUTHOR#<uid>` / `REPORT#<type>#<id>` | 同じ人の重複通報を数えない。gsi2 は通報した人のアカウント削除用 |
 | お問い合わせ | `CONTACT#<id>` | `META` | gsi1: `CONTACTS` / `<createdAt13>` | TTL 180日 |
 | 統計 | `STATS` | `GLOBAL` | | users, challengesStarted, challengesDone, verdict_*, communityRecipes, stories, shares, pushSubscriptions |
 
@@ -188,7 +189,7 @@ DynamoDB 1テーブル（`pk`, `sk`）＋ GSI 3つ（`gsi1pk/gsi1sk`, `gsi2pk/gs
 
 | 状況 | 振る舞い |
 |---|---|
-| オフライン／API 5xx | 書き込みは端末の送信待ち（outbox）に入れて画面は先に更新。復帰時に順に再送（冪等なので重複しない）。4xx は再送せず、画面を元に戻してメッセージ |
+| オフライン／API 5xx | 書き込みは端末の送信待ち（outbox）に入れて画面は先に更新。復帰時に順に再送（冪等なので重複しない）。4xx は再送せず、画面を元に戻してメッセージ。ただしチャレンジ削除への 404 は「もう無い」なので成功として扱う。送る前に作成と削除がそろった場合は、どちらも送らない |
 | 401（トークン無効） | 端末のトークンを破棄し、引き継ぎコードでの復元を案内。ローカルの未送信データは書き出せる |
 | 429 | 「今日はここまで」と残り回数・リセット時刻の目安を表示 |
 | 提案の失敗 | 「提案を作れませんでした」を表示。通常のガチャは使える |

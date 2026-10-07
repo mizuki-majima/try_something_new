@@ -15,7 +15,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "aws-cdk-lib";
-import { REGION, STACK_NAME } from "../lib/config";
+import { REGION, STACK_DESCRIPTION, STACK_NAME } from "../lib/config";
 import { DEFAULT_ASSET_PATHS, ThirtyDaysStack } from "../lib/thirty-days-stack";
 
 const infraDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,7 +44,7 @@ if (alertEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(alertEmail)) {
 
 new ThirtyDaysStack(app, STACK_NAME, {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: REGION },
-  description: "thirty-days: try something new for 30 days",
+  description: STACK_DESCRIPTION,
   webDistPath: assetPath("webDistPath"),
   apiDistPath: assetPath("apiDistPath"),
   reminderDistPath: assetPath("reminderDistPath"),

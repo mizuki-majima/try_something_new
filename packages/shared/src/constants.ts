@@ -58,6 +58,11 @@ export const LIMITS = {
 export const QUOTAS = {
   /** ひらめき提案（AI は使わない。ADR 0003）. */
   suggestionsPerUserPerDay: 10,
+  /**
+   * New challenges (POST /api/challenges that actually creates; idempotent replays do not count).
+   * Stops create → delete loops from inflating a recipe's startCount (the "人気" order).
+   */
+  challengesPerUserPerDay: 10,
   recipesPerUserPerDay: 5,
   storiesPerUserPerDay: 10,
   sharesPerUserPerDay: 10,

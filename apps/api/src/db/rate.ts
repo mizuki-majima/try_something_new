@@ -78,6 +78,28 @@ export async function enforceQuota(
   }
 }
 
+/**
+ * Give back one use counted by enforceQuota when the action did not happen after all (e.g. a
+ * concurrent replay created it first). Never goes below zero; a missing counter is left alone.
+ */
+export async function refundQuota(deps: DbDeps, scope: string, key: string, kind: WindowKind): Promise<void> {
+  const { id } = windowFor(kind, deps.now());
+  try {
+    await deps.db.send(
+      new UpdateCommand({
+        TableName: deps.tableName,
+        Key: counterKey(scope, key, id),
+        UpdateExpression: "ADD #count :minus",
+        ConditionExpression: "#count > :zero",
+        ExpressionAttributeNames: { "#count": "count" },
+        ExpressionAttributeValues: { ":minus": -1, ":zero": 0 },
+      }),
+    );
+  } catch (err) {
+    if (!isConditionFailed(err)) throw err;
+  }
+}
+
 /** Uses counted so far in the current window (does not count a use). */
 export async function getQuotaUsage(
   deps: DbDeps,

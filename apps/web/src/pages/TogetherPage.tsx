@@ -220,8 +220,7 @@ function MonthPanel({ month, current, today }: { month: string; current: boolean
     const patch = (fn: (x: CohortMember) => CohortMember) => update((list) => list.map((x) => (x.challengeId === id ? fn(x) : x)));
     patch((x) => ({ ...x, cheers: x.cheers + 1, cheeredToday: true }));
     try {
-      // Empty JSON body: the API requires Content-Type: application/json on every POST.
-      const res = await request<CheerResponse>("POST", API.cheer(id), { body: {}, auth: "required" });
+      const res = await request<CheerResponse>("POST", API.cheer(id), { auth: "required" });
       if (typeof res?.cheers === "number") patch((x) => ({ ...x, cheers: res.cheers, cheeredToday: true }));
       toast(`${m.nickname}さんを応援しました`);
     } catch (err) {

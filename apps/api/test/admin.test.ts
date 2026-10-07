@@ -8,6 +8,8 @@ import {
   type AdminReportsResponse,
   type AdminStats,
   type Challenge,
+  type ChallengeListResponse,
+  type CohortResponse,
   type Recipe,
   type RecipeDetailResponse,
   type RecipeListResponse,
@@ -248,7 +250,7 @@ describe("POST /api/admin/moderate", () => {
     expect((await getChallengeItem(api.deps, owner.user.id, c.id))?.shareId).toBeUndefined();
   });
 
-  it("member: hide / restore (only back in the cohort while the owner shares progress) / delete", async () => {
+  it("member: hide / restore (only back in the cohort while the owner shares progress)", async () => {
     const owner = await api.createSession("メンバー");
     const c = await seedMember(owner);
     const item = () => getChallengeItem(api.deps, owner.user.id, c.id);
@@ -268,13 +270,71 @@ describe("POST /api/admin/moderate", () => {
     expect((await moderate("member", c.id, "restore")).status).toBe(204);
     expect((await item())?.hiddenFromCohort).toBeUndefined();
     expect((await item())?.gsi1pk).toBeUndefined();
+  });
 
+  it("member: delete removes it from the cohort for good but keeps the owner's private record", async () => {
+    const owner = await api.createSession("メンバー");
+    const c = await seedMember(owner, challenge({ stamps: { "1": { at: 1, note: "ひみつ" }, "2": { at: 2 } } }));
     const sid = await seedShare(owner, c.id);
+    const item = () => getChallengeItem(api.deps, owner.user.id, c.id);
+    const inCohort = async () =>
+      (await json<CohortResponse>(await api.request("/api/cohorts/2026-10"))).members.some((m) => m.challengeId === c.id);
+    await reportBy(1, "member", c.id, "不適切なタイトル");
+    expect(await inCohort()).toBe(true);
+
     expect((await moderate("member", c.id, "delete")).status).toBe(204);
-    expect(await item()).toBeUndefined();
-    expect(await getItem(`CHREF#${c.id}`, "REF")).toBeUndefined();
-    expect(await getItem(`SHARE#${sid}`, "META")).toBeUndefined();
-    expect(api.media.objects.has(shareMediaKey(sid))).toBe(false);
+    // Out of the cohort, and its public card is hidden (not deleted).
+    expect(await inCohort()).toBe(false);
+    expect(await item()).toMatchObject({ hiddenFromCohort: true, shareId: sid });
+    expect((await item())?.gsi1pk).toBeUndefined();
+    expect((await getItem(`SHARE#${sid}`, "META"))?.status).toBe("hidden");
+    expect(api.media.objects.has(shareMediaKey(sid))).toBe(true);
+    expect((await api.request(`/s/${sid}`)).status).toBe(404);
+    // The report is marked deleted (preview kept: the record still exists).
+    const listedItem = (await reportItems()).find((i) => i.targetId === c.id);
+    expect(listedItem).toMatchObject({ targetType: "member", status: "deleted", count: 1, reasons: ["不適切なタイトル"] });
+    expect(listedItem?.preview).toContain(c.title);
+    expect(typeof (await getItem(`REPORT#member#${c.id}`, "META"))?.deletedAt).toBe("number");
+
+    // The owner's private data is untouched and still works.
+    expect(await getItem(`CHREF#${c.id}`, "REF")).toMatchObject({ userId: owner.user.id });
+    const mine = (await json<ChallengeListResponse>(await api.request("/api/challenges", { token: owner.token }))).challenges;
+    expect(mine.find((x) => x.id === c.id)?.stamps).toEqual({ "1": { at: 1, note: "ひみつ" }, "2": { at: 2 } });
+    const stamped = await api.request(`/api/challenges/${c.id}/stamps/3`, { method: "PUT", token: owner.token, body: {} });
+    expect(stamped.status).toBe(200);
+    // Activity (and the owner's settings) never put it back in the cohort.
+    await api.request("/api/me", { method: "PATCH", token: owner.token, body: { nickname: "改名", shareProgress: true } });
+    expect(await inCohort()).toBe(false);
+
+    // Permanent: restore is refused, repeated deletes and hides are harmless.
+    const restore = await moderate("member", c.id, "restore");
+    expect(restore.status).toBe(409);
+    expect((await item())?.hiddenFromCohort).toBe(true);
+    expect((await moderate("member", c.id, "delete")).status).toBe(204);
+    expect((await moderate("member", c.id, "hide")).status).toBe(204);
+    expect(await inCohort()).toBe(false);
+    expect((await reportItems()).find((i) => i.targetId === c.id)?.status).toBe("deleted");
+  });
+
+  it("member: deleting one that was never reported keeps it out of the list until someone reports it", async () => {
+    const owner = await api.createSession("メンバー");
+    const c = await seedMember(owner);
+    expect((await moderate("member", c.id, "delete")).status).toBe(204);
+    expect((await reportItems()).some((i) => i.targetId === c.id)).toBe(false);
+    expect((await moderate("member", c.id, "restore")).status).toBe(409);
+    await reportBy(1, "member", c.id);
+    expect((await reportItems()).find((i) => i.targetId === c.id)).toMatchObject({ status: "deleted", count: 1 });
+  });
+
+  it("delete marks the report deleted for every type, and restore is refused afterwards", async () => {
+    const owner = await api.createSession();
+    const c = await seedMember(owner, challenge({ status: "done", verdict: "stop" }));
+    const sid = await seedShare(owner, c.id);
+    await reportBy(1, "share", sid);
+    expect((await moderate("share", sid, "delete")).status).toBe(204);
+    expect(typeof (await getItem(`REPORT#share#${sid}`, "META"))?.deletedAt).toBe("number");
+    expect((await reportItems()).find((i) => i.targetId === sid)).toMatchObject({ status: "deleted", preview: "" });
+    expect((await moderate("share", sid, "restore")).status).toBe(404); // gone for real
   });
 
   it("validates the input and 404s unknown targets", async () => {
@@ -337,8 +397,15 @@ describe("GET /api/admin/stats", () => {
         "shareActions",
         "suggestionsToday",
         "pushSubscriptions",
+        "pilot",
       ].sort(),
     );
+    expect(Object.keys(stats.pilot).sort()).toEqual(["eligible7", "reflected", "retained7", "started", "starters"]);
+    // The members seeded above (startDate 2026-10-01, day 7 on 10-07 JST) count as started.
+    expect(stats.pilot.started).toBeGreaterThan(0);
+    expect(stats.pilot.starters).toBeGreaterThan(0);
+    expect(stats.pilot.reflected).toBeLessThanOrEqual(stats.pilot.started);
+    expect(stats.pilot.retained7).toBeLessThanOrEqual(stats.pilot.eligible7);
     expect(stats.verdicts).toEqual({ continue: 2, stop: 0, modify: 1 });
     expect(stats.suggestionsToday).toBe(4);
     expect(stats.challengesStarted).toBeGreaterThanOrEqual(5);
@@ -346,7 +413,9 @@ describe("GET /api/admin/stats", () => {
     expect(stats.communityRecipes).toBeGreaterThan(0);
     expect(stats.shareActions).toMatchObject({ link: 0, image: 0, x: 0, line: 0, copy: 0 });
     expect(stats.shareActions.webshare).toBe(1);
-    for (const v of Object.values(stats)) if (typeof v === "number") expect(Number.isFinite(v)).toBe(true);
+    for (const v of [...Object.values(stats), ...Object.values(stats.pilot)]) {
+      if (typeof v === "number") expect(Number.isFinite(v)).toBe(true);
+    }
     api.clock.set("2026-10-06T03:00:00.000Z");
   });
 });

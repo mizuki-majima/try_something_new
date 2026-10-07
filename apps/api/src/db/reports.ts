@@ -1,16 +1,17 @@
 /**
  * Reports and moderation (FR-18).
- *   REPORT#<type>#<id> / META   count, reasons (last 10), lastAt; gsi1 REPORTS / <lastAt13>
+ *   REPORT#<type>#<id> / META   count, reasons (last 10), lastAt, deletedAt (moderator deleted it);
+ *                                gsi1 REPORTS / <lastAt13>
  *   REPORT#<type>#<id> / BY#<uid>  one per reporter (a repeat report is not counted);
  *                                  gsi2 AUTHOR#<uid> so it goes with the reporter's account
  * Targets: recipe = community recipe id, story = "<recipeId>:<storyId>", share = share id,
  * member = challenge id (owner found through CHREF).
  */
-import { DeleteCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { IdSchema, RecipeIdSchema, type AdminReportItem, type ReportTargetType } from "@thirty/shared";
 import type { DbDeps, Deps } from "../ports";
 import { excerpt } from "../share-page";
-import { challengeKey, challengeRefKey, reportKey, reporterKey, reportListGsi1, authorPk } from "./keys";
+import { challengeKey, reportKey, reporterKey, reportListGsi1, authorPk } from "./keys";
 import { cohortProjection, getChallengeItem, getChallengeOwner, toChallenge } from "./challenges";
 import {
   deleteRecipeAndStories,
@@ -21,7 +22,7 @@ import {
   setStoryStatus,
   type PublicStatus,
 } from "./recipes";
-import { deleteShare, getShareItem, removeShare, setShareStatus } from "./shares";
+import { deleteShare, getShareItem, setShareStatus } from "./shares";
 import { GSI1 } from "./table";
 import { getUser } from "./users";
 import { isConditionFailed, type Item } from "./util";
@@ -241,14 +242,33 @@ async function restoreMember(deps: D, ownerId: string, chId: string): Promise<bo
   return false;
 }
 
-/** Remove a member's challenge entirely (moderator's "delete"): the challenge, its CHREF and its share card. */
-async function deleteMember(deps: Deps, ownerId: string, chId: string): Promise<void> {
-  const res = await deps.db.send(new DeleteCommand({ TableName: deps.tableName, Key: challengeKey(ownerId, chId), ReturnValues: "ALL_OLD" }));
-  await deps.db.send(new DeleteCommand({ TableName: deps.tableName, Key: challengeRefKey(chId) }));
-  const shareId = res.Attributes?.shareId;
-  if (typeof shareId === "string") {
+/**
+ * Moderator's "delete" of a member (FR-18, AI PM decision): the challenge is the owner's private
+ * record (stamps, notes), so it is never destroyed. Instead it leaves the cohort list for good
+ * (hiddenFromCohort, gsi1 removed) and its public share card, if any, is hidden. The admin route
+ * marks the report deleted, which also refuses a later "restore".
+ */
+async function removeMember(deps: D, ownerId: string, chId: string): Promise<void> {
+  let shareId: unknown;
+  try {
+    const res = await deps.db.send(
+      new UpdateCommand({
+        TableName: deps.tableName,
+        Key: challengeKey(ownerId, chId),
+        UpdateExpression: "SET hiddenFromCohort = :t REMOVE gsi1pk, gsi1sk",
+        ConditionExpression: "attribute_exists(pk)",
+        ExpressionAttributeValues: { ":t": true },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    shareId = res.Attributes?.shareId;
+  } catch (err) {
+    if (isConditionFailed(err)) return; // the owner deleted it meanwhile
+    throw err;
+  }
+  if (typeof shareId === "string" && shareId) {
     const share = await getShareItem(deps, shareId);
-    if (share && share.userId === ownerId) await removeShare(deps, shareId);
+    if (share && share.userId === ownerId) await setShareStatus(deps, shareId, "hidden");
   }
 }
 
@@ -279,6 +299,7 @@ export async function restoreTarget(deps: D, t: Target): Promise<boolean> {
   }
 }
 
+/** Moderator's "delete": real deletion for recipes, stories and share cards; see removeMember for members. */
 export async function deleteTarget(deps: Deps, t: Target): Promise<void> {
   switch (t.type) {
     case "recipe":
@@ -288,8 +309,33 @@ export async function deleteTarget(deps: Deps, t: Target): Promise<void> {
     case "share":
       return deleteShare(deps, t.item);
     case "member":
-      return deleteMember(deps, t.ownerId!, t.id);
+      return removeMember(deps, t.ownerId!, t.id);
   }
+}
+
+/**
+ * Record the moderator's "delete" on the report META (deletedAt). The admin list then shows the
+ * target as deleted and a "restore" is refused, which is what keeps a removed member out of the
+ * cohort for good. A target that was never reported gets a META without gsi1: it stays out of the
+ * admin list until someone reports it, and is shown as deleted from then on.
+ */
+export async function markReportDeleted(deps: D, type: ReportTargetType, id: string): Promise<void> {
+  await deps.db.send(
+    new UpdateCommand({
+      TableName: deps.tableName,
+      Key: reportKey(type, id),
+      UpdateExpression: "SET targetType = :type, targetId = :id, deletedAt = :now",
+      ExpressionAttributeValues: { ":type": type, ":id": id, ":now": deps.now().getTime() },
+    }),
+  );
+}
+
+/** True when a moderator deleted this target (see markReportDeleted). */
+export async function isReportDeleted(deps: D, type: ReportTargetType, id: string): Promise<boolean> {
+  const res = await deps.db.send(
+    new GetCommand({ TableName: deps.tableName, Key: reportKey(type, id), ProjectionExpression: "deletedAt" }),
+  );
+  return typeof res.Item?.deletedAt === "number";
 }
 
 // ---------- admin list ----------
@@ -317,13 +363,15 @@ export async function listReports(deps: D, max = MAX_LISTED_REPORTS): Promise<Ad
         const type = m.targetType as ReportTargetType;
         const targetId = String(m.targetId);
         const target = await resolveTarget(deps, type, targetId);
+        // A removed member still exists (the owner's record): deleted for moderation, preview kept.
+        const deleted = !target || typeof m.deletedAt === "number";
         return {
           targetType: type,
           targetId,
           count: Number(m.count ?? 0),
           reasons: Array.isArray(m.reasons) ? m.reasons.map(String) : [],
           lastAt: Number(m.lastAt ?? 0),
-          status: target ? target.status : "deleted",
+          status: deleted ? "deleted" : target.status,
           preview: target ? targetPreview(target) : "",
         };
       }),

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { ToastHost, ToastProvider } from "../src/components/Toast";
 import { adminRequest, getAdminToken, setAdminToken } from "../src/lib/admin";
 import { KEYS, writeString } from "../src/lib/storage";
-import AdminPage, { pilotRows } from "../src/pages/AdminPage";
+import AdminPage, { actionMessage, pilotRows } from "../src/pages/AdminPage";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -21,6 +21,7 @@ const STATS: AdminStats = {
   shareActions: { link: 2, image: 1, webshare: 0, x: 1, line: 0, copy: 0 },
   suggestionsToday: 6,
   pushSubscriptions: 3,
+  pilot: { starters: 9, eligible7: 8, retained7: 5, started: 10, reflected: 5 },
 };
 
 const REPORT: AdminReportItem = {
@@ -106,8 +107,15 @@ describe("AdminPage", () => {
     expect(await screen.findByText("PILOT の合格ライン")).toBeTruthy();
     expect(sessionStorage.getItem("thirty-days.admin-token")).toBe("secret");
     expect(localStorage.getItem("thirty-days.admin-token")).toBeNull();
-    expect(screen.getAllByText("50%").length).toBeGreaterThan(0); // 完走率 5/10
+    expect(screen.getAllByText("50%").length).toBeGreaterThan(0); // 完走 5/10
     expect(screen.getByText("40%以上")).toBeTruthy();
+    // The three pilot rows from s.pilot, without "proxy" caveats.
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("開始した人")).toBeTruthy();
+    expect(within(table).getByText("9人")).toBeTruthy();
+    expect(within(table).getByText("62.5%")).toBeTruthy(); // 7日継続 5/8
+    expect(within(table).getByText("60%以上")).toBeTruthy();
+    expect(table.textContent).not.toMatch(/代用|出せません|チャレンジ数）/);
   });
 
   it("lists reports and restores one after confirming", async () => {
@@ -149,13 +157,48 @@ describe("AdminPage", () => {
 });
 
 describe("pilotRows", () => {
-  it("judges against the fixed pilot targets", () => {
-    const rows = pilotRows(STATS);
-    expect(rows.find((r) => r.label === "開始数")?.judge).toBe("pass");
-    expect(rows.find((r) => r.label === "完走")).toMatchObject({ value: "50%", judge: "pass" });
-    expect(rows.find((r) => r.label === "共有")).toMatchObject({ value: "40%", judge: "pass" });
-    expect(rows.find((r) => r.label === "7日継続")?.judge).toBe("na");
-    const empty = pilotRows({ ...STATS, users: 0, challengesStarted: 0, challengesDone: 0, shares: 0 });
-    expect(empty.find((r) => r.label === "完走")).toMatchObject({ value: "—", judge: "na" });
+  const row = (s: AdminStats, label: string) => pilotRows(s).find((r) => r.label === label);
+  const withPilot = (pilot: Partial<AdminStats["pilot"]>): AdminStats => ({ ...STATS, pilot: { ...STATS.pilot, ...pilot } });
+
+  it("shows 開始した人, 7日継続 and 完走 from the pilot metrics against the fixed targets", () => {
+    expect(pilotRows(STATS).map((r) => r.label)).toEqual(["開始した人", "7日継続", "完走", "共有"]);
+    expect(row(STATS, "開始した人")).toMatchObject({ value: "9人", target: "8人以上", judge: "pass" });
+    expect(row(STATS, "7日継続")).toMatchObject({ value: "62.5%", target: "60%以上", judge: "pass", note: "1〜7日目に印5個以上 5 ÷ 7日目を過ぎた 8" });
+    expect(row(STATS, "完走")).toMatchObject({ value: "50%", target: "40%以上", judge: "pass", note: "振り返り 5 ÷ 開始 10" });
+    expect(row(STATS, "共有")).toMatchObject({ value: "40%", target: "30%以上", judge: "pass" });
+    // users / challengesStarted (account and lifetime counters) no longer stand in for the pilot numbers.
+    expect(row({ ...STATS, users: 100, challengesStarted: 100 }, "開始した人")?.value).toBe("9人");
+    for (const r of pilotRows(STATS)) expect(r.note ?? "").not.toMatch(/代用|出せません|チャレンジ数）/);
+  });
+
+  it("judges exactly at the targets and below them", () => {
+    expect(row(withPilot({ starters: 8 }), "開始した人")?.judge).toBe("pass");
+    expect(row(withPilot({ starters: 7 }), "開始した人")?.judge).toBe("fail");
+    expect(row(withPilot({ retained7: 3, eligible7: 5 }), "7日継続")).toMatchObject({ value: "60%", judge: "pass" });
+    expect(row(withPilot({ retained7: 5, eligible7: 9 }), "7日継続")).toMatchObject({ value: "55.6%", judge: "fail" });
+    expect(row(withPilot({ reflected: 2, started: 5 }), "完走")).toMatchObject({ value: "40%", judge: "pass" });
+    expect(row(withPilot({ reflected: 3, started: 8 }), "完走")).toMatchObject({ value: "37.5%", judge: "fail" });
+    expect(row({ ...STATS, shares: 3, challengesDone: 10 }, "共有")).toMatchObject({ value: "30%", judge: "pass" });
+  });
+
+  it("does not break when an older API answers without pilot metrics", () => {
+    const { pilot: _pilot, ...old } = STATS;
+    expect(row(old as AdminStats, "完走")).toMatchObject({ value: "—", judge: "na" });
+  });
+
+  it("has no judgement without a denominator", () => {
+    const empty = withPilot({ starters: 0, eligible7: 0, retained7: 0, started: 0, reflected: 0 });
+    expect(row(empty, "開始した人")).toMatchObject({ value: "0人", judge: "fail" });
+    expect(row(empty, "7日継続")).toMatchObject({ value: "—", judge: "na" });
+    expect(row(empty, "完走")).toMatchObject({ value: "—", judge: "na" });
+    expect(row({ ...STATS, shares: 0, challengesDone: 0 }, "共有")).toMatchObject({ value: "—", judge: "na" });
+  });
+});
+
+describe("member delete wording", () => {
+  it("says the owner's record stays", () => {
+    expect(actionMessage("member", "delete")).toContain("本人の記録（印・メモ）は消えません");
+    expect(actionMessage("recipe", "delete")).toBe("完全に削除します。元に戻せません。");
+    expect(actionMessage("member", "hide")).not.toContain("本人の記録");
   });
 });

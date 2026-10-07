@@ -1,6 +1,8 @@
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  LIMITS,
+  QUOTAS,
   newId,
   type ApiError,
   type Challenge,
@@ -10,8 +12,9 @@ import {
   type SessionResponse,
 } from "@thirty/shared";
 import { claimChallengeId } from "../src/db/challenges";
+import { getQuotaUsage } from "../src/db/rate";
 import { getStats } from "../src/db/stats";
-import { CHALLENGE_MESSAGES } from "../src/routes/challenges";
+import { CHALLENGE_MESSAGES, CREATE_QUOTA_SCOPE } from "../src/routes/challenges";
 import { json, setupApi } from "./helpers";
 
 const api = setupApi();
@@ -199,6 +202,73 @@ describe("POST /api/challenges", () => {
     expect((await postChallenge(s, createBody({ id: "BAD-ID" }))).status).toBe(400);
     expect((await api.request("/api/challenges", { body: createBody() })).status).toBe(401);
     expect((await api.request("/api/challenges")).status).toBe(401);
+  });
+});
+
+describe(`creation quota (${QUOTAS.challengesPerUserPerDay} per JST day)`, () => {
+  const quota = QUOTAS.challengesPerUserPerDay;
+  const usage = (s: SessionResponse) => getQuotaUsage(api.deps, CREATE_QUOTA_SCOPE, s.user.id, quota, "day");
+
+  /** Create `n` challenges, deleting each right away so the open limit (5) never gets in the way. */
+  async function churn(s: SessionResponse, n: number): Promise<Challenge[]> {
+    const out: Challenge[] = [];
+    for (let i = 0; i < n; i++) {
+      const c = await create(s);
+      expect((await remove(s, c.id)).status).toBe(204);
+      out.push(c);
+    }
+    return out;
+  }
+
+  it("counts real creates only, then answers 429 until the next JST day", async () => {
+    const s = await api.createSession("たくさん");
+    const startsBefore = Number((await getItem("RSTATS", "photo"))?.startCount ?? 0);
+    await churn(s, quota - 1);
+    const last = await create(s);
+    expect((await usage(s)).count).toBe(quota);
+
+    // Replays of an existing id are idempotent and free, even at the limit.
+    const replay = await postChallenge(s, createBody({ id: last.id }));
+    expect(replay.status).toBe(200);
+    expect((await challengeOf(replay)).id).toBe(last.id);
+
+    const limited = await postChallenge(s, createBody());
+    expect(limited.status).toBe(429);
+    expect((await errorOf(limited)).code).toBe("rate_limited");
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect((await usage(s)).count).toBe(quota);
+    // The ranking counter moved once per real create.
+    expect((await getItem("RSTATS", "photo"))?.startCount).toBe(startsBefore + quota);
+
+    // Per user.
+    const other = await api.createSession("別の人");
+    expect((await postChallenge(other, createBody())).status).toBe(201);
+
+    // 2026-10-06T15:00Z is midnight in Tokyo: a new day. (Today is the 7th now.)
+    api.clock.set("2026-10-06T15:00:00.000Z");
+    expect((await postChallenge(s, createBody({ startDate: "2026-10-07" }))).status).toBe(201);
+    expect((await usage(s)).count).toBe(1);
+  });
+
+  it("does not count requests that are refused or do not create", async () => {
+    const s = await api.createSession("失敗");
+    const owner = await api.createSession("持ち主");
+    const taken = await create(owner);
+    expect((await postChallenge(s, createBody({ id: taken.id }))).status).toBe(409); // someone else's id
+    expect((await postChallenge(s, createBody({ startDate: "2026-12-01" }))).status).toBe(400); // bad start date
+    expect((await postChallenge(s, createBody({ title: "" }))).status).toBe(400); // invalid body
+    for (let i = 0; i < LIMITS.openChallenges; i++) await create(s);
+    expect((await postChallenge(s, createBody())).status).toBe(409); // open limit
+    expect((await usage(s)).count).toBe(LIMITS.openChallenges);
+  });
+
+  it("gives the use back when a concurrent replay of the same create wins the race", async () => {
+    const s = await api.createSession("同時");
+    const body = createBody();
+    const [a, b] = await Promise.all([postChallenge(s, body), postChallenge(s, body)]);
+    expect([a.status, b.status].sort()).toEqual([200, 201]);
+    expect((await list(s)).challenges.map((c) => c.id)).toEqual([body.id]);
+    expect((await usage(s)).count).toBe(1);
   });
 });
 

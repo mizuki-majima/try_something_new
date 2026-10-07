@@ -60,7 +60,7 @@ cd infra && npx cdk deploy -c alertEmail=you@example.com
 
 1. `SiteUrl` を開き、「レシピから選ぶ」→ チャレンジ開始 → 印を押す（CUF-1）
 2. `<SiteUrl>/api/health` が `{"ok":true}` を返す
-3. API Gateway の URL（`https://<apiId>.execute-api.ap-northeast-1.amazonaws.com/api/health`）を直接開くと 403（CloudFront 経由のみ受け付ける）
+3. API Gateway の URL（`https://<apiId>.execute-api.ap-northeast-1.amazonaws.com/api/health`）を直接開くと 403（CloudFront 経由のみ受け付ける）。AWS アカウントは他のプロジェクトと共用なので、コンソールでは API 名 `ThirtyDaysApi`、スタックの説明「30日だけ (try_something_new)」で見分ける
 
 ## 費用の目安
 

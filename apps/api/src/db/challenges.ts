@@ -4,8 +4,9 @@
  */
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { findOfficialRecipe, monthKey, type Challenge, type Stamp } from "@thirty/shared";
-import type { DbDeps } from "../ports";
+import type { DbDeps, Deps } from "../ports";
 import { authorPk, challengeKey, challengeRefKey, cohortGsi1, recipeKey, recipeStatsKey, userPk, type Key } from "./keys";
+import { deleteShare, getShareItem } from "./shares";
 import { isConditionFailed, queryPrefix, type Item } from "./util";
 
 export type ChallengeItem = Key &
@@ -308,14 +309,30 @@ export async function updateChallenge(
   }
 }
 
+/** Delete the owner's public card `sid` (item + image). Not found or someone else's: nothing to do. */
+async function deleteOwnShare(deps: Pick<Deps, "db" | "tableName" | "media">, uid: string, sid: unknown): Promise<string | null> {
+  if (typeof sid !== "string" || !sid) return null;
+  const share = await getShareItem(deps, sid);
+  if (share && share.userId === uid) await deleteShare(deps, share);
+  return sid;
+}
+
 /**
- * Delete a challenge and its CHREF. Returns false when the user has no such challenge.
+ * Delete a challenge, its public share card (item + image) and its CHREF. Returns false when the
+ * user has no such challenge.
+ *
+ * The card goes first: if removing it fails, the challenge is still there and the request can be
+ * retried (deleting the challenge first would leave a public card nobody can reach to remove).
+ * A card created between that and the challenge delete is caught from the deleted item's shareId.
  * The CHREF is removed whenever it belongs to `uid`, so a retry cleans up after a half-done delete.
  */
-export async function deleteChallenge(deps: Pick<DbDeps, "db" | "tableName">, uid: string, chId: string): Promise<boolean> {
+export async function deleteChallenge(deps: Pick<Deps, "db" | "tableName" | "media">, uid: string, chId: string): Promise<boolean> {
+  const current = await getChallengeItem(deps, uid, chId);
+  const removedShare = current ? await deleteOwnShare(deps, uid, current.shareId) : null;
   const res = await deps.db.send(
     new DeleteCommand({ TableName: deps.tableName, Key: challengeKey(uid, chId), ReturnValues: "ALL_OLD" }),
   );
+  if (res.Attributes?.shareId !== removedShare) await deleteOwnShare(deps, uid, res.Attributes?.shareId);
   try {
     await deps.db.send(
       new DeleteCommand({

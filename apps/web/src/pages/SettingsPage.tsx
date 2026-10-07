@@ -499,8 +499,7 @@ function IssueCode() {
     setBusy(true);
     setError(null);
     try {
-      // Empty JSON body: a POST without Content-Type: application/json is answered with 415.
-      const res = await request<TransferCodeResponse>("POST", API.meTransferCode, { body: {}, auth: "required" });
+      const res = await request<TransferCodeResponse>("POST", API.meTransferCode, { auth: "required" });
       const at = Date.now();
       const ttl = TRANSFER_CODE_TTL_MINUTES * 60_000;
       // Trust the server's expiry unless the device clock is clearly off.

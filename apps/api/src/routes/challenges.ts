@@ -7,6 +7,7 @@ import {
   EARLY_REFLECT_FROM_DAY,
   IdSchema,
   LIMITS,
+  QUOTAS,
   ReflectSchema,
   StampPutSchema,
   TOTAL_DAYS,
@@ -36,6 +37,7 @@ import {
   updateChallenge,
   type ChallengeUpdate,
 } from "../db/challenges";
+import { enforceQuota, refundQuota } from "../db/rate";
 import { bumpStats } from "../db/stats";
 import { badRequest, conflict, MESSAGES, notFound } from "../errors";
 import { log } from "../log";
@@ -54,6 +56,9 @@ export const CHALLENGE_MESSAGES = {
   busy: "ほかの端末での変更と重なりました。もう一度お試しください",
 } as const;
 const M = CHALLENGE_MESSAGES;
+
+/** Rate-limit scope of QUOTAS.challengesPerUserPerDay. */
+export const CREATE_QUOTA_SCOPE = "challenge-create";
 
 /** Start dates accepted on create: today (±1 day for clock / time-zone slack) or the next 1st. */
 export function allowedStartDates(today: string): string[] {
@@ -124,9 +129,17 @@ export function challengesRoutes(deps: Deps) {
     if (!allowedStartDates(today).includes(input.startDate)) throw badRequest(M.startDate, { startDate: M.startDate });
     if ((await countOpenChallenges(deps, user.id)) >= LIMITS.openChallenges) throw conflict(M.openLimit);
 
+    // Counted only for a create that passed every check above (a replay returned earlier); given
+    // back below when it turns out not to create after all.
+    await enforceQuota(deps, CREATE_QUOTA_SCOPE, user.id, QUOTAS.challengesPerUserPerDay, "day");
+    const refund = () => refundQuota(deps, CREATE_QUOTA_SCOPE, user.id, "day");
+
     if (owner === undefined && !(await claimChallengeId(deps, input.id, user.id))) {
       // Someone claimed it between our read and the claim (or our own concurrent replay did).
-      if ((await getChallengeOwner(deps, input.id)) !== user.id) throw conflict(M.idTaken);
+      if ((await getChallengeOwner(deps, input.id)) !== user.id) {
+        await refund();
+        throw conflict(M.idTaken);
+      }
     }
 
     const recipeId = input.recipeId && (await isKnownRecipe(deps, input.recipeId)) ? input.recipeId : null;
@@ -149,6 +162,8 @@ export function challengesRoutes(deps: Deps) {
       updatedAt: now,
     };
     if (!(await putNewChallenge(deps, user.id, user, challenge))) {
+      // A concurrent replay of the same create wrote it first and was counted itself.
+      await refund();
       const raced = await getChallengeItem(deps, user.id, input.id);
       if (raced) return c.json<ChallengeResponse>({ challenge: toChallenge(raced) }, 200);
       throw conflict(M.busy);

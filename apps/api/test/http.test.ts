@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ApiError } from "@thirty/shared";
 import { requireAdmin } from "../src/auth";
 import { MAX_BODY_BYTES } from "../src/app";
-import { enforceQuota, getQuotaUsage, windowFor } from "../src/db/rate";
+import { enforceQuota, getQuotaUsage, refundQuota, windowFor } from "../src/db/rate";
 import { onError } from "../src/errors";
 import type { AppEnv } from "../src/types";
 import { ADMIN_TOKEN, json, setupApi } from "./helpers";
@@ -100,6 +100,22 @@ describe("quotas", () => {
 
     api.clock.set("2026-10-06T15:00:00Z"); // 00:00 JST
     expect((await enforceQuota(api.deps, "test", "k1", 2, "day")).count).toBe(1);
+  });
+
+  it("refundQuota gives one use back, never below zero", async () => {
+    api.clock.set("2026-10-08T03:00:00Z");
+    await refundQuota(api.deps, "refund", "k", "day"); // no counter yet: nothing happens
+    expect((await getQuotaUsage(api.deps, "refund", "k", 2, "day")).count).toBe(0);
+    await enforceQuota(api.deps, "refund", "k", 2, "day");
+    await enforceQuota(api.deps, "refund", "k", 2, "day");
+    await expect(enforceQuota(api.deps, "refund", "k", 2, "day")).rejects.toMatchObject({ status: 429 });
+    await refundQuota(api.deps, "refund", "k", "day");
+    expect((await getQuotaUsage(api.deps, "refund", "k", 2, "day")).count).toBe(1);
+    expect((await enforceQuota(api.deps, "refund", "k", 2, "day")).count).toBe(2);
+    await refundQuota(api.deps, "refund", "k", "day");
+    await refundQuota(api.deps, "refund", "k", "day");
+    await refundQuota(api.deps, "refund", "k", "day");
+    expect((await getQuotaUsage(api.deps, "refund", "k", 2, "day")).count).toBe(0);
   });
 });
 

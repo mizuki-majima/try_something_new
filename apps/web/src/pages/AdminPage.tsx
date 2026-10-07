@@ -260,32 +260,49 @@ function JudgeBadge({ judge }: { judge: Judge }) {
   return <span className={`adm-judge ${judge}`}>{text}</span>;
 }
 
-/** Pilot targets from docs/validation-plan.md (fixed before the pilot). */
+/** Pilot targets from docs/validation-plan.md (fixed before the pilot). Rates in percent. */
+export const PILOT_TARGETS = { starters: 8, retained7: 60, reflected: 40, share: 30 } as const;
+
+/** n / d against a percent target, in integers (no floating-point edge at exactly the target). */
+function judgeRate(n: number, d: number, targetPercent: number): Judge {
+  if (d <= 0) return "na";
+  return n * 100 >= targetPercent * d ? "pass" : "fail";
+}
+
+/** An API from before the pilot metrics (only during a deploy) answers without them. */
+const NO_PILOT: AdminStats["pilot"] = { starters: 0, eligible7: 0, retained7: 0, started: 0, reflected: 0 };
+
+/** The pilot metrics (s.pilot, computed from the challenges) against the fixed targets. */
 export function pilotRows(s: AdminStats): { label: string; value: string; target: string; judge: Judge; note?: string }[] {
-  const done = pct(s.challengesDone, s.challengesStarted);
-  const share = pct(s.shares, s.challengesDone);
+  const p = s.pilot ?? NO_PILOT;
   return [
     {
-      label: "開始数",
-      value: `${s.users}人`,
-      target: "8人以上",
-      judge: s.users >= 8 ? "pass" : "fail",
-      note: `アカウント数で代用（始めたチャレンジは${s.challengesStarted}件）`,
+      label: "開始した人",
+      value: `${p.starters}人`,
+      target: `${PILOT_TARGETS.starters}人以上`,
+      judge: p.starters >= PILOT_TARGETS.starters ? "pass" : "fail",
+      note: `始まったチャレンジ ${p.started}件`,
     },
-    { label: "7日継続", value: "—", target: "60%以上", judge: "na", note: "統計では出せません。1日組の30マスで確かめてください" },
+    {
+      label: "7日継続",
+      value: fmtPct(pct(p.retained7, p.eligible7)),
+      target: `${PILOT_TARGETS.retained7}%以上`,
+      judge: judgeRate(p.retained7, p.eligible7, PILOT_TARGETS.retained7),
+      note: `1〜7日目に印5個以上 ${p.retained7} ÷ 7日目を過ぎた ${p.eligible7}`,
+    },
     {
       label: "完走",
-      value: fmtPct(done),
-      target: "40%以上",
-      judge: done === null ? "na" : done >= 0.4 ? "pass" : "fail",
-      note: `振り返り ${s.challengesDone} ÷ 開始 ${s.challengesStarted}（チャレンジ数）`,
+      value: fmtPct(pct(p.reflected, p.started)),
+      target: `${PILOT_TARGETS.reflected}%以上`,
+      judge: judgeRate(p.reflected, p.started, PILOT_TARGETS.reflected),
+      note: `振り返り ${p.reflected} ÷ 開始 ${p.started}`,
     },
     {
       label: "共有",
-      value: fmtPct(share),
-      target: "30%以上",
-      judge: share === null ? "na" : share >= 0.3 ? "pass" : "fail",
-      note: `公開カード ${s.shares} ÷ 振り返り ${s.challengesDone}（参考。画像保存・SNS は下の回数）`,
+      value: fmtPct(pct(s.shares, s.challengesDone)),
+      target: `${PILOT_TARGETS.share}%以上`,
+      judge: judgeRate(s.shares, s.challengesDone, PILOT_TARGETS.share),
+      note: `公開カード ${s.shares} ÷ 振り返り ${s.challengesDone}（画像保存・SNS は下の回数）`,
     },
   ];
 }
@@ -308,11 +325,12 @@ function StatsTab({ onWrongToken }: { onWrongToken: () => void }) {
 }
 
 function StatsView({ stats: s }: { stats: AdminStats }) {
+  const pilot = s.pilot ?? NO_PILOT;
   const tiles: { label: string; value: string }[] = [
     { label: "利用者", value: `${s.users}` },
-    { label: "始めたチャレンジ", value: `${s.challengesStarted}` },
-    { label: "振り返り", value: `${s.challengesDone}` },
-    { label: "完走率", value: fmtPct(pct(s.challengesDone, s.challengesStarted)) },
+    { label: "始めたチャレンジ（累計）", value: `${s.challengesStarted}` },
+    { label: "振り返り（累計）", value: `${s.challengesDone}` },
+    { label: "完走率", value: fmtPct(pct(pilot.reflected, pilot.started)) },
     { label: "みんなのレシピ", value: `${s.communityRecipes}` },
     { label: "体験談", value: `${s.stories}` },
     { label: "公開カード", value: `${s.shares}` },
@@ -441,6 +459,13 @@ const ACTION_TEXT: Record<AdminModerate["action"], { title: string; message: str
   delete: { title: "削除しますか？", message: "完全に削除します。元に戻せません。", confirm: "削除する", done: "削除しました" },
 };
 
+/** 1日組の「削除」は本人の記録（印・メモ）を消さない（FR-18）。一覧から外し、公開カードを非表示にする。 */
+const MEMBER_DELETE_MESSAGE = "1日組の一覧から完全に外し、公開カードがあれば非表示にします。本人の記録（印・メモ）は消えません。元に戻せません。";
+
+export function actionMessage(type: ReportTargetType, action: AdminModerate["action"]): string {
+  return type === "member" && action === "delete" ? MEMBER_DELETE_MESSAGE : ACTION_TEXT[action].message;
+}
+
 function ReportsTab({ onWrongToken }: { onWrongToken: () => void }) {
   const toast = useToast();
   const { state, reload, update } = useAdminData(loadReports, onWrongToken);
@@ -537,7 +562,7 @@ function ReportsTab({ onWrongToken }: { onWrongToken: () => void }) {
               <p>
                 {TYPE_LABELS[pending.item.targetType]}「{pending.item.preview || pending.item.targetId}」
               </p>
-              <p>{ACTION_TEXT[pending.action].message}</p>
+              <p>{actionMessage(pending.item.targetType, pending.action)}</p>
             </>
           ) : undefined
         }

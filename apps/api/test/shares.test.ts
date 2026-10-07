@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { LIMITS, QUOTAS, newId, type ApiError, type Challenge, type SessionResponse, type ShareResponse } from "@thirty/shared";
 import { getChallengeItem, toChallengeItem } from "../src/db/challenges";
 import { shareKey, statsKey } from "../src/db/keys";
+import { createShare } from "../src/db/shares";
 import { getStats } from "../src/db/stats";
 import { checkPng, decodeBase64Strict, isShareCardPng } from "../src/png";
 import { escapeHtml, excerpt, TED_TALK_URL } from "../src/share-page";
@@ -263,6 +264,92 @@ describe("DELETE /api/shares/:id", () => {
     expect((await api.request("/api/me", { method: "DELETE", token: s.token })).status).toBe(204);
     expect(await getItem(`SHARE#${id}`, "META")).toBeUndefined();
     expect(api.media.objects.has(`share/${id}.png`)).toBe(false);
+  });
+});
+
+describe("DELETE /api/challenges/:id with a share card", () => {
+  const removeChallenge = (s: SessionResponse, id: string) => api.request(`/api/challenges/${id}`, { method: "DELETE", token: s.token });
+
+  it("also deletes the challenge's public card (item and image)", async () => {
+    const s = await api.createSession();
+    const c = await seedChallenge(s, challenge());
+    const other = await seedChallenge(s, challenge());
+    const { id } = await share(s, c.id);
+    const kept = await share(s, other.id);
+    expect((await api.request(`/s/${id}`)).status).toBe(200);
+
+    expect((await removeChallenge(s, c.id)).status).toBe(204);
+    expect(await getChallengeItem(api.deps, s.user.id, c.id)).toBeUndefined();
+    expect(await getItem(`CHREF#${c.id}`, "REF")).toBeUndefined();
+    expect(await getItem(`SHARE#${id}`, "META")).toBeUndefined();
+    expect(api.media.objects.has(`share/${id}.png`)).toBe(false);
+    expect((await api.request(`/s/${id}`)).status).toBe(404);
+    // Only that challenge's card.
+    expect(await getItem(`SHARE#${kept.id}`, "META")).toBeDefined();
+    expect(api.media.objects.has(`share/${kept.id}.png`)).toBe(true);
+    expect((await removeChallenge(s, c.id)).status).toBe(404);
+  });
+
+  it("keeps the challenge when the image cannot be removed, so the delete can be retried", async () => {
+    const s = await api.createSession();
+    const c = await seedChallenge(s, challenge());
+    const { id } = await share(s, c.id);
+    const realDelete = api.media.delete.bind(api.media);
+    api.media.delete = async () => {
+      throw new Error("S3 is down");
+    };
+    try {
+      expect((await removeChallenge(s, c.id)).status).toBe(500);
+    } finally {
+      api.media.delete = realDelete;
+    }
+    expect(await getChallengeItem(api.deps, s.user.id, c.id)).toBeDefined();
+    expect(await getItem(`SHARE#${id}`, "META")).toBeDefined();
+
+    expect((await removeChallenge(s, c.id)).status).toBe(204);
+    expect(await getItem(`SHARE#${id}`, "META")).toBeUndefined();
+    expect(api.media.objects.has(`share/${id}.png`)).toBe(false);
+  });
+
+  it("also catches a card created while the delete was running", async () => {
+    const s = await api.createSession();
+    const c = await seedChallenge(s, challenge());
+    const first = await share(s, c.id);
+    let second: string | undefined;
+    const realDelete = api.media.delete.bind(api.media);
+    api.media.delete = async (key: string) => {
+      if (second === undefined) {
+        second = ""; // one shot
+        // Another device publishes a new card right after the old card was looked up.
+        second = (await createShare(api.deps, s.user, c, makePng())) ?? "";
+      }
+      return realDelete(key);
+    };
+    try {
+      expect((await removeChallenge(s, c.id)).status).toBe(204);
+    } finally {
+      api.media.delete = realDelete;
+    }
+    expect(second).toMatch(/^[0-9a-z]{16}$/);
+    for (const id of [first.id, second!]) {
+      expect(await getItem(`SHARE#${id}`, "META")).toBeUndefined();
+      expect(api.media.objects.has(`share/${id}.png`)).toBe(false);
+    }
+  });
+
+  it("works for a challenge without a card, and never touches someone else's card", async () => {
+    const s = await api.createSession();
+    const plain = await seedChallenge(s, challenge());
+    expect((await removeChallenge(s, plain.id)).status).toBe(204);
+
+    // A (corrupt) shareId that points at another user's card is left alone.
+    const owner = await api.createSession();
+    const theirs = await seedChallenge(owner, challenge());
+    const { id } = await share(owner, theirs.id);
+    const mine = await seedChallenge(s, challenge({ shareId: id }));
+    expect((await removeChallenge(s, mine.id)).status).toBe(204);
+    expect(await getItem(`SHARE#${id}`, "META")).toBeDefined();
+    expect(api.media.objects.has(`share/${id}.png`)).toBe(true);
   });
 });
 

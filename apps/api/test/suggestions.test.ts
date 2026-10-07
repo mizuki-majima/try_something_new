@@ -1,5 +1,5 @@
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CATEGORY_KEYS,
   OFFICIAL_RECIPES,
@@ -263,12 +263,8 @@ describe("RuleBasedSuggestionProvider", () => {
 
 // ---------- POST /api/suggestions ----------
 
-const api = setupApi();
-
-beforeAll(() => {
-  // The shared harness uses the unavailable provider; this file tests the real one.
-  api.deps.suggestions = createSuggestionProvider({ random: seeded(42) });
-});
+// The real provider (the harness default), seeded so the first pick is predictable.
+const api = setupApi({ suggestions: createSuggestionProvider({ random: seeded(42) }) });
 
 const suggest = (token: string | undefined, body: unknown) => api.request("/api/suggestions", { token, body });
 

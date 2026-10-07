@@ -19,7 +19,17 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
-import { CACHE_CONTROL, MONTHLY_BUDGET_USD, NO_CACHE_FILES, PARAM, PROJECT_TAG, TABLE_KEYS, VAPID_SUBJECT } from "./config";
+import {
+  CACHE_CONTROL,
+  HTTP_API_NAME,
+  MONTHLY_BUDGET_USD,
+  NO_CACHE_FILES,
+  PARAM,
+  PROJECT_TAG,
+  STACK_DESCRIPTION,
+  TABLE_KEYS,
+  VAPID_SUBJECT,
+} from "./config";
 import { CostGuard } from "./cost-guard";
 import {
   API_CSP,
@@ -53,7 +63,7 @@ export type ThirtyDaysStackProps = StackProps & {
 
 export class ThirtyDaysStack extends Stack {
   constructor(scope: Construct, id: string, props: ThirtyDaysStackProps = {}) {
-    super(scope, id, props);
+    super(scope, id, { description: STACK_DESCRIPTION, ...props });
     Tags.of(this).add("Project", PROJECT_TAG);
 
     const webDistPath = props.webDistPath ?? DEFAULT_ASSET_PATHS.webDistPath;
@@ -163,7 +173,9 @@ export class ThirtyDaysStack extends Stack {
     });
 
     // ---- HTTP API --------------------------------------------------------------------------
+    // The construct id stays "HttpApi" (a new logical id would replace the API); only its name changes.
     const httpApi = new apigw.HttpApi(this, "HttpApi", {
+      apiName: HTTP_API_NAME,
       description: "thirty-days API (CloudFront only, checked with x-origin-verify)",
       createDefaultStage: false,
     });

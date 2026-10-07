@@ -16,9 +16,9 @@ import { createTableIfMissing } from "../src/db/table";
 import type { Item } from "../src/db/util";
 import { setLogLevel } from "../src/log";
 import { MemoryMediaStore } from "../src/media";
-import type { Deps } from "../src/ports";
+import type { Deps, SuggestionProvider } from "../src/ports";
 import { NoopPushSender } from "../src/providers/push";
-import { UnavailableSuggestionProvider } from "../src/providers/suggestions";
+import { createSuggestionProvider } from "../src/providers/suggestions";
 
 export const ADMIN_TOKEN = "test-admin-token";
 
@@ -68,8 +68,13 @@ export const freshIp = () => {
   return `10.${(ipCounter >> 16) & 255}.${(ipCounter >> 8) & 255}.${ipCounter & 255}`;
 };
 
+export type SetupOptions = {
+  /** ひらめき提案. Default: the real rule-based provider (createSuggestionProvider()), as in production. */
+  suggestions?: SuggestionProvider;
+};
+
 /** Registers beforeAll/afterAll for the calling test file and returns the (lazily filled) harness. */
-export function setupApi(): TestApi {
+export function setupApi(opts: SetupOptions = {}): TestApi {
   setLogLevel(process.env.LOG_LEVEL === "debug" ? "debug" : "silent");
   const api = {} as TestApi;
   let server: Server;
@@ -92,7 +97,7 @@ export function setupApi(): TestApi {
       config,
       now: clock.now,
       media,
-      suggestions: new UnavailableSuggestionProvider(),
+      suggestions: opts.suggestions ?? createSuggestionProvider(),
       push,
       secrets: { adminToken: ADMIN_TOKEN },
     };

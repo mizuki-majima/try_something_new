@@ -7,6 +7,7 @@ import {
   classifyError,
   drain,
   enqueue,
+  isAlreadyDone,
   opRequest,
   type OutboxItem,
   type OutboxOp,
@@ -147,6 +148,65 @@ describe("drain", () => {
     const result = await drain({ ...store, send: () => Promise.reject(new ApiClientError(401, "unauthorized")) });
     expect(result.status).toBe("auth");
     expect(store.items).toHaveLength(2);
+  });
+
+  it("treats a 404 to a queued challenge delete as done: no drop, no rollback, no message", async () => {
+    const del: OutboxOp = { kind: "challenge.delete", id: "a" };
+    const store = memory(queue(del, stamp("b", 1)));
+    const onSent = vi.fn();
+    const onDropped = vi.fn();
+    const send = vi.fn(async (item: OutboxItem) => {
+      if (item.op.kind === "challenge.delete") throw new ApiClientError(404, "not_found");
+      return {};
+    });
+    const result = await drain({ ...store, send, onSent, onDropped });
+    expect(result).toEqual({ status: "empty", sent: 2, dropped: 0 });
+    expect(onDropped).not.toHaveBeenCalled();
+    expect(onSent).toHaveBeenCalledTimes(2);
+    expect(onSent.mock.calls[0]![0].op).toEqual(del);
+    expect(onSent.mock.calls[0]![1]).toBeUndefined();
+    expect(store.items).toEqual([]);
+    // Applied as sent: the challenge stays deleted locally.
+    const base = applyPending({ user: null, challenges: [] }, queue(create("a")));
+    expect(applyPending(base, queue(del)).challenges).toEqual([]);
+  });
+
+  it("still drops other 404s and other failures of a delete", async () => {
+    expect(isAlreadyDone({ kind: "challenge.delete", id: "a" }, new ApiClientError(404, "not_found"))).toBe(true);
+    expect(isAlreadyDone({ kind: "challenge.delete", id: "a" }, new ApiClientError(409, "conflict"))).toBe(false);
+    expect(isAlreadyDone({ kind: "challenge.delete", id: "a" }, new ApiClientError(500, "internal"))).toBe(false);
+    expect(isAlreadyDone({ kind: "stamp.delete", id: "a", day: 1 }, new ApiClientError(404, "not_found"))).toBe(false);
+    expect(isAlreadyDone(stamp("a", 1), new ApiClientError(404, "not_found"))).toBe(false);
+    expect(isAlreadyDone({ kind: "challenge.delete", id: "a" }, new TypeError("bug"))).toBe(false);
+
+    const store = memory(queue(stamp("a", 1)));
+    const onDropped = vi.fn();
+    const result = await drain({ ...store, send: () => Promise.reject(new ApiClientError(404, "not_found")), onDropped });
+    expect(result).toEqual({ status: "empty", sent: 0, dropped: 1 });
+    expect(onDropped).toHaveBeenCalledTimes(1);
+
+    // A 5xx on the delete is retried as usual.
+    const retry = memory(queue({ kind: "challenge.delete", id: "a" }));
+    expect((await drain({ ...retry, send: () => Promise.reject(new ApiClientError(503, "internal")) })).status).toBe("retry");
+    expect(retry.items).toHaveLength(1);
+  });
+
+  it("a create followed by its delete before sending: both are dropped and nothing is sent", async () => {
+    const del: OutboxOp = { kind: "challenge.delete", id: "a" };
+    const patch: OutboxOp = { kind: "challenge.patch", id: "a", body: { title: "変更" } };
+    for (const ops of [[create("a"), del], [create("a"), stamp("a", 1), patch, stamp("a", 1, "メモ"), del]]) {
+      const store = memory(queue(...ops));
+      expect(store.items).toEqual([]);
+      const send = vi.fn(async () => ({}));
+      expect(await drain({ ...store, send })).toEqual({ status: "empty", sent: 0, dropped: 0 });
+      expect(send).not.toHaveBeenCalled();
+    }
+    // Other challenges' items stay, in order.
+    const mixed = queue(stamp("b", 1), create("a"), stamp("a", 1), stamp("b", 2), del);
+    expect(mixed.map((i) => [i.op.kind, "id" in i.op ? i.op.id : i.op.kind === "challenge.create" ? i.op.body.id : null])).toEqual([
+      ["stamp.put", "b"],
+      ["stamp.put", "b"],
+    ]);
   });
 
   it("picks up items enqueued while a send is in flight", async () => {

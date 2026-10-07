@@ -25,4 +25,18 @@
 
 ## コマンド
 
-<!-- BUILD から記入（check / test:e2e / dev） -->
+リポジトリのルートで実行する（Node.js 22、npm workspaces）。
+
+| コマンド | 内容 |
+|---|---|
+| `npm ci` | 依存関係を入れる |
+| `npm run dev` | ローカル起動: dynalite + API（:8787）+ Vite（http://localhost:5173） |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | 全ワークスペースの tsc |
+| `npm test` | Unit / Integration（Vitest。shared・api・web・infra） |
+| `npm run build` | API の Lambda バンドル（`apps/api/dist`）と Web（`apps/web/dist`） |
+| `npm run test:e2e` | Critical User Flow の E2E（Playwright、`tests/e2e/`） |
+| `npm run synth -w infra` | CDK synth（`CDK_DEFAULT_ACCOUNT=123456789012` で認証情報なしでも可。先に `npm run build`） |
+| `npm run deploy` | AWS へデプロイ（手順・前提は [docs/deploy.md](docs/deploy.md)。本番公開は CEO 承認が要る） |
+
+PR の前に lint → typecheck → test → build を通す（CI と同じ順）。

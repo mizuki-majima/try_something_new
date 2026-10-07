@@ -341,6 +341,23 @@ export type AdminReportItem = {
 export type AdminReportsResponse = { items: AdminReportItem[] };
 export type AdminContactItem = { id: string; message: string; replyTo: string | null; createdAt: number };
 export type AdminContactsResponse = { items: AdminContactItem[] };
+/**
+ * PILOT metrics (docs/validation-plan.md), computed from the challenges that exist now (deleted ones
+ * drop out). "Today" is the JST date; a reservation whose start date has not come yet is not counted.
+ */
+export type PilotStats = {
+  /** Distinct users with at least one started challenge (開始した人). */
+  starters: number;
+  /** Started challenges whose day 7 has passed (today is day 8 or later): the 7日継続 denominator. */
+  eligible7: number;
+  /** Of eligible7, those with 5 or more stamps within days 1–7. */
+  retained7: number;
+  /** Started challenges (start date today or earlier): the 完走 denominator. */
+  started: number;
+  /** Reflected challenges (status done): the 完走 numerator. */
+  reflected: number;
+};
+
 export type AdminStats = {
   users: number;
   challengesStarted: number;
@@ -353,6 +370,7 @@ export type AdminStats = {
   shareActions: Record<string, number>;
   suggestionsToday: number;
   pushSubscriptions: number;
+  pilot: PilotStats;
 };
 
 // ---------- backup ----------

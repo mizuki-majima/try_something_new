@@ -5,7 +5,7 @@ import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { TABLE } from "../../apps/api/src/db/table";
-import { CACHE_CONTROL, NO_CACHE_FILES, PARAM, TABLE_KEYS } from "../lib/config";
+import { CACHE_CONTROL, HTTP_API_NAME, NO_CACHE_FILES, PARAM, STACK_DESCRIPTION, TABLE_KEYS } from "../lib/config";
 import { FORWARD_HOST_CODE, MEDIA_PATH_CODE, SHARE_PAGE_CSP, SITE_CSP, SPA_REWRITE_CODE } from "../lib/edge";
 import { ThirtyDaysStack, type ThirtyDaysStackProps } from "../lib/thirty-days-stack";
 
@@ -182,6 +182,23 @@ describe("Lambdas", () => {
       ScheduleExpression: "cron(0/15 * * * ? *)",
       State: "ENABLED",
     });
+  });
+});
+
+describe("names (the AWS account is shared with other projects)", () => {
+  it("describes the stack as 30日だけ", () => {
+    expect(STACK_DESCRIPTION).toBe("30日だけ (try_something_new)");
+    expect(template.toJSON().Description).toBe(STACK_DESCRIPTION);
+    // An explicit description still wins.
+    expect(synth({ description: "other" }).toJSON().Description).toBe("other");
+  });
+
+  it("names the HTTP API ThirtyDaysApi, keeping its logical id (no replacement on deploy)", () => {
+    expect(HTTP_API_NAME).toBe("ThirtyDaysApi");
+    const apis = template.findResources("AWS::ApiGatewayV2::Api");
+    expect(Object.values(apis).map((r) => (r as Resource).Properties?.Name)).toEqual(["ThirtyDaysApi"]);
+    expect(Object.keys(apis)).toHaveLength(1);
+    expect(Object.keys(apis)[0]).toMatch(/^HttpApi[0-9A-F]{8}$/);
   });
 });
 

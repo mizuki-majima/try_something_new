@@ -99,6 +99,19 @@ function toError(status: number, data: unknown, retryAfterHeader: string | null)
   return new ApiClientError(status, fallbackCode, undefined, undefined, retryAfter);
 }
 
+/** Methods the API only accepts as JSON (415 otherwise), even when there is nothing to say. */
+const JSON_METHODS = new Set(["POST", "PUT", "PATCH"]);
+
+/**
+ * The wire body: JSON for a given body (any method, so a DELETE with a body works too), "{}" for
+ * POST / PUT / PATCH without one, nothing otherwise. Content-Type is application/json whenever
+ * there is a body.
+ */
+export function requestBody(method: string, body: unknown): string | undefined {
+  if (body !== undefined) return JSON.stringify(body);
+  return JSON_METHODS.has(method.toUpperCase()) ? "{}" : undefined;
+}
+
 export async function send<T>(method: string, path: string, opts: SendOptions = {}): Promise<T> {
   const controller = new AbortController();
   let timedOut = false;
@@ -113,11 +126,8 @@ export async function send<T>(method: string, path: string, opts: SendOptions = 
   }
 
   const headers: Record<string, string> = { Accept: "application/json", ...opts.headers };
-  let body: string | undefined;
-  if (opts.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(opts.body);
-  }
+  const body = requestBody(method, opts.body);
+  if (body !== undefined) headers["Content-Type"] = "application/json";
 
   const failure = (): ApiClientError => {
     if (timedOut) return new ApiClientError(0, "timeout");

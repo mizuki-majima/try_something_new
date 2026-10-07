@@ -12,14 +12,25 @@ import {
   type AdminContactsResponse,
   type AdminReportsResponse,
   type AdminStats,
+  type PilotStats,
   type Verdict,
 } from "@thirty/shared";
 import { requireAdmin } from "../auth";
 import { listContacts } from "../db/contacts";
 import { statsKey } from "../db/keys";
+import { computePilotStats } from "../db/pilot";
 import { getRecipeItem, setFeatured } from "../db/recipes";
-import { deleteTarget, hideTarget, listReports, resetReportCount, resolveTarget, restoreTarget } from "../db/reports";
-import { notFound } from "../errors";
+import {
+  deleteTarget,
+  hideTarget,
+  isReportDeleted,
+  listReports,
+  markReportDeleted,
+  resetReportCount,
+  resolveTarget,
+  restoreTarget,
+} from "../db/reports";
+import { conflict, notFound } from "../errors";
 import { log } from "../log";
 import type { Deps } from "../ports";
 import type { AppEnv } from "../types";
@@ -27,6 +38,7 @@ import { readJson } from "../validate";
 
 const TARGET_NOT_FOUND = "対象が見つかりませんでした（削除済みかもしれません）";
 const RECIPE_NOT_FOUND = "レシピが見つかりませんでした";
+const DELETED_NOT_RESTORABLE = "削除した対象は復元できません";
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
@@ -35,8 +47,8 @@ export function suggestionsStatKey(now: Date): string {
   return `suggestions_${todayIn("Asia/Tokyo", now).replace(/-/g, "")}`;
 }
 
-/** STATS/GLOBAL → AdminStats. */
-export function toAdminStats(item: Record<string, unknown>, now: Date): AdminStats {
+/** STATS/GLOBAL (+ the pilot metrics scanned from the challenges) → AdminStats. */
+export function toAdminStats(item: Record<string, unknown>, now: Date, pilot: PilotStats): AdminStats {
   const verdicts = Object.fromEntries(VERDICT_KEYS.map((v) => [v, num(item[`verdict_${v}`])])) as Record<Verdict, number>;
   const shareActions: Record<string, number> = Object.fromEntries(ShareMetricSchema.shape.channel.options.map((ch) => [ch, 0]));
   for (const [k, v] of Object.entries(item)) {
@@ -53,15 +65,19 @@ export function toAdminStats(item: Record<string, unknown>, now: Date): AdminSta
     shareActions,
     suggestionsToday: num(item[suggestionsStatKey(now)]),
     pushSubscriptions: num(item.pushSubscriptions),
+    pilot,
   };
 }
 
 /**
  * Admin (FR-18). Every route uses requireAdmin (X-Admin-Token, constant-time compare).
  *   GET   /api/admin/reports       → AdminReportsResponse (newest first, max 100)
- *   POST  /api/admin/moderate      AdminModerate → 204
+ *   POST  /api/admin/moderate      AdminModerate → 204. "delete" really deletes recipes, stories
+ *                                  and share cards; a member (someone's challenge, private data)
+ *                                  is only removed from the cohort for good and its card hidden.
+ *                                  Either way the report is marked deleted and cannot be restored.
  *   PATCH /api/admin/recipes/:id   { featured } → 204 (official or community)
- *   GET   /api/admin/stats         → AdminStats
+ *   GET   /api/admin/stats         → AdminStats (STATS/GLOBAL + pilot metrics from a capped Scan)
  *   GET   /api/admin/contacts      → AdminContactsResponse (newest first, max 100)
  */
 export function adminRoutes(deps: Deps) {
@@ -80,10 +96,13 @@ export function adminRoutes(deps: Deps) {
     if (action === "hide") {
       if (!(await hideTarget(deps, target))) throw notFound(TARGET_NOT_FOUND);
     } else if (action === "restore") {
+      // A removed member keeps existing (the owner's private record) but stays out for good.
+      if (await isReportDeleted(deps, target.type, target.id)) throw conflict(DELETED_NOT_RESTORABLE);
       if (!(await restoreTarget(deps, target))) throw notFound(TARGET_NOT_FOUND);
       await resetReportCount(deps, target.type, target.id);
     } else {
       await deleteTarget(deps, target);
+      await markReportDeleted(deps, target.type, target.id);
     }
     log.info("moderated", { targetType, action });
     return c.body(null, 204);
@@ -100,8 +119,11 @@ export function adminRoutes(deps: Deps) {
   });
 
   r.get(API.adminStats, admin, async (c) => {
-    const res = await deps.db.send(new GetCommand({ TableName: deps.tableName, Key: statsKey() }));
-    return c.json<AdminStats>(toAdminStats(res.Item ?? {}, deps.now()));
+    const [res, pilot] = await Promise.all([
+      deps.db.send(new GetCommand({ TableName: deps.tableName, Key: statsKey() })),
+      computePilotStats(deps),
+    ]);
+    return c.json<AdminStats>(toAdminStats(res.Item ?? {}, deps.now(), pilot));
   });
 
   r.get(API.adminContacts, admin, async (c) => c.json<AdminContactsResponse>({ items: await listContacts(deps) }));

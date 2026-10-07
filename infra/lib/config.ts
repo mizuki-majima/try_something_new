@@ -2,6 +2,10 @@
 
 export const REGION = "ap-northeast-1";
 export const STACK_NAME = "ThirtyDays";
+/** The AWS account is shared with other projects: say which service the stack is. */
+export const STACK_DESCRIPTION = "30日だけ (try_something_new)";
+/** API Gateway names are not unique per account; "HttpApi" (the construct id) said nothing. */
+export const HTTP_API_NAME = "ThirtyDaysApi";
 export const PROJECT_TAG = "thirty-days";
 
 /** SSM parameters created once by scripts/setup-secrets.mjs (never by CloudFormation). */

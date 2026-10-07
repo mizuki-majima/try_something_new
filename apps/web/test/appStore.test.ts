@@ -197,5 +197,25 @@ describe("app store", () => {
     const snap = store.getSnapshot();
     expect(snap.challenges).toEqual([]);
     expect(snap.pending).toBe(0);
+    api.fail(null);
+    await store.actions.flush();
+    expect(api.calls.some((c) => c.startsWith("POST /api/challenges") || c.startsWith("DELETE"))).toBe(false);
+  });
+
+  it("a delete answered 404 (already gone, e.g. deleted on another device) stays deleted without an error", async () => {
+    const ch = start();
+    await store.actions.flush();
+    api.challenges.delete(ch.id); // gone on the server
+    api.fail((method, url) =>
+      method === "DELETE" && url === API.challenge(ch.id) ? json(404, { error: { code: "not_found", message: "見つかりません" } }) : null,
+    );
+    expect(store.actions.deleteChallenge(ch.id).ok).toBe(true);
+    await store.actions.flush();
+    const snap = store.getSnapshot();
+    expect(api.calls).toContain(`DELETE ${API.challenge(ch.id)}`);
+    expect(snap.challenges).toEqual([]);
+    expect(snap.pending).toBe(0);
+    expect(snap.syncStatus).toBe("synced");
+    expect(notices).toEqual([]);
   });
 });

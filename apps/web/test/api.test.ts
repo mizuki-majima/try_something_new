@@ -1,6 +1,7 @@
 import { API } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { ApiClientError, request } from "../src/lib/api";
+import { requestBody } from "../src/lib/http";
 import { clearSession, getToken, isSessionInvalid } from "../src/lib/session";
 import { KEYS, writeString } from "../src/lib/storage";
 
@@ -38,6 +39,43 @@ describe("request", () => {
     expect(init?.method).toBe("POST");
     expect((init?.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
     expect(init?.body).toBe(JSON.stringify({ message: "こんにちは" }));
+  });
+
+  it("always sends JSON for POST / PUT / PATCH, with {} when there is no body (the API answers 415 otherwise)", async () => {
+    fetchMock.mockImplementation(async () => json(200, {}));
+    for (const method of ["POST", "PUT", "PATCH"] as const) {
+      fetchMock.mockClear();
+      await request(method, "/api/x", { auth: "none" });
+      const init = fetchMock.mock.calls[0]![1]!;
+      expect(init.method).toBe(method);
+      expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+      expect(init.body).toBe("{}");
+    }
+  });
+
+  it("sends a DELETE body as JSON, and a DELETE or GET without one with neither body nor Content-Type", async () => {
+    fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
+    await request("DELETE", API.pushSubscriptions, { body: { endpoint: "https://fcm.googleapis.com/x" }, auth: "none" });
+    let init = fetchMock.mock.calls[0]![1]!;
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    expect(init.body).toBe(JSON.stringify({ endpoint: "https://fcm.googleapis.com/x" }));
+    for (const method of ["DELETE", "GET"] as const) {
+      fetchMock.mockClear();
+      await request(method, "/api/x", { auth: "none" });
+      init = fetchMock.mock.calls[0]![1]!;
+      expect((init.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+      expect(init.body).toBeUndefined();
+    }
+  });
+
+  it("requestBody: the wire body for each method", () => {
+    expect(requestBody("POST", undefined)).toBe("{}");
+    expect(requestBody("put", undefined)).toBe("{}");
+    expect(requestBody("PATCH", { a: 1 })).toBe('{"a":1}');
+    expect(requestBody("DELETE", undefined)).toBeUndefined();
+    expect(requestBody("DELETE", { endpoint: "e" })).toBe('{"endpoint":"e"}');
+    expect(requestBody("GET", undefined)).toBeUndefined();
+    expect(requestBody("POST", null)).toBe("null");
   });
 
   it("maps an ApiError body to ApiClientError with fields", async () => {
