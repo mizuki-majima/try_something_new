@@ -2,9 +2,13 @@
 
 構成は [SPEC.md](../SPEC.md) の Architecture。IaC は `infra/`（AWS CDK、スタック名 `ThirtyDays`、リージョン `ap-northeast-1`）。生成 AI は使っていないので、Bedrock の設定やモデルの有効化は不要（[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
-> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6（実機の Live smoke と通知メールの後）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
+> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6（実機の Live smoke と、通知メールの購読の承認の後）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
 >
-> 2026-10-07 に `ALERT_EMAIL`（宛先は CEO のメールアドレス。リポジトリには書かない）を付けて再デプロイし、予算 `thirty-days-monthly` とアラーム5つを作った。次からのデプロイでも同じ宛先を付ける（外すと消える）。メールは購読の承認後に届く（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。
+> 2026-10-07 に `ALERT_EMAIL`（宛先は CEO のメールアドレス。リポジトリには書かない）を付けて再デプロイし、予算 `thirty-days-monthly` とアラーム5つを作った（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。
+>
+> - **次からのデプロイでも同じ宛先を付ける。** 外すと予算・SNS トピック・アラームが確認なしで消え、付け直しても購読の承認からやり直しになる。宛先はどこにも新しく書かず、`aws sns list-subscriptions-by-topic --topic-arn <ThirtyDays-CostGuardAlarmTopic… の ARN>` の `Endpoint` で確かめるか CEO に聞く
+> - 予算のメールは宛先に直接届く（承認は要らない）。アラームのメールは SNS 経由なので、AWS からの確認メール（件名「AWS Notification - Subscription Confirmation」）で購読を承認してから届く
+> - 確認メールのリンクには期限がある（数日。過ぎると承認されないまま消える）。期限が過ぎたら、同じコマンドの代わりに `aws sns subscribe --topic-arn <上の ARN> --protocol email --notification-endpoint <宛先>` で確認メールを送り直す（CloudFormation は消えた購読に気づかないので、再デプロイでは送り直されない）
 
 ## 前提
 
@@ -90,14 +94,14 @@ cd infra && npx cdk deploy -c alertEmail=you@example.com
 3. API Gateway の URL（`https://<apiId>.execute-api.ap-northeast-1.amazonaws.com/api/health`）を直接開くと 403（CloudFront 経由のみ受け付ける）。AWS アカウントは他のプロジェクトと共用なので、コンソールでは API 名 `ThirtyDaysApi`、スタックの説明「30日だけ (try_something_new)」で見分ける
 4. `<SiteUrl>/media/hidden/share/x.png` が 404（公開されるのは `/media/share/<id>.png` だけ。通報や管理で非表示にしたカードの画像は `hidden/share/` に移る）
 5. `curl -s <SiteUrl>/ | grep og:image` が `https://` で始まる URL を返す
-6. （`ALERT_EMAIL` を付けたとき）確認メールの購読を承認した。CloudWatch のアラームが5つ（下）と、ロググループ `ApiLogs…` のメトリクスフィルタ（`SessionCeilingFilter`）があり、Budgets に `thirty-days-monthly` がある
+6. （`ALERT_EMAIL` を付けたとき）確認メールの購読を承認した。CloudWatch のアラームが5つ（下）と、ロググループ `ApiLogs…` のメトリクスフィルタ（`CostGuardSessionCeilingFilter…` のような名前）があり、Budgets に `thirty-days-monthly` がある
 7. DynamoDB のテーブル（コンソールの「追加の設定」→ 読み込み/書き込みキャパシティ）で、テーブルと GSI 3つの最大オンデマンドスループットが読み込み 1000・書き込み 100 になっている
 
 ## アラーム（`ALERT_EMAIL` 指定時）
 
 どれも SNS トピック「thirty-days alerts」からメールで届く。データが無い間は「正常」扱い。
 
-| 名前（コンソールでは `CostGuard` で始まる） | 条件 | 何が分かるか |
+| 名前（コンソールでは `ThirtyDays-CostGuard` で始まる） | 条件 | 何が分かるか |
 |---|---|---|
 | `Api5xx` | API Gateway（`ThirtyDaysApi`、ステージ `$default`）の 5xx が5分間に5回以上 | ルートの例外（DynamoDB の権限エラーなど）。API はこれを普通の 500 として返すので、Lambda の Errors には数えられない |
 | `ApiErrors` | api Lambda の Errors が5分間に5回以上 | 起動・SSM の読み込み・タイムアウトの失敗 |
