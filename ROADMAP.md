@@ -1,6 +1,6 @@
 # Roadmap — 30日だけ
 
-最終更新: 2026-10-07 ／ 現在: **TEST**（PILOT 開始は CEO 承認済み。次: [Gate 6: TEST → PILOT](https://github.com/mizuki-majima/try_something_new/issues/4)）
+最終更新: 2026-10-07 ／ 現在: **PILOT**（次: [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)）
 
 直近の学習を最優先にする。細かい長期計画は書かない。Later は約束ではない。
 
@@ -11,19 +11,15 @@
 - [x] 修正版を AWS にデプロイ（`https://d1zw3n37kpuo7t.cloudfront.net`）し、本番環境で Chromium の自動スモークを通過
 - [x] CEO が PILOT 開始と #3（返信先・運営者表示）の案A を承認（[ADR 0005](docs/decisions/0005-pilot-approval.md)）
 - [x] 費用配分タグ `Project` の有効化（2026-10-07）
+- [x] 障害・費用の通知メール（予算とアラーム5つ。アラームが SNS に送れない不具合を直し、テストのメールの到着を確認。[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）
+- [x] TEST（Gate 6: [#4](https://github.com/mizuki-majima/try_something_new/issues/4)）: 実機の Live smoke は本番のログで裏付けが取れず、AI QA の判定は「未達」。CEO がリスクを受け入れて通過（[ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md)）
 
 ## Now
 
-招待の前（2026-10-31 まで）:
-
-- [ ] 実機（iPhone / Android）での Live smoke（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)。CEO が操作、AI QA が判定）
-- [x] 障害・費用の通知メール（`ALERT_EMAIL`）を付けて再デプロイ（2026-10-07。予算 `thirty-days-monthly` とアラーム5つ）
-- [x] AWS からの確認メールで購読を承認（CEO、2026-10-07。[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）
-- [ ] AI QA が Gate 6 を判定（[#4](https://github.com/mizuki-majima/try_something_new/issues/4)）→ PILOT
-
 PILOT:
 
-- [ ] CEO が友人・同僚 10人前後に URL を配り、**2026-11-01 開始の1日組**に誘う（AI は連絡しない）
+- [ ] CEO が友人・同僚 10人前後に URL を配り（10月末まで）、**2026-11-01 開始の1日組**に誘う（AI は連絡しない）
+- [ ] 招待の日と 2026-11-01: AI PM が本番のログで参加者の操作（アカウント作成・チャレンジ作成・印・通知の購読）と 4xx / 5xx を確かめる。最初の1週間はリマインドの送信数も（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）
 - [ ] PILOT 中: 機能は足さない。バグと運用だけ直す。週次レビューで管理画面の指標・AWS の請求・ログを見る
 
 ## Next
