@@ -9,11 +9,9 @@
     "deploy": "cdk deploy --all --require-approval never --no-notices",
     "diff": "cdk diff --no-notices"
   },
-  "dependencies": {
+  "devDependencies": {
+    "aws-cdk": "^2.1144.0",
     "aws-cdk-lib": "^2.272.0",
     "constructs": "^10.8.1"
-  },
-  "devDependencies": {
-    "aws-cdk": "^2.1144.0"
   }
 }
