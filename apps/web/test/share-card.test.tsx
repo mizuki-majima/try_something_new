@@ -231,6 +231,8 @@ function fakeStore(snap: Partial<AppSnapshot> = {}) {
     lastSyncError: null,
     lastSyncedAt: 1,
     lastStamped: null,
+    throttle: null,
+    profileLimitedUntil: null,
     ...snap,
   };
   const actions = {

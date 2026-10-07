@@ -18,7 +18,7 @@ import { Sheet } from "../components/Sheet";
 import { EmptyState, ErrorState, Loading } from "../components/States";
 import { useToast } from "../components/Toast";
 import { StartChallengeSheet } from "../features/start/StartChallengeSheet";
-import { ApiClientError, errorMessage } from "../lib/api";
+import { ApiClientError, errorMessage, isQuotaLimit } from "../lib/api";
 import { usePageTitle } from "../lib/hooks";
 import { deleteRecipe, deleteStory, postStory, useRecipe } from "../lib/recipes";
 import { useApp, useToday } from "../lib/store";
@@ -320,7 +320,7 @@ function StorySheet({ open, recipe, defaultName, onClose, onPosted }: StorySheet
       setVerdict("none");
       onPosted(story);
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 429) {
+      if (isQuotaLimit(err)) {
         setFormError("今日の体験談はここまでです。明日また書けます。");
       } else {
         if (err instanceof ApiClientError && err.fields) setErrors(friendlyStoryErrors(err.fields));

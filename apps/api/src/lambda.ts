@@ -14,6 +14,8 @@ type Args = Parameters<typeof honoHandler>;
 
 export const handler = async (event: Args[0], context?: Args[1]) => {
   // Cached after the first successful load; deps.secrets is shared with the routes and providers.
+  // A failed load (e.g. the IP hash key parameter is missing: NF-4) throws, so the invocation fails
+  // (API Gateway answers 500, the ApiErrors alarm counts it) and the next request tries again.
   Object.assign(deps.secrets, await loadSecrets(config));
   return honoHandler(event, context);
 };

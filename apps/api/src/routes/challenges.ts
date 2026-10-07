@@ -75,7 +75,8 @@ export function isAllowedStartDate(startDate: string, today: string): boolean {
 }
 
 type Plan = Omit<ChallengeUpdate, "owner" | "now">;
-type PlanContext = { today: string; now: number };
+/** `counted`: this challenge's verdict is in STATS (see ChallengeItem.counted). */
+type PlanContext = { today: string; now: number; counted: boolean };
 
 /** A JSON body that may also be empty (PUT /stamps/:day with nothing to say). */
 async function readOptionalJson<T extends z.ZodType>(c: Context, schema: T): Promise<z.output<T>> {
@@ -108,7 +109,7 @@ export function challengesRoutes(deps: Deps) {
       const before = toChallenge(item);
       const nowDate = deps.now();
       const now = nowDate.getTime();
-      const p = plan(before, { today: todayIn(user.tz, nowDate), now });
+      const p = plan(before, { today: todayIn(user.tz, nowDate), now, counted: item.counted === true });
       const after = await updateChallenge(deps, user.id, item, { ...p, owner: user, now });
       if (after) return { before, after };
     }
@@ -244,14 +245,17 @@ export function challengesRoutes(deps: Deps) {
   r.post(`${idPath}/reflect`, auth, async (c) => {
     const id = parseWith(IdSchema, c.req.param("id"));
     const input = await readJson(c, ReflectSchema);
-    const { before, after } = await mutate(c.var.user, id, (ch, { today, now }) => {
+    let counted = false;
+    const { before, after } = await mutate(c.var.user, id, (ch, { today, now, counted: wasCounted }) => {
+      counted = wasCounted;
       if (ch.status === "done") {
         // Changing one's mind later: verdict / reflection only, the record stays closed. Conditioned
-        // on the verdict read, so the verdict counters below move exactly once per change. An
-        // imported record stays private (a re-reflection is not the owner using the challenge).
+        // on the verdict (and `counted`) read, so the verdict counters below move exactly once per
+        // change, and only for a verdict STATS holds. An imported record stays private (a
+        // re-reflection is not the owner using the challenge) and was never counted (NF-3).
         return {
           set: { verdict: input.verdict, reflection: input.reflection === undefined ? undefined : input.reflection || null },
-          expect: { status: "done", ...(ch.verdict ? { verdict: ch.verdict } : {}) },
+          expect: { status: "done", counted: wasCounted, ...(ch.verdict ? { verdict: ch.verdict } : {}) },
           keepImported: true,
         };
       }
@@ -266,14 +270,17 @@ export function challengesRoutes(deps: Deps) {
           finishedDay: Math.min(TOTAL_DAYS, index),
         },
         expect: { status: "active", startDate: ch.startDate },
+        // Same write: this challenge's verdict is about to be added to STATS (below).
+        markCounted: true,
       };
     });
     if (before.status === "active") {
       // The write was conditioned on "active", so this runs once per challenge.
       await bumpStats(deps, { challengesDone: 1, [`verdict_${input.verdict}`]: 1 });
       log.info("challenge reflected", { uid: c.var.uid, verdict: input.verdict, day: after.finishedDay });
-    } else if (before.verdict && after.verdict && before.verdict !== after.verdict) {
-      // A changed verdict moves between the counters (the write was conditioned on before.verdict).
+    } else if (counted && before.verdict && after.verdict && before.verdict !== after.verdict) {
+      // A changed verdict moves between the counters (the write was conditioned on before.verdict
+      // and on `counted`). Never for a verdict that was not counted: it would go below its true value.
       await bumpStats(deps, { [`verdict_${before.verdict}`]: -1, [`verdict_${after.verdict}`]: 1 });
     }
     return c.json<ChallengeResponse>({ challenge: after });

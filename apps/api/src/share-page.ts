@@ -88,7 +88,29 @@ h1{margin:2px 0 0;font-size:clamp(22px,5vw,32px);line-height:1.3;overflow-wrap:a
 .empty p{margin:12px 0 0}
 footer{max-width:760px;margin:0 auto;padding:8px 16px 32px;color:var(--muted);font-size:13px;text-align:center}
 footer a{display:inline-block;padding:10px 0}
+footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:0 18px;font-size:14px}
+footer nav a{padding:12px 2px;min-height:44px}
+footer p{margin:4px 0 0}
 `;
+
+/**
+ * The same links as the app's footer (apps/web Layout FOOTER_LINKS, SPEC FR-21 / D13): every screen,
+ * this server-rendered one included, reaches the Terms and the Privacy Policy. Plain links (no script).
+ */
+export const SHARE_FOOTER_LINKS: readonly { href: string; label: string }[] = [
+  { href: "/about", label: "このサービスについて" },
+  { href: "/terms", label: "利用規約" },
+  { href: "/privacy", label: "プライバシーポリシー" },
+  { href: "/contact", label: "お問い合わせ" },
+];
+
+function footer(): string {
+  const links = SHARE_FOOTER_LINKS.map((l) => `<a href="${escapeHtml(l.href)}">${escapeHtml(l.label)}</a>`).join("");
+  return `<footer>
+<nav aria-label="このサイトについて">${links}</nav>
+<p>着想：<a href="${escapeHtml(TED_TALK_URL)}" rel="noopener noreferrer">Matt Cutts “Try something new for 30 days”</a></p>
+</footer>`;
+}
 
 type PageParts = { title: string; head: string; body: string };
 
@@ -109,7 +131,7 @@ ${head}
 <main>
 ${body}
 </main>
-<footer>着想：<a href="${escapeHtml(TED_TALK_URL)}" rel="noopener noreferrer">Matt Cutts “Try something new for 30 days”</a></footer>
+${footer()}
 </body>
 </html>
 `;

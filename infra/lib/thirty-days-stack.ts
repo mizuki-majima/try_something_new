@@ -30,6 +30,8 @@ import {
   REMINDER_MAX_EVENT_AGE_MINUTES,
   STACK_DESCRIPTION,
   TABLE_KEYS,
+  TABLE_MAX_THROUGHPUT,
+  TABLE_OPERATIONS,
   VAPID_SUBJECT,
 } from "./config";
 import { CostGuard } from "./cost-guard";
@@ -59,7 +61,7 @@ export type ThirtyDaysStackProps = StackProps & {
   apiDistPath?: string;
   /** Directory holding the bundled reminder Lambda (index.mjs). */
   reminderDistPath?: string;
-  /** Enables the AWS Budgets / alarm mails. */
+  /** Enables the AWS Budgets / alarm mails (cost-guard.ts). */
   alertEmail?: string;
 };
 
@@ -73,10 +75,13 @@ export class ThirtyDaysStack extends Stack {
     const reminderDistPath = props.reminderDistPath ?? DEFAULT_ASSET_PATHS.reminderDistPath;
 
     // ---- Data ------------------------------------------------------------------------------
+    // On-demand, but capped (TABLE_MAX_THROUGHPUT): a cost circuit breaker. Each GSI has its own cap;
+    // a write that would exceed a GSI's cap is throttled on the table as well.
     const table = new dynamodb.Table(this, "Table", {
       partitionKey: { name: TABLE_KEYS.partitionKey, type: dynamodb.AttributeType.STRING },
       sortKey: { name: TABLE_KEYS.sortKey, type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      ...TABLE_MAX_THROUGHPUT,
       timeToLiveAttribute: TABLE_KEYS.ttlAttribute,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       deletionProtection: true,
@@ -88,6 +93,7 @@ export class ThirtyDaysStack extends Stack {
         partitionKey: { name: ix.partitionKey, type: dynamodb.AttributeType.STRING },
         sortKey: { name: ix.sortKey, type: dynamodb.AttributeType.STRING },
         projectionType: dynamodb.ProjectionType.ALL,
+        ...TABLE_MAX_THROUGHPUT,
       });
     }
 
@@ -330,6 +336,8 @@ export class ThirtyDaysStack extends Stack {
         apiFunction: apiFn,
         apiStage,
         reminderFunction: reminderFn,
+        table,
+        tableOperations: TABLE_OPERATIONS,
       });
     }
 

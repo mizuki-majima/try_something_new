@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TABLE } from "../../apps/api/src/db/table";
 import {
   CACHE_CONTROL,
@@ -12,7 +12,10 @@ import {
   NO_CACHE_FILES,
   PARAM,
   STACK_DESCRIPTION,
+  STACK_NAME,
   TABLE_KEYS,
+  TABLE_MAX_THROUGHPUT,
+  TABLE_OPERATIONS,
 } from "../lib/config";
 import { FORWARD_HOST_CODE, MEDIA_PATH_CODE, SHARE_PAGE_CSP, SITE_CSP, SPA_REWRITE_CODE } from "../lib/edge";
 import { ThirtyDaysStack, type ThirtyDaysStackProps } from "../lib/thirty-days-stack";
@@ -108,6 +111,20 @@ describe("DynamoDB table", () => {
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       Tags: Match.arrayWith([{ Key: "Project", Value: "thirty-days" }]),
     });
+  });
+
+  it("caps on-demand throughput on the table and on every GSI: a cost circuit breaker (NF-1, R1)", () => {
+    expect(TABLE_MAX_THROUGHPUT).toEqual({ maxReadRequestUnits: 400, maxWriteRequestUnits: 100 });
+    const cap = { MaxReadRequestUnits: 400, MaxWriteRequestUnits: 100 };
+    const [table] = resourcesOf(template, "AWS::DynamoDB::Table");
+    expect(table?.Properties?.BillingMode).toBe("PAY_PER_REQUEST");
+    expect(table?.Properties?.OnDemandThroughput).toEqual(cap);
+    // A GSI without its own cap would let its writes (and every table write it mirrors) grow unbounded.
+    const gsis = table?.Properties?.GlobalSecondaryIndexes as Array<{ IndexName: string; OnDemandThroughput?: unknown }>;
+    expect(gsis.map((g) => g.IndexName)).toEqual(["gsi1", "gsi2", "gsi3"]);
+    for (const g of gsis) expect(g.OnDemandThroughput, g.IndexName).toEqual(cap);
+    // On-demand caps only: no provisioned capacity anywhere.
+    expect(JSON.stringify(table?.Properties)).not.toContain("ProvisionedThroughput");
   });
 });
 
@@ -433,7 +450,8 @@ describe("CloudFront Function code", () => {
 });
 
 describe("cost guard", () => {
-  it("creates nothing without alertEmail", () => {
+  it("creates nothing without alertEmail (the throughput cap stays: it is not an alarm)", () => {
+    template.hasResourceProperties("AWS::DynamoDB::Table", { OnDemandThroughput: Match.objectLike({ MaxWriteRequestUnits: 100 }) });
     template.resourceCountIs("AWS::Budgets::Budget", 0);
     template.resourceCountIs("AWS::SNS::Topic", 0);
     template.resourceCountIs("AWS::CloudWatch::Alarm", 0);
@@ -489,10 +507,89 @@ describe("cost guard", () => {
       [3600, 2],
     ]);
     const topic = logicalIdOf(guarded, "AWS::SNS::Topic", () => true);
-    expect(alarms()).toHaveLength(3);
+    expect(alarms()).toHaveLength(4);
     for (const a of alarms()) expect(a.AlarmActions).toEqual([{ Ref: topic }]);
     // The Lambda alarm kept its logical id (no replacement on deploy).
     expect(Object.keys(guarded.findResources("AWS::CloudWatch::Alarm")).some((id) => id.startsWith("CostGuardApiErrors"))).toBe(true);
+  });
+
+  type MetricQuery = {
+    Id: string;
+    Expression?: string;
+    ReturnData?: boolean;
+    MetricStat?: {
+      Metric: { Namespace: string; MetricName: string; Dimensions: Array<{ Name: string; Value: unknown }> };
+      Period: number;
+      Stat: string;
+    };
+  };
+
+  it("alarms on any throttled DynamoDB request: the throughput cap tripped (NF-1, R1)", () => {
+    const tableId = logicalIdOf(guarded, "AWS::DynamoDB::Table", () => true);
+    const throttle = alarms().find((a) => JSON.stringify(a.Metrics ?? []).includes("ThrottledRequests"));
+    expect(throttle).toMatchObject({
+      Threshold: 1,
+      EvaluationPeriods: 1,
+      ComparisonOperator: "GreaterThanOrEqualToThreshold",
+      TreatMissingData: "notBreaching",
+    });
+    const queries = throttle?.Metrics as MetricQuery[];
+    const stats = queries.filter((q) => q.MetricStat);
+    const dim = (q: MetricQuery, name: string) => q.MetricStat?.Metric.Dimensions.find((d) => d.Name === name)?.Value;
+    for (const q of stats) {
+      expect(q.MetricStat).toMatchObject({
+        Metric: { Namespace: "AWS/DynamoDB", MetricName: "ThrottledRequests" },
+        Period: 300,
+        Stat: "Sum",
+      });
+      expect(dim(q, "TableName")).toEqual({ Ref: tableId });
+      expect(q.ReturnData).toBe(false);
+    }
+    expect(stats.map((q) => dim(q, "Operation"))).toEqual([...TABLE_OPERATIONS]);
+    // ThrottledRequests only has data points when something was throttled: an unfilled `a + b` would
+    // stay empty unless every operation were throttled in the same 5 minutes.
+    const [sum] = queries.filter((q) => q.Expression);
+    expect(sum?.ReturnData).toBe(true);
+    expect(sum?.Expression).toBe(stats.map((q) => `FILL(${q.Id}, 0)`).join(" + "));
+    expect(Object.keys(guarded.findResources("AWS::CloudWatch::Alarm")).some((id) => id.startsWith("CostGuardDynamoThrottles"))).toBe(true);
+  });
+
+  it("the throttle alarm covers every DynamoDB operation the Lambdas use (apps/api/src)", () => {
+    // lib-dynamodb command → CloudWatch Operation. A command missing here fails the test: add it, and
+    // to TABLE_OPERATIONS (at most 10).
+    const OPERATION: Record<string, string> = {
+      GetCommand: "GetItem",
+      PutCommand: "PutItem",
+      UpdateCommand: "UpdateItem",
+      DeleteCommand: "DeleteItem",
+      QueryCommand: "Query",
+      ScanCommand: "Scan",
+      BatchGetCommand: "BatchGetItem",
+      BatchWriteCommand: "BatchWriteItem",
+      TransactGetCommand: "TransactGetItems",
+      TransactWriteCommand: "TransactWriteItems",
+      ExecuteStatementCommand: "ExecuteStatement",
+      BatchExecuteStatementCommand: "BatchExecuteStatement",
+      ExecuteTransactionCommand: "ExecuteTransaction",
+    };
+    const apiSrc = path.join(here, "../../apps/api/src");
+    const files = (readdirSync(apiSrc, { recursive: true }) as string[]).filter((f) => f.endsWith(".ts"));
+    const used = new Set<string>();
+    for (const f of files) {
+      const code = readFileSync(path.join(apiSrc, f), "utf8");
+      for (const m of code.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*"@aws-sdk\/(?:lib|client)-dynamodb"/g)) {
+        for (const name of m[1]!.split(",").map((s) => s.replace(/^\s*type\s+/, "").split(/\s+as\s+/)[0]!.trim())) {
+          if (/Command$/.test(name)) used.add(name);
+        }
+      }
+    }
+    // Control-plane commands (the local table setup) are not throttled by the table's capacity.
+    for (const control of ["CreateTableCommand", "DescribeTableCommand", "UpdateTimeToLiveCommand"]) used.delete(control);
+    expect(used.size).toBeGreaterThan(5);
+    for (const command of used) {
+      expect(OPERATION[command], `${command} → TABLE_OPERATIONS`).toBeDefined();
+      expect(TABLE_OPERATIONS as readonly string[], command).toContain(OPERATION[command]);
+    }
   });
 });
 
@@ -543,14 +640,27 @@ describe("outputs and secrets", () => {
   });
 });
 
+type Step = { step: number; accept?: string; send?: string };
+type Deployed = { stack?: Record<string, unknown>; distribution?: Record<string, unknown> };
+type CliRun = (args: string[]) => Promise<unknown>;
 type SetupSecrets = {
   PARAM: Record<string, string>;
   PARAM_TYPES: Record<string, string>;
   ROTATABLE: string[];
+  STACK_NAME: string;
+  DISTRIBUTION_ID_OUTPUT: string;
+  ORIGIN_VERIFY_HEADER: string;
   acceptList(value: string | undefined): string[];
   originVerifyState(accept: string | undefined, send: string | undefined): string;
-  nextOriginVerifyStep(accept: string, send: string, newValue: string): { step: number; accept?: string; send?: string };
+  nextOriginVerifyStep(accept: string, send: string, newValue: string): Step;
   checkParameters(found: Map<string, { type: string; value?: string }>): string[];
+  deployedSendProblem(deployed: Deployed | undefined, expected: string | undefined): string | undefined;
+  planOriginVerifyRotation(accept: string, send: string, newValue: string, readDeployed: () => Promise<Deployed>): Promise<Step>;
+  readDeployedOriginVerify(region: string, run: CliRun): Promise<Deployed>;
+  awsCliJson(
+    args: string[],
+    exec: (file: string, args: string[], options: object) => Promise<{ stdout: string }>,
+  ): Promise<unknown>;
 };
 
 /** The script runs main() only when executed; importing it just gives the helpers. */
@@ -631,5 +741,162 @@ describe("origin-verify rotation (scripts/setup-secrets.mjs, D8)", () => {
     const rotating = all();
     rotating.set(PARAM.originVerify, { type: "String", value: "v,w" });
     expect(checkParameters(rotating)).toEqual([]);
+
+    // An accept list that parses to nothing would refuse everything (the API fails closed on it, R6).
+    for (const blank of [",", " , ", ""]) {
+      const empty = all();
+      empty.set(PARAM.originVerify, { type: "String", value: blank });
+      expect(checkParameters(empty), JSON.stringify(blank)).toEqual([expect.stringContaining("403")]);
+    }
+  });
+});
+
+describe("origin-verify step 3 checks the deployed CloudFront first (NF-6, R6)", () => {
+  /** What DescribeStacks / GetDistribution return for a stack whose CloudFront sends `sent`. */
+  function deployedState(sent: string, opts: { stackStatus?: string; distStatus?: string; resolved?: string } = {}) {
+    const stack = {
+      StackName: "ThirtyDays",
+      StackStatus: opts.stackStatus ?? "UPDATE_COMPLETE",
+      Parameters: [
+        { ParameterKey: "SsmParameterValuethirtydaysoriginverifyC0FFEEParameter", ParameterValue: PARAM.originVerify, ResolvedValue: "x" },
+        {
+          ParameterKey: "SsmParameterValuethirtydaysoriginverifysendBEEFParameter",
+          ParameterValue: PARAM.originVerifySend,
+          ResolvedValue: opts.resolved ?? sent,
+        },
+      ],
+      Outputs: [
+        { OutputKey: "SiteUrl", OutputValue: "https://d111.cloudfront.net" },
+        { OutputKey: "DistributionId", OutputValue: "E2EXAMPLE" },
+      ],
+    };
+    const distribution = {
+      Id: "E2EXAMPLE",
+      Status: opts.distStatus ?? "Deployed",
+      DistributionConfig: {
+        Origins: {
+          Quantity: 3,
+          Items: [
+            { Id: "web", CustomHeaders: { Quantity: 0 } },
+            { Id: "api", CustomHeaders: { Quantity: 1, Items: [{ HeaderName: "x-origin-verify", HeaderValue: sent }] } },
+            { Id: "media" },
+          ],
+        },
+      },
+    };
+    return { stack, distribution };
+  }
+
+  it("names the stack, the output and the header the stack really has", async () => {
+    const s = await setupSecrets();
+    expect(s.STACK_NAME).toBe(STACK_NAME);
+    expect(Object.keys(template.toJSON().Outputs ?? {})).toContain(s.DISTRIBUTION_ID_OUTPUT);
+    const [dist] = resourcesOf(template, "AWS::CloudFront::Distribution");
+    expect(JSON.stringify(dist?.Properties)).toContain(`"HeaderName":"${s.ORIGIN_VERIFY_HEADER}"`);
+  });
+
+  it("is safe only when the last deploy finished with the new value and CloudFront is Deployed with it", async () => {
+    const { deployedSendProblem } = await setupSecrets();
+    expect(deployedSendProblem(deployedState("new"), "new")).toBeUndefined();
+    expect(deployedSendProblem(deployedState("new", { stackStatus: "CREATE_COMPLETE" }), "new")).toBeUndefined();
+
+    // The deploy after step 2 failed or was skipped: CloudFront still sends the old value.
+    expect(deployedSendProblem(deployedState("old"), "new")).toMatch(/まだ使っていません/);
+    expect(deployedSendProblem(deployedState("old", { stackStatus: "UPDATE_ROLLBACK_COMPLETE" }), "new")).toMatch(
+      /UPDATE_ROLLBACK_COMPLETE/,
+    );
+    // Still deploying (it may yet roll back), or CloudFront still propagating.
+    expect(deployedSendProblem(deployedState("new", { stackStatus: "UPDATE_IN_PROGRESS" }), "new")).toMatch(/UPDATE_IN_PROGRESS/);
+    expect(deployedSendProblem(deployedState("new", { distStatus: "InProgress" }), "new")).toMatch(/InProgress/);
+    // The stack resolved the new value but the distribution sends something else (changed by hand).
+    expect(deployedSendProblem(deployedState("old", { resolved: "new" }), "new")).toMatch(/x-origin-verify/);
+    // Missing pieces never count as safe.
+    expect(deployedSendProblem(undefined, "new")).toMatch(/見つかりません/);
+    expect(deployedSendProblem({ stack: deployedState("new").stack }, "new")).toMatch(/見つかりません/);
+    const noHeader = deployedState("new");
+    noHeader.distribution.DistributionConfig.Origins.Items = [{ Id: "web", CustomHeaders: { Quantity: 0 } }];
+    expect(deployedSendProblem(noHeader, "new")).toMatch(/x-origin-verify/);
+    expect(deployedSendProblem(deployedState(""), "")).toBeDefined();
+  });
+
+  it("refuses step 3 after step 2 until a deploy has really switched CloudFront, and writes nothing", async () => {
+    const { nextOriginVerifyStep, planOriginVerifyRotation } = await setupSecrets();
+    // NF-6: steady → step 1 → step 2, then the deploy fails and CloudFront keeps sending the old value.
+    let accept = "old";
+    let send = "old";
+    for (const expected of [1, 2]) {
+      const next = await planOriginVerifyRotation(accept, send, "new", () => Promise.reject(new Error("not read for steps 1 and 2")));
+      expect(next.step).toBe(expected);
+      if (next.accept !== undefined) accept = next.accept;
+      if (next.send !== undefined) send = next.send;
+    }
+    expect([accept, send]).toEqual(["old,new", "new"]);
+
+    const failedDeploy = vi.fn(async () => deployedState("old", { stackStatus: "UPDATE_ROLLBACK_COMPLETE" }));
+    await expect(planOriginVerifyRotation(accept, send, "x", failedDeploy)).rejects.toThrow(/手順 3\/3.*まだ進めません/);
+    expect(failedDeploy).toHaveBeenCalledTimes(1);
+    const propagating = vi.fn(async () => deployedState("new", { distStatus: "InProgress" }));
+    await expect(planOriginVerifyRotation(accept, send, "x", propagating)).rejects.toThrow(/InProgress/);
+    const unreadable = vi.fn(async () => Promise.reject(new Error("AccessDenied")));
+    await expect(planOriginVerifyRotation(accept, send, "x", unreadable)).rejects.toThrow(/読めませんでした.*AccessDenied/);
+
+    // After a successful deploy: step 3, the same step nextOriginVerifyStep gives.
+    const deployed = vi.fn(async () => deployedState("new"));
+    await expect(planOriginVerifyRotation(accept, send, "x", deployed)).resolves.toEqual({ step: 3, accept: "new" });
+    expect(nextOriginVerifyStep(accept, send, "x")).toEqual({ step: 3, accept: "new" });
+  });
+
+  it("reads the deployed state with read-only AWS CLI calls only", async () => {
+    const { readDeployedOriginVerify } = await setupSecrets();
+    const state = deployedState("new");
+    const calls: string[][] = [];
+    const run = vi.fn(async (args: string[]) => {
+      calls.push(args);
+      if (args[1] === "describe-stacks") return { Stacks: [state.stack] };
+      if (args[1] === "get-distribution") return { ETag: "E1", Distribution: state.distribution };
+      throw new Error(`unexpected ${args.join(" ")}`);
+    });
+    await expect(readDeployedOriginVerify("ap-northeast-1", run)).resolves.toEqual(state);
+    expect(calls).toEqual([
+      ["cloudformation", "describe-stacks", "--stack-name", "ThirtyDays", "--region", "ap-northeast-1"],
+      ["cloudfront", "get-distribution", "--id", "E2EXAMPLE", "--region", "us-east-1"],
+    ]);
+
+    // No DistributionId output (an old stack): no distribution, which deployedSendProblem refuses.
+    const bare = vi.fn(async () => ({ Stacks: [{ ...state.stack, Outputs: [] }] }));
+    await expect(readDeployedOriginVerify("ap-northeast-1", bare)).resolves.toEqual({
+      stack: { ...state.stack, Outputs: [] },
+      distribution: undefined,
+    });
+    expect(bare).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs the AWS CLI with JSON output, refuses anything but a read, and explains a missing CLI", async () => {
+    const { awsCliJson } = await setupSecrets();
+    const exec = vi.fn(async (_file: string, _args: string[], _options: object) => ({ stdout: '{"Stacks":[]}' }));
+    await expect(awsCliJson(["cloudformation", "describe-stacks", "--stack-name", "ThirtyDays"], exec)).resolves.toEqual({ Stacks: [] });
+    expect(exec).toHaveBeenCalledWith(
+      "aws",
+      ["cloudformation", "describe-stacks", "--stack-name", "ThirtyDays", "--output", "json"],
+      expect.objectContaining({ maxBuffer: expect.any(Number), env: expect.objectContaining({ AWS_PAGER: "" }) }),
+    );
+
+    for (const write of [
+      ["cloudformation", "update-stack"],
+      ["cloudfront", "update-distribution"],
+      ["ssm", "put-parameter"],
+      ["cloudformation"],
+    ]) {
+      exec.mockClear();
+      await expect(awsCliJson(write, exec)).rejects.toThrow(/読み取り以外/);
+      expect(exec).not.toHaveBeenCalled();
+    }
+
+    const missing = vi.fn(async () => Promise.reject(Object.assign(new Error("spawn aws ENOENT"), { code: "ENOENT" })));
+    await expect(awsCliJson(["cloudfront", "get-distribution", "--id", "E"], missing)).rejects.toThrow(/AWS CLI（aws）が見つかりません/);
+    const denied = vi.fn(async () =>
+      Promise.reject(Object.assign(new Error("Command failed"), { code: 254, stderr: "\nAn error occurred (ValidationError): Stack with id ThirtyDays does not exist\n" })),
+    );
+    await expect(awsCliJson(["cloudformation", "describe-stacks"], denied)).rejects.toThrow(/Stack with id ThirtyDays does not exist/);
   });
 });

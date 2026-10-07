@@ -11,14 +11,14 @@
 
 ## Now
 
-- [ ] REVIEW（Gate 5）: 独立レビューの指摘を直す（Critical: バックアップ読み込みに上限が無い、High: 公開カードを通報できない、を含む。AI PM 決定 D1〜D13 は SPEC に反映済み）→ 別エージェントで再レビューし、Critical / High 0件
+- [ ] REVIEW（Gate 5）: 独立レビューの指摘を直す（Critical: バックアップ読み込みに上限が無い、High: 公開カードを通報できない、を含む。AI PM 決定 D1〜D13 は SPEC に反映済み）→ 再レビューの指摘（Critical: 書き込みの費用に上限が無い、を含む。R1〜R10 は SPEC v1.2 に反映済み）を直す → 別エージェントで再々レビューし、Critical / High 0件
 - [ ] 修正版をテスト環境にデプロイ（先に `node scripts/setup-secrets.mjs`、`PUBLIC_ORIGIN` と `ALERT_EMAIL` を付ける。[docs/deploy.md](docs/deploy.md)）。費用配分タグ `Project` の有効化
 - [ ] TEST（Gate 6）: 実環境の Live smoke（[docs/test-plan.md](docs/test-plan.md)）、重大バグ 0件
 
 ## Next
 
 - PILOT（**CEO の承認後**。本番公開＝URL を人に配ること）: 友人・同僚 10人前後で「1日組」を1回（[docs/validation-plan.md](docs/validation-plan.md)）
-- お問い合わせの返信先（任意入力・180日保存）を残すことの CEO 確認（個人情報。D12）
+- お問い合わせの返信先（任意入力・180日保存）を残すことの CEO 確認（個人情報。D12）。`status:needs-ceo` の Issue はまだ無いので、Gate 5 を閉じる前に作る
 - CEO 本人の体験を公式レシピ・体験談として追加（現在の公式23本は一般的な例）
 
 ## Later

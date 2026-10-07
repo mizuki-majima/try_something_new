@@ -37,7 +37,7 @@
 | `npm run build` | API の Lambda バンドル（`apps/api/dist`）と Web（`apps/web/dist`） |
 | `npm run test:e2e` | Critical User Flow の E2E（Playwright、`tests/e2e/`） |
 | `npm run synth -w infra` | CDK synth（`CDK_DEFAULT_ACCOUNT=123456789012` で認証情報なしでも可。先に `npm run build`） |
-| `npm run deploy` | AWS へデプロイ（`PUBLIC_ORIGIN=https://<CloudFront のドメイン> ALERT_EMAIL=...` を付ける。最初に `node scripts/setup-secrets.mjs --check` が SSM のパラメータを確かめる。手順・前提は [docs/deploy.md](docs/deploy.md)。本番公開は CEO 承認が要る） |
-| `node scripts/setup-secrets.mjs` | SSM のパラメータを作る（足りないものだけ）。`--check` で確認、`--rotate <name>` で入れ替え（origin-verify は3段階） |
+| `npm run deploy` | AWS へデプロイ（`PUBLIC_ORIGIN=https://<CloudFront のドメイン> ALERT_EMAIL=...` を付ける）。順に、ビルド（`npm run build`）→ `node scripts/setup-secrets.mjs --check`（SSM のパラメータを確かめる）→ `cdk deploy`。手順・前提は [docs/deploy.md](docs/deploy.md)。本番公開は CEO 承認が要る |
+| `node scripts/setup-secrets.mjs` | SSM のパラメータを作る（足りないものだけ）。`--check` で確認、`--rotate <name>` で入れ替え（origin-verify は3段階。手順 3 は AWS CLI でデプロイ済みの CloudFront が新しい値を送っているのを確かめてから進む） |
 
 PR の前に lint → typecheck → test → build を通す（CI と同じ順）。

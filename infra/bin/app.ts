@@ -2,7 +2,8 @@
  * CDK app entry (cdk.json: "npx tsx bin/app.ts").
  *
  * Context (-c key=value):
- *   alertEmail       budget ($10/month) and API error alarm mails; strongly recommended.
+ *   alertEmail       budget ($10/month) plus API / reminder error and DynamoDB throttle alarm mails;
+ *                    strongly recommended. (The table's throughput cap applies with or without it.)
  *                    Also read from the ALERT_EMAIL env var, so `ALERT_EMAIL=... npm run deploy` works
  *                    (npm would swallow a -c flag passed through the root script).
  *   webDistPath      override the built SPA directory      (default ../apps/web/dist)

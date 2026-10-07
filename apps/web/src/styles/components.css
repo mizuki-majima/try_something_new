@@ -113,7 +113,8 @@
 .sync.synced::before {
   background: var(--mint, #3ddc97);
 }
-.sync.pending::before {
+.sync.pending::before,
+.sync.waiting::before {
   background: var(--yellow, #ffd43b);
 }
 .sync.offline::before {

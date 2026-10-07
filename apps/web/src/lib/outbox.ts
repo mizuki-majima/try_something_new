@@ -4,9 +4,13 @@
  * earlier ones (a stamp needs its challenge). The API is idempotent for these routes, so
  * re-sending after a lost response is safe.
  *
- * - 5xx / network / timeout / a short 429 → keep the item, stop, retry later with backoff
- * - 429 that lasts (a create over the daily quota, or Retry-After beyond an hour) → drop it like a
- *   4xx: waiting at the head of the queue would hold every later write until tomorrow
+ * - 5xx / network / timeout → keep the item, stop, retry later with backoff
+ * - 429 → decided by Retry-After, never by the kind of write:
+ *   - Retry-After beyond an hour (the API's daily quotas answer with the seconds until 0:00 JST) →
+ *     drop it like a 4xx: waiting at the head of the queue would hold every later write until tomorrow
+ *   - no Retry-After (API Gateway's shared stage throttle) or a short one → keep it and retry with
+ *     backoff, waiting at least Retry-After. Dropping these would throw away a new challenge and
+ *     its stamps because someone else's traffic tripped the throttle.
  * - 401 → keep everything, stop (the session must be restored first)
  * - 404 to a challenge delete → it is already gone: counts as sent (no rollback, no message)
  * - other 4xx → drop the item (it will never succeed); the caller refetches to roll back
@@ -211,27 +215,27 @@ function statusOf(err: unknown): number | null {
 }
 
 /**
- * A 429 that will not clear soon. The create quota (QUOTAS.challengesPerUserPerDay) resets at
- * midnight JST, so a create is never retried; any other write is dropped when the server asks to
- * wait more than an hour. The SPEC ("Error Handling", 429) wants 「今日はここまで」 for these.
+ * A 429 that will not clear soon: the server asked to wait more than an hour. The API's own quota
+ * 429s always carry Retry-After (until 0:00 JST for the daily ones), so this is the daily quota
+ * (e.g. QUOTAS.challengesPerUserPerDay) before 23:00 JST. The SPEC ("Error Handling", 429) wants
+ * 「今日はここまで」 for these. A 429 without Retry-After is the edge throttle and clears in seconds.
  */
-export function isLongRateLimit(op: OutboxOp | undefined, err: unknown): boolean {
+export function isLongRateLimit(err: unknown): boolean {
   if (statusOf(err) !== 429) return false;
-  if (op?.kind === "challenge.create") return true;
   const retryAfter = (err as { retryAfter?: unknown }).retryAfter;
   return typeof retryAfter === "number" && retryAfter > LONG_RATE_LIMIT_SECONDS;
 }
 
 /**
- * How to treat a failed send of `op`. Errors without an HTTP status (bugs) are dropped, never
- * looped. A short 429 is retried; a lasting one is dropped (isLongRateLimit).
+ * How to treat a failed send. Errors without an HTTP status (bugs) are dropped, never looped.
+ * A 429 is retried unless it lasts (isLongRateLimit), whatever the write.
  */
-export function classifyError(err: unknown, op?: OutboxOp): FailureKind {
+export function classifyError(err: unknown): FailureKind {
   const status = statusOf(err);
   if (status === null) return "drop";
   if (status === 0) return (err as { code?: unknown }).code === "aborted" ? "drop" : "retry";
   if (status === 401) return "auth";
-  if (status === 429) return isLongRateLimit(op, err) ? "drop" : "retry";
+  if (status === 429) return isLongRateLimit(err) ? "drop" : "retry";
   if (status >= 500) return "retry";
   return "drop";
 }
@@ -303,7 +307,7 @@ export async function drain(deps: DrainDeps): Promise<DrainResult> {
         deps.onSent?.(item, undefined);
         continue;
       }
-      const kind = classifyError(error, item.op);
+      const kind = classifyError(error);
       const current = deps.load();
       if (kind === "drop") {
         deps.save(dropItem(current, item));

@@ -8,9 +8,9 @@
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Challenge, User } from "@thirty/shared";
 import { useToast } from "../components/Toast";
-import { createAppStore, type AppActions, type AppSnapshot, type AppStore, type SyncStatus } from "./appStore";
+import { createAppStore, type AppActions, type AppSnapshot, type AppStore, type SyncStatus, type Throttle } from "./appStore";
 
-export type { AppActions, AppSnapshot, AppStore, StartChallengeInput, SyncStatus } from "./appStore";
+export type { AppActions, AppSnapshot, AppStore, StartChallengeInput, SyncStatus, Throttle } from "./appStore";
 export type { ActionResult } from "./validation";
 
 const StoreContext = createContext<AppStore | null>(null);
@@ -73,6 +73,8 @@ export type SyncInfo = {
   hasSession: boolean;
   sessionInvalid: boolean;
   lastSyncError: string | null;
+  /** Set while status is "waiting": when sending resumes and why. */
+  throttle: Throttle | null;
 };
 
 export function useSync(): SyncInfo {
@@ -82,8 +84,9 @@ export function useSync(): SyncInfo {
   const hasSession = useSelect((s) => s.hasSession);
   const sessionInvalid = useSelect((s) => s.sessionInvalid);
   const lastSyncError = useSelect((s) => s.lastSyncError);
+  const throttle = useSelect((s) => s.throttle);
   return useMemo(
-    () => ({ status, pending, online, hasSession, sessionInvalid, lastSyncError }),
-    [status, pending, online, hasSession, sessionInvalid, lastSyncError],
+    () => ({ status, pending, online, hasSession, sessionInvalid, lastSyncError, throttle }),
+    [status, pending, online, hasSession, sessionInvalid, lastSyncError, throttle],
   );
 }

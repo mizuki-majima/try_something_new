@@ -11,7 +11,15 @@
 import { send, ApiClientError, type SendOptions } from "./http";
 import { ensureSession, getToken, markSessionInvalid } from "./session";
 
-export { ApiClientError, isApiClientError, errorMessage, DEFAULT_TIMEOUT_MS, type ClientErrorCode } from "./http";
+export {
+  ApiClientError,
+  isApiClientError,
+  isQuotaLimit,
+  errorMessage,
+  DEFAULT_TIMEOUT_MS,
+  THROTTLED_MESSAGE,
+  type ClientErrorCode,
+} from "./http";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type AuthMode = "required" | "optional" | "none";

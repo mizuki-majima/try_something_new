@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { CATEGORY_KEYS, LIMITS, PLACE_KEYS, TOTAL_DAYS, VERDICT_KEYS } from "./constants";
 import { isValidDate, isValidTimeZone } from "./dates";
-import { cleanLine, cleanText, containsUrl, graphemeLength, isValidSeal } from "./text";
+import { cleanLine, cleanText, containsUrl, graphemeLength, isValidSeal, utf8Length } from "./text";
 
 // ---------- primitives ----------
 
@@ -33,7 +33,17 @@ type TextOpts = { min?: number; max: number; multiline?: boolean; noUrl?: boolea
  */
 export const rawTextLimit = (max: number) => max * 4 + 16;
 
-/** Normalised text with a grapheme-based length check (and a UTF-16 cap, see rawTextLimit). */
+/**
+ * Stored size cap in UTF-8 bytes (cost: what DynamoDB stores and bills). Japanese is 3 bytes a
+ * character and most emoji 4, so `max` ordinary characters always fit; one "character" stuffed with
+ * combining marks (1 grapheme, ~1.5 KB) does not.
+ */
+export const textByteLimit = (max: number) => max * 4 + 32;
+
+/**
+ * Normalised text with a grapheme-based length check, a UTF-16 cap on the raw input (rawTextLimit)
+ * and a UTF-8 byte cap on what is stored (textByteLimit).
+ */
 export function text({ min = 1, max, multiline = false, noUrl = false, label }: TextOpts) {
   return z
     .string()
@@ -43,6 +53,7 @@ export function text({ min = 1, max, multiline = false, noUrl = false, label }: 
       const n = graphemeLength(s);
       if (n < min) ctx.addIssue({ code: "custom", message: min === 1 ? `${label}を入力してください` : `${label}は${min}文字以上で入力してください` });
       if (n > max) ctx.addIssue({ code: "custom", message: `${label}は${max}文字以内で入力してください` });
+      else if (utf8Length(s) > textByteLimit(max)) ctx.addIssue({ code: "custom", message: `${label}が長すぎます` });
       if (noUrl && containsUrl(s)) ctx.addIssue({ code: "custom", message: `${label}にURLは入れられません` });
     });
 }

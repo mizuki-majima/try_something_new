@@ -28,7 +28,7 @@ import {
   type User,
   type Verdict,
 } from "@thirty/shared";
-import { ApiClientError, errorMessage, request } from "./api";
+import { ApiClientError, errorMessage, isQuotaLimit, request } from "./api";
 import { isOpen, viewChallenge } from "./challenge";
 import {
   applyOp,
@@ -64,7 +64,24 @@ import { fail, ok, parseWith, type ActionResult, type Failure } from "./validati
 /** SPEC "Error Handling" 429: shown when a queued write is refused until the quota resets. */
 export const RATE_LIMIT_NOTICE = "今日はここまで（あすの0時にリセット）";
 
-export type SyncStatus = "synced" | "pending" | "offline" | "error";
+/**
+ * Shown when the profile quota refused a change (toast, Settings, and updateMe's own refusal).
+ * PATCH /api/me is limited per JST day when the nickname or 「みんなに表示」 changes, because each
+ * change rewrites the user's public records (QUOTAS.profileChangesPerUserPerDay, R1).
+ */
+export const PROFILE_LIMIT_MESSAGE = `ニックネームと「みんなに表示」の変更は1日${QUOTAS.profileChangesPerUserPerDay}回までです。あすの0時（日本時間）を過ぎると、また変えられます。`;
+
+/** Band reason when the server asked us to wait without saying why in its own words. */
+export const BUSY_REASON = "混み合っています。";
+
+/**
+ * - waiting: online, the server asked us to wait (a 429 that clears soon); writes stay queued and
+ *   are sent automatically (Layout shows when, SPEC "Error Handling" 429)
+ */
+export type SyncStatus = "synced" | "pending" | "waiting" | "offline" | "error";
+
+/** The server asked us to wait: when sending resumes (ms) and what to tell the user. */
+export type Throttle = { until: number; reason: string };
 
 export type AppSnapshot = {
   /** null until the anonymous account exists (it is created by the first write). */
@@ -90,6 +107,13 @@ export type AppSnapshot = {
   lastSyncedAt: number | null;
   /** The most recent stamp pressed in this tab, for the stamp animation. */
   lastStamped: { challengeId: string; day: number; at: number } | null;
+  /** Set while syncStatus is "waiting" (a 429 on the queue or on creating the account). */
+  throttle: Throttle | null;
+  /**
+   * Until when (ms) the API refuses nickname / 「みんなに表示」 changes (the daily profile quota).
+   * Null when not limited; it goes back to null by itself when the quota resets.
+   */
+  profileLimitedUntil: number | null;
 };
 
 export type StartChallengeInput = {
@@ -179,6 +203,31 @@ function browserOnline(): boolean {
   return typeof navigator === "undefined" || navigator.onLine !== false;
 }
 
+/** A me.patch that changes what the profile quota counts (nickname, 「みんなに表示」). */
+function isProfileChange(op: OutboxOp | undefined): boolean {
+  return op?.kind === "me.patch" && (op.body.nickname !== undefined || op.body.shareProgress !== undefined);
+}
+
+function withPeriod(text: string): string {
+  return /[。．.!！?？]$/.test(text) ? text : `${text}。`;
+}
+
+/** What the band says while we wait after a 429 (see Throttle). */
+function throttleReason(err: unknown, creatingAccount: boolean): string {
+  // The API's own words for this write's quota (e.g. 「今日はここまでです。日本時間の0時を過ぎると…」).
+  if (!creatingAccount && isQuotaLimit(err)) return withPeriod((err as ApiClientError).message);
+  // New accounts are limited per network and overall, and the edge throttles everyone: both clear soon.
+  return BUSY_REASON;
+}
+
+/** The toast for a write dropped by a lasting 429 (isLongRateLimit). */
+function limitNotice(op: OutboxOp, err: unknown): string {
+  if (!isQuotaLimit(err)) return `保存できませんでした。${errorMessage(err)}`;
+  if (op.kind === "challenge.create") return `${RATE_LIMIT_NOTICE}。新しく始められるのは1日${QUOTAS.challengesPerUserPerDay}件までです。`;
+  if (isProfileChange(op)) return `${RATE_LIMIT_NOTICE}。${PROFILE_LIMIT_MESSAGE}`;
+  return `${RATE_LIMIT_NOTICE}。この変更は保存できませんでした。`;
+}
+
 export function createAppStore(): AppStore {
   const persisted = loadPersisted();
   let base: LocalState = persisted.base;
@@ -191,8 +240,11 @@ export function createAppStore(): AppStore {
   let refreshing: Promise<void> | null = null;
   let lastRefreshAt = 0;
   let lastDrain: DrainResult["status"] = "empty";
-  // The last retry was a (short) 429: the device is online, the server asked us to wait.
-  let lastRetryThrottled = false;
+  // The last retry was a 429 that clears soon: the device is online, the server asked us to wait.
+  let throttle: Throttle | null = null;
+  // Set while the profile quota refuses changes; cleared by a timer when it resets.
+  let profileLimitedUntil: number | null = null;
+  let profileLimitTimer: ReturnType<typeof setTimeout> | undefined;
   // Failed attempts to create the account, for its backoff.
   let sessionAttempts = 0;
   let lastSyncError: string | null = null;
@@ -216,7 +268,8 @@ export function createAppStore(): AppStore {
     if (isSessionInvalid()) return "error";
     if (!online) return "offline";
     if (pending === 0) return "synced";
-    return lastDrain === "retry" && !lastRetryThrottled ? "offline" : "pending";
+    if (throttle) return "waiting";
+    return lastDrain === "retry" ? "offline" : "pending";
   }
 
   function build(): AppSnapshot {
@@ -236,6 +289,8 @@ export function createAppStore(): AppStore {
       lastSyncError,
       lastSyncedAt,
       lastStamped,
+      throttle: pending > 0 ? throttle : null,
+      profileLimitedUntil,
     };
   }
 
@@ -318,8 +373,27 @@ export function createAppStore(): AppStore {
     recompute();
   }
 
+  function clearProfileLimit(): void {
+    clearTimeout(profileLimitTimer);
+    profileLimitedUntil = null;
+  }
+
+  /** The profile quota refused a nickname / 「みんなに表示」 change: remember until when (R1). */
+  function noteProfileLimit(op: OutboxOp | undefined, err: unknown): void {
+    if (!isProfileChange(op) || !isQuotaLimit(err)) return;
+    // The API sends the seconds until 0:00 JST; setTimeout cannot wait longer than ~24.8 days.
+    const ms = Math.min(((err as ApiClientError).retryAfter ?? 60) * 1000, 2 ** 31 - 1);
+    clearTimeout(profileLimitTimer);
+    profileLimitedUntil = Date.now() + ms;
+    profileLimitTimer = setTimeout(() => {
+      profileLimitedUntil = null;
+      emit();
+    }, ms);
+  }
+
   function onSent(item: OutboxItem, response: unknown): void {
     if (touched) touched.add(targetOf(item.op) ?? "@me");
+    if (isProfileChange(item.op)) clearProfileLimit();
     let next = applyOp(base, item.op, item.at);
     if (hasResponseChallenge(response)) {
       const c = response.challenge;
@@ -332,12 +406,9 @@ export function createAppStore(): AppStore {
   }
 
   function onDropped(item: OutboxItem, error: unknown): void {
-    if (isLongRateLimit(item.op, error)) {
-      const what =
-        item.op.kind === "challenge.create"
-          ? `新しく始められるのは1日${QUOTAS.challengesPerUserPerDay}件までです。`
-          : "この変更は保存できませんでした。";
-      notice({ kind: "error", message: `${RATE_LIMIT_NOTICE}。${what}` });
+    if (isLongRateLimit(error)) {
+      noteProfileLimit(item.op, error);
+      notice({ kind: "error", message: limitNotice(item.op, error) });
       return;
     }
     notice({ kind: "error", message: `保存できませんでした。${errorMessage(error)}` });
@@ -347,7 +418,10 @@ export function createAppStore(): AppStore {
     clearTimeout(retryTimer);
     online = browserOnline();
     if (!online || isSessionInvalid() || loadOutbox().length === 0) {
-      if (loadOutbox().length === 0) lastDrain = "empty";
+      if (loadOutbox().length === 0) {
+        lastDrain = "empty";
+        throttle = null;
+      }
       return;
     }
     if (!getToken()) {
@@ -359,11 +433,13 @@ export function createAppStore(): AppStore {
         if (err instanceof ApiClientError && err.status === 401) {
           lastDrain = "auth";
         } else {
-          // Growing backoff (and the server's Retry-After on a 429: new accounts are limited per hour).
+          // Growing backoff, and the server's Retry-After on a 429: new accounts are limited per
+          // network per hour and overall. The writes stay queued; the band says when we resume.
           sessionAttempts++;
           lastDrain = "retry";
-          lastRetryThrottled = err instanceof ApiClientError && err.status === 429;
-          scheduleRetry(retryDelayMs(sessionAttempts + 1, err));
+          const delay = retryDelayMs(sessionAttempts + 1, err);
+          throttle = err instanceof ApiClientError && err.status === 429 ? { until: Date.now() + delay, reason: throttleReason(err, true) } : null;
+          scheduleRetry(delay);
         }
         return;
       }
@@ -385,13 +461,20 @@ export function createAppStore(): AppStore {
       return;
     }
     lastDrain = result.status;
-    lastRetryThrottled = result.status === "retry" && result.error instanceof ApiClientError && result.error.status === 429;
+    throttle = null;
     if (result.status === "empty") {
       lastSyncError = null;
       lastSyncedAt = Date.now();
     } else {
       lastSyncError = errorMessage(result.error);
-      if (result.status === "retry") scheduleRetry(retryDelayMs(result.attempts, result.error));
+      if (result.status === "retry") {
+        const delay = retryDelayMs(result.attempts, result.error);
+        if (result.error instanceof ApiClientError && result.error.status === 429) {
+          throttle = { until: Date.now() + delay, reason: throttleReason(result.error, false) };
+          noteProfileLimit(loadOutbox()[0]?.op, result.error);
+        }
+        scheduleRetry(delay);
+      }
     }
     if (result.dropped > 0) void refresh();
   }
@@ -566,6 +649,10 @@ export function createAppStore(): AppStore {
     updateMe(patch) {
       const parsed = parseWith(MePatchSchema, patch);
       if (!parsed.ok) return parsed;
+      if (profileLimitedUntil !== null && isProfileChange({ kind: "me.patch", body: parsed.data })) {
+        // The API would refuse it until the quota resets: say so now instead of rolling back later.
+        return fail(PROFILE_LIMIT_MESSAGE, parsed.data.nickname !== undefined ? { nickname: PROFILE_LIMIT_MESSAGE } : {});
+      }
       if (!getToken() && parsed.data.nickname !== undefined) {
         pendingNickname = parsed.data.nickname;
         persist();
@@ -592,6 +679,8 @@ export function createAppStore(): AppStore {
         }
         pendingNickname = null;
         sessionAttempts = 0;
+        throttle = null;
+        clearProfileLimit();
         persist();
         recompute();
         // Cached recipe responses carry the previous token's isMine.
@@ -615,7 +704,8 @@ export function createAppStore(): AppStore {
       lastStamped = null;
       lastSyncError = null;
       lastDrain = "empty";
-      lastRetryThrottled = false;
+      throttle = null;
+      clearProfileLimit();
       sessionAttempts = 0;
       ready = true;
       persist();
@@ -695,6 +785,7 @@ export function createAppStore(): AppStore {
       clearInterval(tick);
       clearTimeout(retryTimer);
       clearTimeout(flushTimer);
+      clearTimeout(profileLimitTimer);
       unsubSession();
       unsubCreated();
       window.removeEventListener("online", onOnline);

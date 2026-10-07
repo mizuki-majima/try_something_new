@@ -34,6 +34,19 @@ const STATUS_CODES: Record<number, ErrorCode> = {
   429: "rate_limited",
 };
 
+/**
+ * A 429 without the API's JSON error: the edge (API Gateway's stage throttle, shared by everyone)
+ * refused the request. It clears in seconds, so it is not 「今日はここまで」.
+ */
+export const THROTTLED_MESSAGE = "混み合っています。少し時間をおいてから、もう一度お試しください。";
+
+export type ApiClientErrorMeta = {
+  /** The response carried the API's own JSON error ({ error: { code, message } }). */
+  fromApi?: boolean;
+  /** The request failed while creating the anonymous account (POST /api/session), not the action itself. */
+  session?: boolean;
+};
+
 export class ApiClientError extends Error {
   /** HTTP status, or 0 when no response arrived (network / timeout / aborted). */
   readonly status: number;
@@ -42,14 +55,32 @@ export class ApiClientError extends Error {
   readonly fields: Record<string, string> | undefined;
   /** Seconds from a Retry-After header (429), when the server sent one. */
   readonly retryAfter: number | undefined;
+  /** The API itself answered with its JSON error (false for the edge, a proxy or no response). */
+  readonly fromApi: boolean;
+  /** Raised while creating the anonymous account that the action needed (see isQuotaLimit). */
+  readonly session: boolean;
 
-  constructor(status: number, code: ClientErrorCode, message?: string, fields?: Record<string, string>, retryAfter?: number) {
+  constructor(
+    status: number,
+    code: ClientErrorCode,
+    message?: string,
+    fields?: Record<string, string>,
+    retryAfter?: number,
+    meta: ApiClientErrorMeta = {},
+  ) {
     super(message || MESSAGES[code]);
     this.name = "ApiClientError";
     this.status = status;
     this.code = code;
     this.fields = fields;
     this.retryAfter = retryAfter;
+    this.fromApi = meta.fromApi ?? false;
+    this.session = meta.session ?? false;
+  }
+
+  /** The same error, marked as raised by POST /api/session on the way to another request. */
+  inSession(): ApiClientError {
+    return new ApiClientError(this.status, this.code, this.message, this.fields, this.retryAfter, { fromApi: this.fromApi, session: true });
   }
 
   /** True when the same request may succeed later without changes (offline, 5xx, 429). */
@@ -61,6 +92,15 @@ export class ApiClientError extends Error {
 
 export function isApiClientError(err: unknown): err is ApiClientError {
   return err instanceof ApiClientError;
+}
+
+/**
+ * The action's own quota refused it: a 429 from the API (its JSON error) for this request. Not the
+ * account creation in front of it (new accounts are limited per network and overall), and not the
+ * edge throttle — those clear soon and must not be shown as 「今日の〇〇はここまで」.
+ */
+export function isQuotaLimit(err: unknown): boolean {
+  return err instanceof ApiClientError && err.status === 429 && err.fromApi && !err.session;
 }
 
 /** A user-facing message for any thrown value. */
@@ -94,9 +134,9 @@ function toError(status: number, data: unknown, retryAfterHeader: string | null)
       fields = {};
       for (const [k, v] of Object.entries(err.fields as Record<string, unknown>)) if (typeof v === "string") fields[k] = v;
     }
-    return new ApiClientError(status, code, message, fields, retryAfter);
+    return new ApiClientError(status, code, message, fields, retryAfter, { fromApi: true });
   }
-  return new ApiClientError(status, fallbackCode, undefined, undefined, retryAfter);
+  return new ApiClientError(status, fallbackCode, status === 429 ? THROTTLED_MESSAGE : undefined, undefined, retryAfter);
 }
 
 /** Methods the API only accepts as JSON (415 otherwise), even when there is nothing to say. */

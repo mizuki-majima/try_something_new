@@ -71,7 +71,18 @@ export const QUOTAS = {
   reportsPerUserPerDay: 20,
   cheersPerUserPerDay: 100,
   contactPerUserPerDay: 3,
+  /** Per client: an IPv4 address or an IPv6 /56 (a Japanese IPoE home gets a /56). */
   sessionsPerIpPerHour: 20,
+  /**
+   * New anonymous accounts per hour across ALL clients (a ceiling for many-address abuse; the API
+   * logs a warning when it trips).
+   */
+  sessionsGlobalPerHour: 300,
+  /**
+   * PATCH /api/me requests that change the nickname or shareProgress. Each one rewrites the user's
+   * cohort projection, so it is bounded (cost: NF-1).
+   */
+  profileChangesPerUserPerDay: 10,
   transferCodesPerUserPerHour: 5,
   transferRedeemPerIpPerHour: 10,
   pushTestsPerUserPerDay: 5,
@@ -81,10 +92,13 @@ export const QUOTAS = {
 
 /**
  * A public item is hidden automatically when this many distinct users report it. Only reporters
- * whose account is REPORTER_MIN_ACCOUNT_AGE_HOURS old and holds a challenge count towards it.
+ * whose account is REPORTER_MIN_ACCOUNT_AGE_HOURS old and holds a challenge count towards it, and
+ * those reporters must come from at least AUTO_HIDE_MIN_NETWORKS different networks (an IPv4 /24
+ * or an IPv6 /48), so one person's accounts on one connection cannot hide anything.
  */
 export const AUTO_HIDE_REPORTS = 3;
 export const REPORTER_MIN_ACCOUNT_AGE_HOURS = 24;
+export const AUTO_HIDE_MIN_NETWORKS = 2;
 
 /** Transfer codes (device hand-over) expire after this many minutes. */
 export const TRANSFER_CODE_TTL_MINUTES = 15;

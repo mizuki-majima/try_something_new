@@ -1,10 +1,14 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { AUTO_HIDE_REPORTS, REPORTER_MIN_ACCOUNT_AGE_HOURS } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { ReportButton } from "../src/components/ReportButton";
 import { ToastHost, ToastProvider } from "../src/components/Toast";
+import { THROTTLED_MESSAGE } from "../src/lib/api";
+import { clearSession } from "../src/lib/session";
 import { KEYS, writeString } from "../src/lib/storage";
 
-const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 
 let fetchMock: Mock<typeof fetch>;
 
@@ -79,5 +83,33 @@ describe("ReportButton", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "送信" }));
     expect(await within(dialog).findByText("今日の通報はここまでです。明日また送れます。")).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "通報する" })).toBeTruthy();
+  });
+
+  it("R7: a refused account creation (new accounts are limited) is not shown as the daily report limit", async () => {
+    clearSession();
+    fetchMock.mockResolvedValue(
+      json(429, { error: { code: "rate_limited", message: "新しく始める人が集中しています。しばらくしてからもう一度お試しください" } }, { "Retry-After": "900" }),
+    );
+    renderButton();
+    const dialog = openSheet();
+    fireEvent.click(within(dialog).getByRole("button", { name: "送信" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe("新しく始める人が集中しています。しばらくしてからもう一度お試しください");
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/api/session"]);
+  });
+
+  it("the edge throttle (429 without the API's body) says it is busy, not 今日はここまで", async () => {
+    fetchMock.mockResolvedValue(json(429, { message: "Too Many Requests" }));
+    renderButton();
+    const dialog = openSheet();
+    fireEvent.click(within(dialog).getByRole("button", { name: "送信" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(THROTTLED_MESSAGE);
+  });
+
+  it("r2-web-2: says every report is checked and auto-hide only happens under conditions", () => {
+    renderButton();
+    const note = within(openSheet()).getByText(/みずさんの体験談を運営者に知らせます/).textContent ?? "";
+    expect(note).toContain("通報はすべて運営者が確認し、必要なら非表示にします。");
+    expect(note).toContain(`一定の条件（利用を始めて${REPORTER_MIN_ACCOUNT_AGE_HOURS}時間以上たっていることなど）を満たす${AUTO_HIDE_REPORTS}人から通報があると、確認の前に自動で非表示になることもあります。`);
+    expect(note).not.toContain("人から通報があると、自動で非表示になります");
   });
 });

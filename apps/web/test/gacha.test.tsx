@@ -5,6 +5,8 @@ import { OFFICIAL_RECIPES, type Challenge, type Recipe, type Suggestion } from "
 import { ToastHost, ToastProvider } from "../src/components/Toast";
 import type { AppActions } from "../src/lib/appStore";
 import { gachaPool, matchesGacha, officialRecipe, resetRecipesCache, type GachaFilters } from "../src/lib/recipes";
+import { THROTTLED_MESSAGE } from "../src/lib/api";
+import { clearSession } from "../src/lib/session";
 import { KEYS, writeString } from "../src/lib/storage";
 import { AppProvider, type AppSnapshot, type AppStore } from "../src/lib/store";
 import GachaPage, { suggestBody } from "../src/pages/GachaPage";
@@ -33,6 +35,8 @@ function fakeStore(over: Partial<AppSnapshot> = {}): AppStore {
     lastSyncError: null,
     lastSyncedAt: null,
     lastStamped: null,
+    throttle: null,
+    profileLimitedUntil: null,
     ...over,
   };
   return { getSnapshot: () => snap, subscribe: () => () => {}, onNotice: () => () => {}, actions: {} as AppActions, start: () => () => {} };
@@ -220,6 +224,25 @@ describe("GachaPage", () => {
     expect(screen.getByTestId("remaining").textContent).toBe("今日はあと 0 回");
     // Never retried automatically.
     await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/suggestions")).toHaveLength(2));
+  });
+
+  it("ひらめき提案: a 429 from creating the account or the edge throttle is not the daily limit (the button stays usable)", async () => {
+    clearSession();
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input) === "/api/session") return json(429, { error: { code: "rate_limited", message: "混み合っています。しばらくしてからお試しください" } });
+      if (String(input) === "/api/suggestions") return json(429, { message: "Too Many Requests" });
+      return json(200, { recipes: [] });
+    });
+    renderGacha();
+    fireEvent.click(screen.getByRole("button", { name: "提案してもらう" }));
+    expect(await screen.findByText(/^混み合っています。しばらくしてからお試しください/)).toBeTruthy();
+    expect(screen.queryByText(/今日はここまで。明日また提案できます/)).toBeNull();
+
+    writeString(KEYS.token, "tok");
+    fireEvent.click(screen.getByRole("button", { name: "再試行" }));
+    expect(await screen.findByText((text) => text.startsWith(THROTTLED_MESSAGE))).toBeTruthy();
+    expect(screen.queryByText(/今日はここまで。明日また提案できます/)).toBeNull();
+    expect(screen.getByRole("button", { name: "再試行" }).hasAttribute("disabled")).toBe(false);
   });
 
   it("skips recipes already in progress", () => {

@@ -1,12 +1,14 @@
 /**
  * "通報" (SPEC FR-18): a small text button that opens a sheet with an optional reason and sends
- * POST /api/reports. Three distinct reporters hide an item automatically (AUTO_HIDE_REPORTS).
+ * POST /api/reports. The operator reads every report; only some reporters count towards hiding an
+ * item automatically (reportCopy.ts), so the sheet does not promise it.
  *
  *   <ReportButton targetType="story" targetId={`${recipeId}:${storyId}`} subject="みずさんの体験談" />
  */
 import { useState, type FormEvent } from "react";
-import { API, AUTO_HIDE_REPORTS, LIMITS, ReportCreateSchema, type ReportTargetType } from "@thirty/shared";
-import { ApiClientError, errorMessage, request } from "../lib/api";
+import { API, LIMITS, ReportCreateSchema, type ReportTargetType } from "@thirty/shared";
+import { ApiClientError, errorMessage, isQuotaLimit, request } from "../lib/api";
+import { AUTO_HIDE_CONDITION, REPORT_REVIEWED } from "../lib/reportCopy";
 import { parseWith } from "../lib/validation";
 import { TextAreaField } from "./Field";
 import { Sheet } from "./Sheet";
@@ -31,7 +33,8 @@ const SUBJECTS: Record<ReportTargetType, string> = {
 
 export function reportErrorMessage(err: unknown): string {
   if (err instanceof ApiClientError) {
-    if (err.status === 429) return "今日の通報はここまでです。明日また送れます。";
+    // Only the report quota itself: a refused account creation or the edge throttle clears soon.
+    if (isQuotaLimit(err)) return "今日の通報はここまでです。明日また送れます。";
     if (err.status === 400) return err.fields?.reason ?? err.message;
     if (err.status === 404) return "通報する対象が見つかりませんでした。すでに削除された可能性があります。";
   }
@@ -95,7 +98,8 @@ export function ReportButton({ targetType, targetId, subject, className }: Props
       <Sheet open={open} onClose={() => setOpen(false)} title="通報する" dismissible={!busy}>
         <form className="form" onSubmit={submit} noValidate>
           <p className="note">
-            {what}を運営に知らせます。内容を確かめて、必要なら非表示にします。{AUTO_HIDE_REPORTS}人から通報があると、自動で非表示になります。
+            {what}を運営者に知らせます。{REPORT_REVIEWED}
+            {AUTO_HIDE_CONDITION}
           </p>
           <TextAreaField
             label="理由（任意）"

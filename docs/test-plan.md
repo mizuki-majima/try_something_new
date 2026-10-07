@@ -1,6 +1,6 @@
 # Test Plan — 30日だけ
 
-Owner: AI QA ／ 対象: SPEC v1 ／ 最終更新: 2026-10-07
+Owner: AI QA ／ 対象: SPEC v1.2 ／ 最終更新: 2026-10-07
 
 方針: MVP では Critical User Flow（CUF）を最優先。網羅より「CUF が壊れたら必ず CI が赤になる」こと。次に過去の不具合の回帰、最後にエッジケース。課金される外部 API はどのテストからも呼ばない（このサービスには AI も課金 API も無い。[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
@@ -11,7 +11,7 @@ Owner: AI QA ／ 対象: SPEC v1 ／ 最終更新: 2026-10-07
 | Unit | 共有ロジック（日付・文字数・スキーマ） | Vitest | `packages/shared/test/` | CI（`npm test`） |
 | Unit | Web のロジックと画面（store・outbox・共有カード・各ページ） | Vitest + jsdom + Testing Library | `apps/web/test/` | CI（`npm test`） |
 | Integration | API の全ルート・DB・リマインドジョブ（DynamoDB は dynalite、S3 / SSM / Web Push はモック） | Vitest + dynalite + aws-sdk-client-mock | `apps/api/test/` | CI（`npm test`） |
-| Integration | インフラ（CDK テンプレートの検証。CloudFront Function のコードも実行して確認）と `scripts/setup-secrets.mjs` の入れ替え・確認のロジック | Vitest + aws-cdk-lib/assertions | `infra/test/` | CI（`npm test`） |
+| Integration | インフラ（CDK テンプレートの検証。CloudFront Function のコードも実行して確認。DynamoDB のスループットの上限とスロットルのアラーム、アラームが API の使う DynamoDB の操作をすべて含むこと）と `scripts/setup-secrets.mjs` の入れ替え・確認のロジック（origin-verify の手順 3 がデプロイ済みの CloudFront を確かめること。AWS CLI はモック） | Vitest + aws-cdk-lib/assertions | `infra/test/` | CI（`npm test`） |
 | E2E | CUF-1〜3 と全画面のスモーク。本番ビルドの Web + ローカル API | Playwright（Chromium。`mobile` 390×844 タッチ / `desktop` 1280×800） | `tests/e2e/` | CI（`npm run test:e2e`） |
 | Live smoke | デプロイ後の実環境で CUF・Web Push・OGP | 手動（下のチェックリスト） | 本書 | 初回公開前・インフラ変更後・リリースごと |
 
@@ -47,6 +47,8 @@ npx playwright show-report               # 前回の HTML レポート
 | 同上 | Service Worker あり: 一度開いたあとオフラインで再読み込み（SW から配信）→「きょう」と公式レシピが開け、オフラインの印が復帰後に同期 | FR-20 |
 | `cuf2-reflect-and-share.spec.ts` | 30日前開始・23印のチャレンジ →「30日が終わりました」→「振り返る」→「続ける」→ ひとこと →「決める」→ 1200×630 のカード →「リンクを作って共有」→ `/s/<id>` にタイトル・印・判定・ひとこと・「自分も30日やってみる」、`og:image` が絶対 URL で `image/png` 1200×630 → 「記録」に「続ける」バッジ → API で done / continue / shareId | CUF-2 1〜4 |
 | 同上 | 画像アップロードが 500 → エラー表示、公開リンクは出ない、「画像を保存」で 1200×630 の PNG が保存でき「Xで共有」も使える | CUF-2 E |
+| `rate-limit-429.spec.ts` | API Gateway のステージのスロットル（`Retry-After` なしの 429）を新しいチャレンジの作成が受けても、作成とその間に押した印が残り、あとで両方送られる（R9） | Error Handling 429, CUF-1 |
+| 同上 | アカウント作成（`POST /api/session`）の 429 の間、理由と再開の目安が帯で見え、チャレンジは残ってあとで同期される（R7・R10） | Error Handling 429 |
 | `cuf3-cohort-cheer.spec.ts` | A が今月開始（公開は既定 ON）→ 別ブラウザの B が「みんな」→ 今月の組に A のニックネーム・印・タイトル・ミニ30マス →「応援」で 0→1・「応援済み」で押せない（再読み込み後も）・API の2回目は 409 → A が設定で「みんなに進捗を表示する」を OFF → B の再読み込みで A が消える | CUF-3 1〜4 |
 | `smoke.spec.ts` | `/` `/recipes` `/recipes/photo` `/recipes/new` `/gacha` `/together` `/log` `/settings` `/about` `/terms` `/privacy` `/contact` `/admin` と未知のパス（404 画面）が、コンソールエラーなし・横スクロールなしで開く（14 件） | SPEC UI |
 | 同上 | ガチャを1回まわして結果と「これを30日やる」、ひらめき提案で3案と「いまは AI を使わず、ルールで選んでいます」、残り回数 | FR-12, FR-13 |
@@ -104,10 +106,18 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 | 共有画像の検証（PNG・1200×630・600KB） | `apps/api/test/shares.test.ts` "png checks" |
 | 自分への応援・非表示への応援・日をまたいだ再応援 | `apps/api/test/cohorts.test.ts` |
 | 公開レスポンスに ひとことメモ・ユーザー ID を含めない | `apps/api/test/cohorts.test.ts` "…without notes or ids" |
-| 通報3件で自動非表示・管理画面の削除／復元 | `apps/api/test/reports.test.ts`, `apps/api/test/admin.test.ts`, `apps/web/test/admin.test.tsx` |
+| 通報3件（作成24時間以上・チャレンジあり・2つ以上のネットワーク）で自動非表示・管理画面の削除／復元 | `apps/api/test/reports.test.ts`, `apps/api/test/admin.test.ts`, `apps/web/test/admin.test.tsx` |
 | ひらめき提案の上限（1日10回）と失敗時の表示 | `apps/api/test/suggestions.test.ts`, `apps/web/test/gacha.test.tsx` |
 | Push の宛先制限（SSRF）、404/410 の登録削除 | `apps/api/test/push.test.ts`, `apps/api/test/reminder.test.ts` |
 | 横スクロールが出ない（390px / 1280px） | E2E `smoke` |
+| 書き込みの費用の上限（R1）: ニックネーム・進捗公開の変更は1日10回、書き直すのは変わる項目だけ、保存する文字は UTF-8 のバイト数でも上限、DynamoDB のスロットルは SDK が多めにやり直す | `apps/api/test/me.test.ts`, `packages/shared/test/schemas.test.ts`, `apps/api/test/challenges.test.ts`, `apps/api/test/config.test.ts`, `apps/web/test/appStore.test.ts`, `apps/web/test/settings.test.tsx`；テーブルと GSI の上限・スロットルのアラームは `infra/test/stack.test.ts` |
+| モデレーションはチャレンジを消して読み込み直しても残る（`MOD#<chId>`。R2） | `apps/api/test/shares.test.ts`, `apps/api/test/me.test.ts` |
+| 判定の内訳は、数えたチャレンジ（`counted`）だけを移し替える（R3） | `apps/api/test/challenges.test.ts` |
+| IP のハッシュ鍵が無いと起動しない（R4）、`ORIGIN_VERIFY` が空なら全部 403（R6） | `apps/api/test/config.test.ts`, `apps/api/test/http.test.ts`, `apps/api/test/lambda.test.ts` |
+| 読み込みは1人ずつ（同時は 409。R5） | `apps/api/test/me.test.ts`, `apps/web/test/settings.test.tsx` |
+| origin-verify の手順 3 はデプロイ済みの CloudFront が新しい値を送るまで進まない（R6） | `infra/test/stack.test.ts` |
+| IPv6 は /56 で数える、アカウント作成は全体で1時間300件まで（R7）、自動非表示は2つ以上のネットワークからの通報が要る（R8） | `apps/api/test/http.test.ts`, `apps/api/test/reports.test.ts`, `apps/web/test/report.test.tsx` |
+| 429 は `Retry-After` で決める（1時間を超えるときだけ捨てる。R9）、API の上限の 429 には必ず `Retry-After` | `apps/web/test/outbox.test.ts`, `apps/web/test/appStore.test.ts`, `apps/api/test/http.test.ts`；E2E `rate-limit-429` |
 
 ## Live smoke（手動）と品質ルーブリック
 
@@ -129,7 +139,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] PWA: ホーム画面に追加 → 機内モードでアイコンから開き、「きょう」と公式レシピが見える
 - [ ] CUF-2: 30日前に始めたチャレンジを用意する（設定 → バックアップの読み込みで、開始日を30日前にしたバックアップ JSON を読み込む。形は `tests/e2e/fixtures.ts` の `pastChallenge`）→ 振り返る → 続ける → カード → リンクを作って共有 → 別のブラウザ（シークレット）で `/s/<id>` を開く
 - [ ] OGP: `/s/<id>` を LINE（自分だけのトーク）と X の投稿画面に貼り、画像つきのカードが出る。`og:image` が `https://<CloudFront ドメイン>/media/share/<id>.png`。トップの URL を貼っても画像が出る
-- [ ] 通報: `/s/<id>` の「このカードを通報する」→ お問い合わせ画面の通報フォーム → 送ると管理画面の通報一覧に出る。管理画面で「非表示」→ `/s/<id>` と `/media/share/<id>.png` が（キャッシュの5分以内に）404、「復元」で戻る
+- [ ] 通報: `/s/<id>` の「このカードを通報する」→ お問い合わせ画面の通報フォーム → 送ると管理画面の通報一覧に出る。管理画面で「非表示」→（キャッシュの5分以内に）`/s/<id>` は 404、`/media/share/<id>.png` は 403（S3 は無いキーに 403 を返す。CloudFront には一覧の権限を与えていないため。404 でもよい）。「復元」で両方戻る。`/s/<id>` の下にフッター（このサービスについて・利用規約・プライバシーポリシー・お問い合わせ）
 - [ ] CUF-3: 端末 A で今月開始、端末 B（別アカウント）の「みんな」に A が出る → 応援 → 応援済み → A が設定で公開 OFF → B の再読み込みで消える
 
 **Web Push（FR-14）**
@@ -145,7 +155,8 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] `/admin` に管理トークンで入り、統計（開始した人・7日継続・完走）とお問い合わせが見える。別アカウントで通報した項目が一覧に出る
 - [ ] 設定 →「すべてのデータを削除」で、アカウント・公開カード（`/s/<id>` が 404）・1日組の表示が消える
 - [ ] CloudWatch Logs に 5xx が無い。ログにトークン・ひとこと・投稿本文・Push の宛先・IP が出ていない
-- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム3つ（`Api5xx`・`ApiErrors`・`ReminderErrors`）がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている
+- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム4つ（`Api5xx`・`ApiErrors`・`ReminderErrors`・`DynamoThrottles`）がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている
+- [ ] DynamoDB のテーブルと GSI 3つに最大オンデマンドスループット（読み込み 400・書き込み 100）が付いている。`DynamoThrottles` が「OK」（Live smoke の操作で上限に当たらない）
 - [ ] `node scripts/setup-secrets.mjs --check` が「6 個がそろっています」
 
 **品質ルーブリック（判定）**

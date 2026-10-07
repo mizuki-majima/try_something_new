@@ -86,5 +86,9 @@ test("/s/<unknown> is the server-rendered HTML 404", async ({ page, request }) =
   expect(nav?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "カードが見つかりません" })).toBeVisible();
   await expect(page.getByRole("link", { name: "自分も30日やってみる" })).toHaveAttribute("href", "/");
+  // FR-21 / D13: the Terms and the Privacy Policy are reachable from this page too.
+  const footerNav = page.getByRole("contentinfo").getByRole("navigation", { name: "このサイトについて" });
+  await expect(footerNav.getByRole("link", { name: "利用規約" })).toHaveAttribute("href", "/terms");
+  await expect(footerNav.getByRole("link", { name: "プライバシーポリシー" })).toHaveAttribute("href", "/privacy");
   expect(await horizontalOverflow(page), "horizontal overflow in px").toBeLessThanOrEqual(0);
 });

@@ -5,7 +5,8 @@ import { API } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { Layout } from "../src/components/Layout";
 import { ToastProvider } from "../src/components/Toast";
-import { createAppStore } from "../src/lib/appStore";
+import { resumeText } from "../src/components/OfflineBanner";
+import { createAppStore, type AppActions, type AppSnapshot, type AppStore } from "../src/lib/appStore";
 import { clearSession, getToken } from "../src/lib/session";
 import { AppProvider } from "../src/lib/store";
 import AboutPage from "../src/pages/AboutPage";
@@ -68,6 +69,14 @@ describe("TermsPage", () => {
     expect(screen.getAllByText(/30日だけ 運営事務局（個人運営）/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/2026年10月6日/).length).toBeGreaterThan(0);
   });
+
+  it("r2-web-2: every report is checked by the operator; auto-hide is conditional, never promised", () => {
+    renderPage(<TermsPage />);
+    const text = document.body.textContent ?? "";
+    expect(screen.getByText("通報はすべて運営者が確認し、必要なら投稿を非表示にしたり削除したりします。")).toBeTruthy();
+    expect(text).toContain("一定の条件（利用を始めて24時間以上たっていることなど）を満たす3人から通報があった投稿は、運営者の確認の前に自動で非表示になることがあります。");
+    expect(text).not.toContain("3人から通報された投稿は、自動で非表示になります");
+  });
 });
 
 describe("PrivacyPage", () => {
@@ -90,8 +99,11 @@ describe("PrivacyPage", () => {
     expect(screen.getByText(/任意で入力された返信先（メールアドレスなど）。返信先は返信のためだけに使い、内容とともに180日で削除します/)).toBeTruthy();
     expect(text).not.toContain("メールアドレスは集めず");
     expect(text).not.toContain("保存しないもの：メールアドレス");
-    // Rate-limit keys: a keyed hash, IPv6 by /64, 2 days — not "cannot be reversed".
-    expect(screen.getByText(/秘密鍵つきのハッシュ（HMAC）。IPv6 は上位64ビット/)).toBeTruthy();
+    // Rate-limit keys: a keyed hash, IPv6 by /56 (R7: Japanese IPoE homes get a /56), 2 days — not "cannot be reversed".
+    expect(screen.getByText(/秘密鍵つきのハッシュ（HMAC）。IPv6 は上位56ビット/)).toBeTruthy();
+    // R8: a report keeps a keyed hash of the reporter's network, until the account is deleted.
+    expect(screen.getByText(/通報したネットワークを見分ける値（IP\s*アドレスから作った秘密鍵つきのハッシュ値）も、通報の記録と一緒に保存します/)).toBeTruthy();
+    expect(screen.getByText("通報した記録（通報したネットワークを見分ける値を含む）：アカウントを削除するまで")).toBeTruthy();
     expect(text).not.toContain("元に戻せない形（ハッシュ値）");
     // Public cards carry the nickname; the Google Calendar link sends the title to Google.
     expect(screen.getByText(/公開リンクを作った振り返りカード：ニックネーム/)).toBeTruthy();
@@ -180,6 +192,26 @@ describe("ContactPage — 通報 for a public card (/contact?report=share:<id>)"
     expect(screen.getByRole("heading", { level: 1, name: "カードを通報する" })).toBeTruthy();
   });
 
+  it("R7: when creating the account is refused (429), shows that reason instead of the daily report limit", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      String(input) === API.session
+        ? json(429, { error: { code: "rate_limited", message: "いまは新しく始める人が集中しています。しばらくしてからお試しください" } })
+        : new Response(null, { status: 204 }),
+    );
+    renderPage(<ContactPage />, `/contact?report=share:${SHARE_ID}`);
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("いまは新しく始める人が集中しています。しばらくしてからお試しください");
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([API.session]);
+  });
+
+  it("r2-web-2: says every report is checked by the operator and auto-hide only happens under conditions", () => {
+    renderPage(<ContactPage />, `/contact?report=share:${SHARE_ID}`);
+    const lead = screen.getByText(/を運営者に知らせます/).textContent ?? "";
+    expect(lead).toContain("通報はすべて運営者が確認し、必要なら非表示にします。");
+    expect(lead).toMatch(/一定の条件（利用を始めて24時間以上たっていることなど）を満たす3人から通報があると、確認の前に自動で非表示になることもあります。/);
+    expect(lead).not.toContain("人から通報があると、自動で非表示になります");
+  });
+
   it("falls back to the contact form for anything else", () => {
     renderPage(<ContactPage />, "/contact?report=share:NOT-AN-ID");
     expect(screen.getByRole("heading", { level: 1, name: "お問い合わせ" })).toBeTruthy();
@@ -211,6 +243,61 @@ describe("Layout footer", () => {
       ["プライバシーポリシー", "/privacy"],
       ["お問い合わせ", "/contact"],
     ]);
+  });
+});
+
+describe("Layout — waiting after a 429 (r2-web-6)", () => {
+  function waitingStore(throttle: { until: number; reason: string } | null, syncStatus: AppSnapshot["syncStatus"] = "waiting"): AppStore {
+    const snap: AppSnapshot = {
+      user: null,
+      pendingNickname: null,
+      challenges: [],
+      tz: "Asia/Tokyo",
+      today: "2026-10-06",
+      ready: true,
+      refreshing: false,
+      online: true,
+      hasSession: false,
+      sessionInvalid: false,
+      pending: 2,
+      syncStatus,
+      lastSyncError: "短い時間に操作が集中しています。しばらくしてからもう一度お試しください",
+      lastSyncedAt: null,
+      lastStamped: null,
+      throttle,
+      profileLimitedUntil: null,
+    };
+    return { getSnapshot: () => snap, subscribe: () => () => {}, onNotice: () => () => {}, actions: {} as AppActions, start: () => () => {} };
+  }
+
+  function renderLayout(store: AppStore) {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <ToastProvider>
+          <AppProvider store={store}>
+            <Routes>
+              <Route element={<Layout />}>
+                <Route index element={<h1>きょう</h1>} />
+              </Route>
+            </Routes>
+          </AppProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("shows a visible band with the reason and when sending resumes, and 「送信待ち」 instead of 同期中…", () => {
+    renderLayout(waitingStore({ until: Date.now() + 20 * 60_000, reason: "混み合っています。" }));
+    expect(screen.getByTestId("throttle-band").textContent).toBe("混み合っています。約20分後に自動で送ります。記録はこの端末に保存されています。");
+    expect(screen.getByTestId("sync-status").textContent).toBe("送信待ち");
+  });
+
+  it("says 「まもなく」 for a wait under a minute, and shows no band otherwise", () => {
+    expect(resumeText(Date.now() + 30_000, Date.now())).toBe("まもなく自動で送ります");
+    expect(resumeText(Date.now() + 61_000, Date.now())).toBe("約2分後に自動で送ります");
+    renderLayout(waitingStore(null, "pending"));
+    expect(screen.queryByTestId("throttle-band")).toBeNull();
+    expect(screen.getByTestId("sync-status").textContent).toBe("同期中…");
   });
 });
 

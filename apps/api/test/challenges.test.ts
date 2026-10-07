@@ -438,6 +438,17 @@ describe("stamps", () => {
     expect(Object.keys((await challengeOf(res)).stamps).sort()).toEqual(["1", "12", "5"]);
   });
 
+  it("refuses a note that is one 'character' of combining marks: the stored size is capped in UTF-8 bytes (NF-1)", async () => {
+    const s = await api.createSession();
+    const c = await create(s);
+    // 'a' + 495 × U+20DD: 1 grapheme, 496 UTF-16 units (the old cap), ~1.5 KB of UTF-8.
+    const fat = "a" + String.fromCodePoint(0x20dd).repeat(LIMITS.note * 4 + 15);
+    const res = await stamp(s, c.id, 1, { note: fat });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).fields?.note).toBe("ひとことが長すぎます");
+    expect((await stamp(s, c.id, 1, { note: "あ".repeat(LIMITS.note) })).status).toBe(200);
+  });
+
   it("accepts day 1 the day before the start (slack) but not for a reservation further away", async () => {
     const s = await api.createSession("予約の印");
     const tomorrow = await create(s, { startDate: "2026-10-07" });
@@ -500,6 +511,54 @@ describe("POST /api/challenges/:id/reflect", () => {
     expect(stats.challengesDone).toBe(before.challengesDone + 1);
     expect(stats.verdict_continue).toBe(before.verdict_continue);
     expect(stats.verdict_modify).toBe(before.verdict_modify + 1);
+  });
+
+  it("moves the verdict counters on a change of mind only for a challenge whose verdict was counted (NF-3)", async () => {
+    const s = await api.createSession("読み込んだ人");
+    // A done challenge from a backup: its verdict never went into STATS.
+    const imported: Challenge = {
+      id: newId(16),
+      recipeId: null,
+      title: "読み込んだ記録",
+      seal: "読",
+      startDate: "2026-09-01",
+      status: "done",
+      stamps: {},
+      verdict: "continue",
+      reflection: null,
+      finishedAt: 1,
+      finishedDay: 30,
+      cheers: 0,
+      shareId: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const file = { format: "thirty-days-backup", version: 1, exportedAt: 1, user: { nickname: "x", shareProgress: true, reminder: { enabled: false, time: "21:00" } }, challenges: [imported] };
+    expect((await api.request("/api/me/import", { token: s.token, body: file })).status).toBe(200);
+    expect(await getItem(`USER#${s.user.id}`, `CH#${imported.id}`)).toMatchObject({ imported: true });
+    expect((await getItem(`USER#${s.user.id}`, `CH#${imported.id}`))?.counted).toBeUndefined();
+
+    const before = await getStats(api.deps);
+    for (const verdict of ["stop", "modify", "stop", "continue", "stop"]) {
+      expect((await reflect(s, imported.id, { verdict })).status).toBe(200);
+    }
+    const after = await getStats(api.deps);
+    expect([after.verdict_continue, after.verdict_stop, after.verdict_modify]).toEqual([
+      before.verdict_continue,
+      before.verdict_stop,
+      before.verdict_modify,
+    ]);
+
+    // A live reflection records `counted` in the same write, and its changes do move the counters.
+    const live = await create(s);
+    api.clock.advance(7 * DAY_MS);
+    expect((await reflect(s, live.id, { verdict: "continue" })).status).toBe(200);
+    expect((await getItem(`USER#${s.user.id}`, `CH#${live.id}`))?.counted).toBe(true);
+    expect((await reflect(s, live.id, { verdict: "stop" })).status).toBe(200);
+    const moved = await getStats(api.deps);
+    expect(moved.verdict_continue).toBe(after.verdict_continue);
+    expect(moved.verdict_stop).toBe(after.verdict_stop + 1);
+    expect(Math.min(moved.verdict_continue, moved.verdict_stop, moved.verdict_modify)).toBeGreaterThanOrEqual(0);
   });
 
   it("records day 30 for a challenge reflected after its end, and rejects reservations and bad input", async () => {

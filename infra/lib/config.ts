@@ -45,6 +45,31 @@ export const TABLE_KEYS = {
   ],
 } as const;
 
+/**
+ * On-demand throughput cap of the table and of each GSI (request units per second), as a cost
+ * circuit breaker (AI PM decision R1): DynamoDB throttles above it instead of billing without limit.
+ * 100 users need a few units a second. At the cap, writes cost at most about $1/hour and reads about
+ * $0.8/hour in Tokyo (table + 3 GSIs), instead of growing with the attacker. A throttled request is
+ * retried by the SDK and alarmed on (cost-guard.ts DynamoThrottles).
+ */
+export const TABLE_MAX_THROUGHPUT = { maxReadRequestUnits: 400, maxWriteRequestUnits: 100 } as const;
+
+/**
+ * DynamoDB operations (CloudWatch "Operation" dimension) the Lambdas use. The throttle alarm sums
+ * ThrottledRequests over these; infra/test checks that every DynamoDB command in apps/api/src is
+ * listed. An alarm's math expression takes at most 10 metrics.
+ */
+export const TABLE_OPERATIONS = [
+  "GetItem",
+  "PutItem",
+  "UpdateItem",
+  "DeleteItem",
+  "Query",
+  "Scan",
+  "BatchGetItem",
+  "BatchWriteItem",
+] as const;
+
 /** Web files that must be revalidated on every load (they point at the hashed bundles). */
 export const NO_CACHE_FILES = ["index.html", "sw.js", "registerSW.js", "manifest.webmanifest"] as const;
 

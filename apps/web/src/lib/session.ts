@@ -93,6 +93,11 @@ export function ensureSession(nickname?: string): Promise<EnsuredSession> {
     const nick = nickname === undefined ? undefined : NicknameSchema.safeParse(nickname);
     if (nick?.success) body.nickname = nick.data;
     const p = send<SessionResponse>("POST", API.session, { body })
+      .catch((err: unknown) => {
+        // Callers must not mistake a refused account creation (new accounts are limited per
+        // network and overall) for their own action's quota: mark it (isQuotaLimit).
+        throw err instanceof ApiClientError ? err.inSession() : err;
+      })
       .then((res): EnsuredSession => {
         if (gen === generation) {
           storeToken(res.token);

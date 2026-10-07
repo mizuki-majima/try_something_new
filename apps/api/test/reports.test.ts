@@ -1,6 +1,7 @@
 import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 import {
+  AUTO_HIDE_MIN_NETWORKS,
   AUTO_HIDE_REPORTS,
   QUOTAS,
   newId,
@@ -15,7 +16,7 @@ import {
 import { getChallengeItem, toChallengeItem } from "../src/db/challenges";
 import { shareAuthorGsi2, shareKey } from "../src/db/keys";
 import { GSI1 } from "../src/db/table";
-import { json, setupApi } from "./helpers";
+import { ADMIN_TOKEN, json, setupApi } from "./helpers";
 
 const api = setupApi();
 
@@ -84,8 +85,8 @@ async function seedShare(s: SessionResponse): Promise<string> {
 const getItem = async (pk: string, sk: string) =>
   (await api.deps.db.send(new GetCommand({ TableName: api.deps.tableName, Key: { pk, sk } }))).Item;
 
-const report = (s: SessionResponse, targetType: string, targetId: string, reason?: string) =>
-  api.request("/api/reports", { token: s.token, body: reason === undefined ? { targetType, targetId } : { targetType, targetId, reason } });
+const report = (s: SessionResponse, targetType: string, targetId: string, reason?: string, ip?: string) =>
+  api.request("/api/reports", { token: s.token, ip, body: reason === undefined ? { targetType, targetId } : { targetType, targetId, reason } });
 
 /** Reporters whose reports count towards auto-hide (accounts a day old that hold a challenge). */
 async function reporters(n: number): Promise<SessionResponse[]> {
@@ -213,6 +214,63 @@ describe("POST /api/reports", () => {
     expect((await report(c!, "recipe", recipe.id)).status).toBe(204);
     expect(await visible()).toBe(false);
     expect(await getItem(`REPORT#recipe#${recipe.id}`, "META")).toMatchObject({ count: 6, trustedCount: AUTO_HIDE_REPORTS });
+  });
+
+  it(`needs trusted reporters from at least ${AUTO_HIDE_MIN_NETWORKS} networks: one person's aged accounts on one connection hide nothing (security-4)`, async () => {
+    const author = await api.createSession();
+    const recipe = await postRecipe(author);
+    const visible = async () => (await api.request(`/api/recipes/${recipe.id}`)).status === 200;
+    // Three sleeper accounts, a day old and holding a challenge, all from one home (one IPv4 /24).
+    const rs = await reporters(AUTO_HIDE_REPORTS);
+    const ips = ["203.0.113.10", "203.0.113.11", "203.0.113.200"];
+    for (const [i, r] of rs.entries()) expect((await report(r, "recipe", recipe.id, undefined, ips[i])).status).toBe(204);
+    expect(await visible()).toBe(true); // before: hidden
+    expect(await getItem(`REPORT#recipe#${recipe.id}`, "META")).toMatchObject({ trustedCount: AUTO_HIDE_REPORTS });
+    const marker = await getItem(`REPORT#recipe#${recipe.id}`, `BY#${rs[0]!.user.id}`);
+    expect(marker).toMatchObject({ trusted: true, net: expect.stringMatching(/^[0-9a-f]{32}$/) });
+    expect(JSON.stringify(marker)).not.toContain("203.0.113");
+    // A trusted reporter from another network: now it is hidden.
+    const [other] = await reporters(1);
+    expect((await report(other!, "recipe", recipe.id, undefined, "198.51.100.5")).status).toBe(204);
+    expect(await visible()).toBe(false);
+  });
+
+  it("counts an IPv6 /48 as one network, and an untrusted reporter's network is not stored", async () => {
+    const owner = await api.createSession();
+    const sid = await seedShare(owner);
+    const rs = await reporters(AUTO_HIDE_REPORTS);
+    // Three /56s (three separate clients for rate limits) of one /48, e.g. one tunnel broker allocation.
+    for (const [i, r] of rs.entries()) expect((await report(r, "share", sid, undefined, `2001:db8:5:${(i + 1) * 256}::1`)).status).toBe(204);
+    expect((await api.request(`/s/${sid}`)).status).toBe(200);
+    const untrusted = await api.createSession();
+    expect((await report(untrusted, "share", sid, undefined, "2001:db8:9::1")).status).toBe(204);
+    expect(await getItem(`REPORT#share#${sid}`, `BY#${untrusted.user.id}`)).toMatchObject({ trusted: false });
+    expect((await getItem(`REPORT#share#${sid}`, `BY#${untrusted.user.id}`))?.net).toBeUndefined();
+    expect((await api.request(`/s/${sid}`)).status).toBe(200);
+    const [other] = await reporters(1);
+    expect((await report(other!, "share", sid, undefined, "2001:db8:6::1")).status).toBe(204);
+    expect((await api.request(`/s/${sid}`)).status).toBe(404);
+  });
+
+  it("after a moderator's restore, only the reporters since then count, networks included", async () => {
+    const author = await api.createSession();
+    const recipe = await postRecipe(author);
+    const visible = async () => (await api.request(`/api/recipes/${recipe.id}`)).status === 200;
+    for (const r of await reporters(AUTO_HIDE_REPORTS)) expect((await report(r, "recipe", recipe.id)).status).toBe(204);
+    expect(await visible()).toBe(false);
+    api.clock.advance(1000);
+    const restored = await api.request("/api/admin/moderate", {
+      headers: { "x-admin-token": ADMIN_TOKEN },
+      body: { targetType: "recipe", targetId: recipe.id, action: "restore" },
+    });
+    expect(restored.status).toBe(204);
+    expect(await visible()).toBe(true);
+    api.clock.advance(1000);
+    // Three new reporters from one network: the earlier reporters' networks do not make it diverse.
+    for (const [i, r] of (await reporters(AUTO_HIDE_REPORTS)).entries()) {
+      expect((await report(r, "recipe", recipe.id, undefined, `192.0.2.${i + 1}`)).status).toBe(204);
+    }
+    expect(await visible()).toBe(true);
   });
 
   it("keeps only the last 10 reasons", async () => {

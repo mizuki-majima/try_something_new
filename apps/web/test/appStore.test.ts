@@ -1,7 +1,7 @@
 import { API, LIMITS, type Challenge, type User } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { request } from "../src/lib/api";
-import { createAppStore, type AppStore, type Notice } from "../src/lib/appStore";
+import { PROFILE_LIMIT_MESSAGE, createAppStore, type AppStore, type Notice } from "../src/lib/appStore";
 import { clearSession, getToken } from "../src/lib/session";
 import { RECIPE_CACHES } from "../src/lib/swCaches";
 
@@ -278,11 +278,15 @@ describe("app store", () => {
         : null,
     );
     store.actions.stamp(ch.id, 1);
+    const before = Date.now();
     await store.actions.flush();
     let snap = store.getSnapshot();
     expect(snap.pending).toBe(1);
     expect(snap.challenges[0]!.stamps["1"]).toBeTruthy();
-    expect(snap.syncStatus).toBe("pending");
+    // Visible "waiting", with the server's reason and when it resumes (Retry-After: 30 s).
+    expect(snap.syncStatus).toBe("waiting");
+    expect(snap.throttle?.reason).toBe("少し待ってください。");
+    expect(snap.throttle!.until).toBeGreaterThanOrEqual(before + 30_000);
     expect(notices).toEqual([]);
 
     api.fail(null);
@@ -290,6 +294,115 @@ describe("app store", () => {
     snap = store.getSnapshot();
     expect(snap.pending).toBe(0);
     expect(api.challenges.get(ch.id)!.stamps["1"]).toBeTruthy();
+  });
+
+  it("R9: a throttle 429 on a create (API Gateway: no Retry-After, no app body) keeps the challenge and its stamp and sends them later", async () => {
+    api.fail((method, url) =>
+      method === "POST" && url === API.challenges
+        ? new Response('{"message":"Too Many Requests"}', { status: 429, headers: { "Content-Type": "application/json" } })
+        : null,
+    );
+    const ch = start("止めないもの");
+    expect(store.actions.stamp(ch.id, 1).ok).toBe(true);
+    await store.actions.flush();
+    let snap = store.getSnapshot();
+    expect(snap.challenges.map((c) => c.id)).toEqual([ch.id]); // not rolled back
+    expect(snap.challenges[0]!.stamps["1"]).toBeTruthy();
+    expect(snap.pending).toBe(2);
+    expect(snap.syncStatus).toBe("waiting");
+    expect(snap.throttle?.reason).toBe("混み合っています。"); // not 「今日はここまで」
+    expect(notices).toEqual([]);
+
+    api.fail(null);
+    await store.actions.flush();
+    snap = store.getSnapshot();
+    expect(snap.pending).toBe(0);
+    expect(snap.syncStatus).toBe("synced");
+    expect(snap.throttle).toBeNull();
+    expect(api.challenges.get(ch.id)!.stamps["1"]).toBeTruthy();
+  });
+
+  it("r2-web-6: a 429 on creating the account shows a visible wait (reason + when), keeps the writes and backs off", async () => {
+    api.fail((method, url) =>
+      method === "POST" && url === API.session
+        ? new Response(JSON.stringify({ error: { code: "rate_limited", message: "短い時間に操作が集中しています。しばらくしてからもう一度お試しください" } }), {
+            status: 429,
+            headers: { "Content-Type": "application/json", "Retry-After": "1200" },
+          })
+        : null,
+    );
+    const ch = start();
+    const before = Date.now();
+    await store.actions.flush();
+    let snap = store.getSnapshot();
+    expect(snap.syncStatus).toBe("waiting");
+    expect(snap.throttle?.reason).toBe("混み合っています。");
+    expect(snap.throttle!.until).toBeGreaterThanOrEqual(before + 1_200_000);
+    expect(snap.challenges.map((c) => c.id)).toEqual([ch.id]);
+    expect(snap.pending).toBe(1);
+    expect(notices).toEqual([]);
+
+    api.fail(null);
+    await store.actions.flush();
+    snap = store.getSnapshot();
+    expect(snap.syncStatus).toBe("synced");
+    expect(snap.throttle).toBeNull();
+    expect(api.challenges.has(ch.id)).toBe(true);
+  });
+
+  it("R1: a profile change refused by the daily quota is rolled back, explained, and further profile changes wait until the reset", async () => {
+    start();
+    await store.actions.flush();
+    api.fail((method, url) =>
+      method === "PATCH" && url === API.me
+        ? new Response(JSON.stringify({ error: { code: "rate_limited", message: "今日はここまでです。日本時間の0時を過ぎると、また使えます" } }), {
+            status: 429,
+            headers: { "Content-Type": "application/json", "Retry-After": "40000" },
+          })
+        : null,
+    );
+    expect(store.actions.updateMe({ shareProgress: false }).ok).toBe(true);
+    expect(store.getSnapshot().user?.shareProgress).toBe(false); // optimistic
+    await store.actions.flush();
+    const snap = store.getSnapshot();
+    expect(snap.user?.shareProgress).toBe(true); // rolled back
+    expect(snap.pending).toBe(0);
+    expect(notices).toEqual([{ kind: "error", message: `今日はここまで（あすの0時にリセット）。${PROFILE_LIMIT_MESSAGE}` }]);
+    expect(snap.profileLimitedUntil).toBeGreaterThan(Date.now() + 39_000_000);
+
+    // Refused locally now (no doomed request), but other settings still go through.
+    const calls = api.calls.length;
+    const again = store.actions.updateMe({ nickname: "みず" });
+    expect(again).toMatchObject({ ok: false, message: PROFILE_LIMIT_MESSAGE, fields: { nickname: PROFILE_LIMIT_MESSAGE } });
+    api.fail(null);
+    expect(store.actions.updateMe({ reminder: { enabled: true, time: "21:00" } }).ok).toBe(true);
+    await store.actions.flush();
+    expect(api.calls.slice(calls).filter((c) => c === `PATCH ${API.me}`)).toHaveLength(1);
+    expect(api.bodies[api.calls.lastIndexOf(`PATCH ${API.me}`)]).toEqual({ reminder: { enabled: true, time: "21:00" } });
+  });
+
+  it("R1: the profile limit clears by itself when the quota resets", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      start();
+      await store.actions.flush();
+      api.fail((method, url) =>
+        method === "PATCH" && url === API.me
+          ? new Response(JSON.stringify({ error: { code: "rate_limited", message: "今日はここまでです" } }), {
+              status: 429,
+              headers: { "Content-Type": "application/json", "Retry-After": "7200" },
+            })
+          : null,
+      );
+      store.actions.updateMe({ nickname: "みず" });
+      await store.actions.flush();
+      expect(store.getSnapshot().profileLimitedUntil).not.toBeNull();
+      vi.advanceTimersByTime(7_200_000);
+      expect(store.getSnapshot().profileLimitedUntil).toBeNull();
+      expect(store.actions.updateMe({ nickname: "みず" }).ok).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("adopts an account created outside its queue (a cheer, a report) at once", async () => {

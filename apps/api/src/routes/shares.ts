@@ -12,6 +12,7 @@ import {
 } from "@thirty/shared";
 import { clientIpHash, requireUser } from "../auth";
 import { getChallengeItem, toChallenge } from "../db/challenges";
+import { getModeration } from "../db/moderation";
 import { enforceQuota } from "../db/rate";
 import { countShareAction, createShare, deleteShare, getShareItem, toShareView } from "../db/shares";
 import { bumpStats } from "../db/stats";
@@ -60,8 +61,11 @@ export function sharesRoutes(deps: Deps) {
     const challenge = toChallenge(item);
     if (challenge.status !== "done") throw conflict(NOT_DONE);
     // Moderation cannot be undone by publishing again: the challenge was taken out of the cohort,
-    // or its card was hidden / deleted by moderation (the flag, or a current card that is hidden).
+    // or its card was hidden / deleted by moderation (the flags, MOD#<chId> which survives a delete
+    // and re-import of the challenge (NF-2), or a current card that is hidden).
     if (item.hiddenFromCohort === true || item.moderated === true) throw forbidden(SHARE_MODERATED);
+    const marker = await getModeration(deps, challenge.id);
+    if (marker.shareModerated || marker.memberHidden) throw forbidden(SHARE_MODERATED);
     if (challenge.shareId) {
       const current = await getShareItem(deps, challenge.shareId);
       if (current && current.userId === c.var.uid && current.status === "hidden") throw forbidden(SHARE_MODERATED);

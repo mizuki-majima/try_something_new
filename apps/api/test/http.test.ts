@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { QUOTAS, type ApiError } from "@thirty/shared";
-import { hashIp, ipKey, requireAdmin, sha256 } from "../src/auth";
+import { hashIp, hashNetwork, ipKey, networkKey, requireAdmin, sha256 } from "../src/auth";
 import { MAX_BODY_BYTES, originVerifyValues } from "../src/app";
 import { DEFAULT_IP_HASH_KEY } from "../src/config";
 import { enforceQuota, getQuotaUsage, refundQuota, windowFor } from "../src/db/rate";
+import { SESSION_GLOBAL_KEY, SESSION_GLOBAL_SCOPE, SESSIONS_BUSY } from "../src/routes/session";
 import { onError } from "../src/errors";
 import type { AppEnv } from "../src/types";
 import { ADMIN_TOKEN, json, setupApi } from "./helpers";
@@ -77,6 +78,18 @@ describe("origin verify", () => {
     expect((await api.request("/api/health", {}, app)).status).toBe(403);
   });
 
+  it("fails closed when ORIGIN_VERIFY is set but holds no value (NF-6)", async () => {
+    for (const configured of ["", " ", ",", " , ,"]) {
+      const app = api.makeApp({ originVerify: configured });
+      expect((await api.request("/api/health", {}, app)).status, JSON.stringify(configured)).toBe(403);
+      for (const value of ["", ",", "x"]) {
+        expect((await api.request("/api/health", { headers: { "x-origin-verify": value } }, app)).status, JSON.stringify([configured, value])).toBe(403);
+      }
+    }
+    // Unset (local runs, tests): no check.
+    expect((await api.request("/api/health", {}, api.makeApp({ originVerify: undefined }))).status).toBe(200);
+  });
+
   it("refuses requests without the CloudFront secret header when configured", async () => {
     const app = api.makeApp({ originVerify: "s3cret-from-cloudfront" });
     const none = await api.request("/api/health", {}, app);
@@ -134,17 +147,36 @@ describe("quotas", () => {
 });
 
 describe("client IP keys for rate limits", () => {
-  it("counts an IPv6 /64 as one client, and an IPv4-mapped address as its IPv4 address", () => {
+  it("counts an IPv6 /56 as one client (Japanese IPoE homes get a /56), and an IPv4-mapped address as its IPv4 address", () => {
     expect(ipKey("203.0.113.9")).toBe("203.0.113.9");
-    expect(ipKey("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
-    expect(ipKey("2001:0DB8:0001:0002:ffff:eeee:dddd:cccc")).toBe("2001:db8:1:2::/64");
-    expect(ipKey("[2001:db8:1:2::5]")).toBe("2001:db8:1:2::/64");
-    expect(ipKey("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
+    expect(ipKey("2001:db8:1:2::1")).toBe("2001:db8:1:0::/56");
+    expect(ipKey("2001:0DB8:0001:0002:ffff:eeee:dddd:cccc")).toBe("2001:db8:1:0::/56");
+    expect(ipKey("[2001:db8:1:2::5]")).toBe("2001:db8:1:0::/56");
+    expect(ipKey("2001:db8:1:12ab::1")).toBe("2001:db8:1:1200::/56");
+    expect(ipKey("fe80::1%eth0")).toBe("fe80:0:0:0::/56");
     expect(ipKey("::ffff:198.51.100.7")).toBe("198.51.100.7");
-    expect(ipKey("2001:db8::")).toBe("2001:db8:0:0::/64");
-    expect(ipKey("::1")).toBe("0:0:0:0::/64");
+    expect(ipKey("2001:db8::")).toBe("2001:db8:0:0::/56");
+    expect(ipKey("::1")).toBe("0:0:0:0::/56");
     expect(ipKey("unknown")).toBe("unknown");
-    expect(ipKey("2001:db8:1:3::1")).not.toBe(ipKey("2001:db8:1:2::1"));
+    // The 256 /64s of one /56 are one client; the next /56 is someone else.
+    expect(ipKey("2001:db8:1:ff::1")).toBe(ipKey("2001:db8:1:2::1"));
+    expect(ipKey("2001:db8:1:100::1")).not.toBe(ipKey("2001:db8:1:2::1"));
+  });
+
+  it("groups clients into networks for report diversity: IPv4 /24, IPv6 /48", () => {
+    expect(networkKey("203.0.113.9")).toBe("203.0.113.0/24");
+    expect(networkKey("203.0.113.250")).toBe(networkKey("203.0.113.9"));
+    expect(networkKey("203.0.114.9")).not.toBe(networkKey("203.0.113.9"));
+    expect(networkKey("::ffff:203.0.113.7")).toBe("203.0.113.0/24");
+    expect(networkKey("2001:db8:1:2::1")).toBe("2001:db8:1::/48");
+    expect(networkKey("2001:db8:1:ffff::1")).toBe(networkKey("2001:db8:1:2::1"));
+    expect(networkKey("2001:db8:2::1")).not.toBe(networkKey("2001:db8:1::1"));
+    expect(networkKey("unknown")).toBe("unknown");
+    const h = hashNetwork("203.0.113.9", "k");
+    expect(h).toMatch(/^[0-9a-f]{32}$/);
+    expect(h).toBe(hashNetwork("203.0.113.77", "k"));
+    expect(h).not.toBe(hashNetwork("203.0.113.9", "other"));
+    expect(h).not.toBe(hashIp("203.0.113.9", "k").slice(0, 32));
   });
 
   it("is a keyed hash (HMAC): not the plain SHA-256 of the address, and different per key", () => {
@@ -153,20 +185,63 @@ describe("client IP keys for rate limits", () => {
     expect(h).not.toBe(sha256("203.0.113.9"));
     expect(hashIp("203.0.113.9", "another-key")).not.toBe(h);
     expect(hashIp("2001:db8:1:2::1", "k")).toBe(hashIp("2001:db8:1:2:aaaa::9", "k"));
+    expect(hashIp("2001:db8:1:2::1", "k")).toBe(hashIp("2001:db8:1:ab::9", "k"));
   });
 
-  it("applies the per-IP session quota to the whole IPv6 /64", async () => {
+  it("applies the per-IP session quota to the whole IPv6 /56 (security-3)", async () => {
     api.clock.set("2026-10-09T05:10:00Z");
-    for (let i = 1; i <= QUOTAS.sessionsPerIpPerHour; i++) {
-      const res = await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: `2001:db8:77:1::${i.toString(16)}` });
-      expect(res.status, String(i)).toBe(201);
+    // 25 different /64s of one /56: before, each was a separate client and all 25 got an account.
+    const statuses: number[] = [];
+    for (let i = 1; i <= QUOTAS.sessionsPerIpPerHour + 5; i++) {
+      const res = await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: `2001:db8:77:${i.toString(16)}::1` });
+      statuses.push(res.status);
     }
-    // Another address in the same /64 is the same client.
-    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: "2001:db8:77:1:abcd::99" })).status).toBe(429);
-    // The next /64 is someone else.
-    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: "2001:db8:77:2::1" })).status).toBe(201);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(QUOTAS.sessionsPerIpPerHour);
+    expect(statuses.slice(QUOTAS.sessionsPerIpPerHour)).toEqual([429, 429, 429, 429, 429]);
+    // The next /56 is someone else.
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: "2001:db8:77:100::1" })).status).toBe(201);
     // The stored rate-limit keys never contain the address.
     expect(JSON.stringify(await api.scanAll())).not.toContain("2001:db8:77");
+  });
+
+  it(`stops new sessions from all clients together at ${QUOTAS.sessionsGlobalPerHour} an hour, with a message and Retry-After (R7)`, async () => {
+    api.clock.set("2026-10-09T07:40:00Z");
+    // Fill the global counter up to one below the ceiling (as if many other clients had signed up).
+    for (let i = 0; i < QUOTAS.sessionsGlobalPerHour - 1; i++) {
+      await enforceQuota(api.deps, SESSION_GLOBAL_SCOPE, SESSION_GLOBAL_KEY, QUOTAS.sessionsGlobalPerHour, "hour");
+    }
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" } })).status).toBe(201);
+    const ip = "198.51.100.77";
+    const refused = await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip });
+    expect(refused.status).toBe(429);
+    expect(await errorOf(refused)).toMatchObject({ code: "rate_limited", message: SESSIONS_BUSY });
+    expect(refused.headers.get("retry-after")).toBe(String(20 * 60)); // until 08:00 UTC
+    // The refused client keeps its own per-IP allowance for the next hour.
+    expect((await getQuotaUsage(api.deps, "session-ip", hashIp(ip, DEFAULT_IP_HASH_KEY), QUOTAS.sessionsPerIpPerHour, "hour")).count).toBe(0);
+    api.clock.set("2026-10-09T08:00:00Z");
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip })).status).toBe(201);
+  });
+});
+
+describe("Retry-After on the API's own 429s (R9: the client drops a write only when it is long)", () => {
+  it("sends Retry-After on every quota refusal: seconds until JST midnight for daily quotas, until the hour for hourly ones", async () => {
+    api.clock.set("2026-10-09T13:00:00Z"); // 22:00 JST
+    const s = await api.createSession();
+    const ip = "198.51.100.88";
+    let hourly: Response | undefined;
+    for (let i = 0; i <= QUOTAS.sessionsPerIpPerHour; i++) hourly = await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip });
+    expect(hourly?.status).toBe(429);
+    expect(hourly?.headers.get("retry-after")).toBe(String(60 * 60));
+    let daily: Response | undefined;
+    for (let i = 0; i <= QUOTAS.profileChangesPerUserPerDay; i++) {
+      daily = await api.request("/api/me", { method: "PATCH", token: s.token, body: { nickname: `名前${i}` } });
+    }
+    expect(daily?.status).toBe(429);
+    expect(daily?.headers.get("retry-after")).toBe(String(2 * 60 * 60)); // until 00:00 JST
+    await expect(enforceQuota(api.deps, "any-scope", "k", 0, "day")).rejects.toMatchObject({
+      status: 429,
+      headers: { "Retry-After": String(2 * 60 * 60) },
+    });
   });
 });
 

@@ -24,7 +24,7 @@ import { Field, TextAreaField, TextField } from "../components/Field";
 import { ChevronLeftIcon, PlusIcon } from "../components/Icons";
 import { Seal } from "../components/Seal";
 import { useToast } from "../components/Toast";
-import { ApiClientError, errorMessage } from "../lib/api";
+import { ApiClientError, errorMessage, isQuotaLimit } from "../lib/api";
 import { usePageTitle } from "../lib/hooks";
 import { createRecipe } from "../lib/recipes";
 import { useApp } from "../lib/store";
@@ -223,7 +223,7 @@ export default function RecipeNewPage() {
       navigate(`/recipes/${encodeURIComponent(recipe.id)}`, { replace: true });
     } catch (err) {
       setBusy(false);
-      if (err instanceof ApiClientError && err.status === 429) {
+      if (isQuotaLimit(err)) {
         setFormError(`今日はここまでです。レシピは1日${QUOTAS.recipesPerUserPerDay}件まで投稿できます。`);
         return;
       }

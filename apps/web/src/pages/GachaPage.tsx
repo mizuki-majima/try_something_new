@@ -27,7 +27,7 @@ import { RecipeMeta } from "../components/RecipeMeta";
 import { Seal } from "../components/Seal";
 import { EmptyState, ErrorState, Loading } from "../components/States";
 import { StartChallengeSheet, type StartChallengeSheetProps } from "../features/start/StartChallengeSheet";
-import { ApiClientError, errorMessage, request } from "../lib/api";
+import { ApiClientError, errorMessage, isQuotaLimit, request } from "../lib/api";
 import { isOpen } from "../lib/challenge";
 import { prefersReducedMotion, usePageTitle } from "../lib/hooks";
 import { GACHA_TIMES, RELAXED_LABELS, gachaPool, maxMinutesOf, useRecipes, type GachaFilters, type GachaTime } from "../lib/recipes";
@@ -255,7 +255,7 @@ function Suggestions({ filters, onStart, onPost }: { filters: GachaFilters; onSt
       if (typeof res?.remainingToday === "number") setRemaining(Math.max(0, res.remainingToday));
       setState({ status: "done", suggestions: list });
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 429) {
+      if (isQuotaLimit(err)) {
         setRemaining(0);
         setState({ status: "limit" });
       } else if (err instanceof ApiClientError && err.status === 400 && err.fields?.hint) {

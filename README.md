@@ -23,11 +23,11 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 |---|---|
 | Web | React 19 + React Router、Vite、PWA（vite-plugin-pwa、Service Worker）。デザインはネオ・ブルータリズム（[docs/design.md](docs/design.md)） |
 | API | Hono（TypeScript）を AWS Lambda（Node.js 22 / arm64）で動かす。入力検証は zod（`packages/shared` のスキーマを Web と共用） |
-| データ | DynamoDB 1テーブル（オンデマンド、PITR）。ローカルとテストは dynalite（Java / Docker 不要） |
+| データ | DynamoDB 1テーブル（オンデマンド。費用の上限として最大スループットを設定、PITR）。ローカルとテストは dynalite（Java / Docker 不要） |
 | 配信 | CloudFront → S3（Web）／API Gateway HTTP API `ThirtyDaysApi`（`/api/*` `/s/*`）／S3（公開カード画像 `/media/share/*` だけ） |
 | 通知 | EventBridge（15分ごと）→ Lambda → Web Push（VAPID） |
 | 秘密情報 | SSM Parameter Store（VAPID 秘密鍵・管理トークン・IP のハッシュ鍵は SecureString。`scripts/setup-secrets.mjs`） |
-| IaC | AWS CDK（`infra/`、スタック `ThirtyDays`、リージョン `ap-northeast-1`）。`ALERT_EMAIL` 指定時は予算（`Project` タグの費用だけ）と API・リマインドのアラーム |
+| IaC | AWS CDK（`infra/`、スタック `ThirtyDays`、リージョン `ap-northeast-1`）。`ALERT_EMAIL` 指定時は予算（`Project` タグの費用だけ）と API・リマインド・DynamoDB のスロットルのアラーム |
 
 生成 AI・課金される外部 API は使わない。AWS 費用は月 $1 未満が目標で、100人規模なら月約 $0.1（[docs/deploy.md](docs/deploy.md) の「費用の目安」）。
 
@@ -45,7 +45,7 @@ npm run test:e2e    # Critical User Flow の E2E（Playwright。tests/e2e/）
 
 ほかに `npm run lint`（ESLint）、`npm run typecheck`（全ワークスペースの tsc）。CI（`.github/workflows/ci.yml`）は lint → typecheck → test → build → audit → E2E → CDK synth の順に実行する。
 
-デプロイ（AWS）は [docs/deploy.md](docs/deploy.md)。初回は CDK bootstrap、`node scripts/setup-secrets.mjs`、費用配分タグ `Project` の有効化。以降は `PUBLIC_ORIGIN=https://<CloudFront のドメイン> ALERT_EMAIL=you@example.com npm run deploy`（最初に `setup-secrets.mjs --check` が SSM のパラメータを確かめる）。本番公開（URL を人に配ること）は CEO の承認が要る。
+デプロイ（AWS）は [docs/deploy.md](docs/deploy.md)。初回は CDK bootstrap、`node scripts/setup-secrets.mjs`、費用配分タグ `Project` の有効化。以降は `PUBLIC_ORIGIN=https://<CloudFront のドメイン> ALERT_EMAIL=you@example.com npm run deploy`（ビルドのあと、`cdk deploy` の前に `setup-secrets.mjs --check` が SSM のパラメータを確かめる）。本番公開（URL を人に配ること）は CEO の承認が要る。
 
 ## リポジトリの構成
 

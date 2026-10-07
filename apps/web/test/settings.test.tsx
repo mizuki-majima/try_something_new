@@ -1,12 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { API, type BackupFile, type User } from "@thirty/shared";
+import { API, type BackupFile, type Challenge, type User } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { ToastHost, ToastProvider } from "../src/components/Toast";
-import type { AppActions, AppSnapshot, AppStore } from "../src/lib/appStore";
+import { ApiClientError, THROTTLED_MESSAGE } from "../src/lib/api";
+import { PROFILE_LIMIT_MESSAGE, type AppActions, type AppSnapshot, type AppStore } from "../src/lib/appStore";
 import { KEYS, writeString } from "../src/lib/storage";
 import { AppProvider } from "../src/lib/store";
-import SettingsPage, { REMINDER_TIMES, readBackupFile } from "../src/pages/SettingsPage";
+import SettingsPage, { REMINDER_TIMES, importErrorMessage, readBackupFile } from "../src/pages/SettingsPage";
 
 const photos = vi.hoisted(() => ({ clearAllPhotos: vi.fn(async () => {}) }));
 vi.mock("../src/lib/photos", () => photos);
@@ -22,6 +23,24 @@ const USER: User = {
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+const CHALLENGE: Challenge = {
+  id: "ch00000000000001",
+  recipeId: null,
+  title: "毎日1枚、写真を撮る",
+  seal: "写",
+  startDate: "2026-10-01",
+  status: "active",
+  stamps: {},
+  verdict: null,
+  reflection: null,
+  finishedAt: null,
+  finishedDay: null,
+  cheers: 0,
+  shareId: null,
+  createdAt: 1,
+  updatedAt: 1,
+};
 
 const BACKUP: BackupFile = {
   format: "thirty-days-backup",
@@ -48,6 +67,8 @@ function fakeStore(over: Partial<AppSnapshot> = {}) {
     lastSyncError: null,
     lastSyncedAt: null,
     lastStamped: null,
+    throttle: null,
+    profileLimitedUntil: null,
     ...over,
   };
   const actions = {
@@ -132,6 +153,27 @@ describe("SettingsPage — profile and reminder", () => {
     expect(screen.getByText(/ひとことメモ、写真、振り返りのひとこと/)).toBeTruthy();
     fireEvent.click(toggle);
     expect(actions.updateMe).toHaveBeenCalledWith({ shareProgress: false });
+  });
+
+  it("R1: while the profile quota refuses changes, says why and locks the nickname and 「みんなに表示」", () => {
+    const { store, actions } = fakeStore({ profileLimitedUntil: Date.now() + 3_600_000 });
+    renderSettings(store);
+    expect(screen.getByTestId("profile-limit").textContent).toBe(PROFILE_LIMIT_MESSAGE);
+    expect(PROFILE_LIMIT_MESSAGE).toMatch(/^ニックネームと「みんなに表示」の変更は1日\d+回までです。あすの0時（日本時間）を過ぎると、また変えられます。$/);
+    const toggle = screen.getByRole("checkbox", { name: "みんなに進捗を表示する" }) as HTMLInputElement;
+    expect(toggle.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("ニックネーム"), { target: { value: "みずき" } });
+    expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(actions.updateMe).not.toHaveBeenCalled();
+    // The reminder is not part of the quota.
+    expect((screen.getByRole("checkbox", { name: "毎日リマインドする" }) as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it("R1: no limit note while profile changes are allowed", () => {
+    const { store } = fakeStore();
+    renderSettings(store);
+    expect(screen.queryByTestId("profile-limit")).toBeNull();
+    expect((screen.getByRole("checkbox", { name: "みんなに進捗を表示する" }) as HTMLInputElement).disabled).toBe(false);
   });
 
   it("turns the reminder on and changes its time (15-minute steps, 05:00–23:45)", () => {
@@ -230,6 +272,31 @@ describe("SettingsPage — backup import", () => {
     });
     await expect(readBackupFile(file(JSON.stringify({ ...BACKUP, challenges: [{ id: "x" }] })))).resolves.toMatchObject({ ok: false });
     await expect(readBackupFile(file(JSON.stringify(BACKUP)))).resolves.toMatchObject({ ok: true });
+  });
+
+  it("R5: a concurrent import (409) says it is still importing", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      String(input) === API.meImport ? json(409, { error: { code: "conflict", message: "読み込み中です。少し待ってからもう一度" } }) : json(404, {}),
+    );
+    const { store, actions } = fakeStore();
+    renderSettings(store);
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("バックアップファイル"), { target: { files: [file(JSON.stringify({ ...BACKUP, challenges: [CHALLENGE] }))] } });
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "読み込む" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("読み込み中です。少し待ってから、もう一度お試しください。");
+    expect(fetchMock.mock.calls.filter(([u]) => String(u) === API.meImport)).toHaveLength(1);
+    expect(actions.refresh).not.toHaveBeenCalled();
+  });
+
+  it("import errors: 409 → still importing, the daily quota → its limit, anything else → the API's words", () => {
+    expect(importErrorMessage(new ApiClientError(409, "conflict"))).toBe("読み込み中です。少し待ってから、もう一度お試しください。");
+    expect(importErrorMessage(new ApiClientError(429, "rate_limited", "今日はここまでです", undefined, 40_000, { fromApi: true }))).toBe(
+      "バックアップの読み込みは1日3回までです。あすの0時（日本時間）を過ぎると、また読み込めます。",
+    );
+    // The edge throttle is not the daily quota.
+    expect(importErrorMessage(new ApiClientError(429, "rate_limited", THROTTLED_MESSAGE))).toBe(`読み込めませんでした。${THROTTLED_MESSAGE}`);
+    expect(importErrorMessage(new ApiClientError(413, "payload_too_large"))).toBe("読み込めませんでした。データが大きすぎます。");
   });
 
   it("shows the error and does not upload a bad file", async () => {

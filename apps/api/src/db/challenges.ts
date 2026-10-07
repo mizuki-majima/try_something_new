@@ -24,6 +24,11 @@ export type ChallengeItem = Key &
      * until the owner stamps or edits it the normal way (updateChallenge clears it).
      */
     imported?: boolean;
+    /**
+     * Set by the reflection that added this challenge's verdict to STATS (verdict_*). Only then does a
+     * later change of mind move the counters (NF-3): an imported record was never counted.
+     */
+    counted?: boolean;
     gsi1pk?: string;
     gsi1sk?: string;
   };
@@ -98,13 +103,18 @@ export function listChallengeItems(deps: Pick<DbDeps, "db" | "tableName">, uid: 
   return queryPrefix(deps, userPk(uid), "CH#");
 }
 
-/** The status of each of a user's challenges (only that attribute is read). */
-export function listChallengeStatuses(deps: Pick<DbDeps, "db" | "tableName">, uid: string): Promise<Item[]> {
+/**
+ * The status (and any other named top-level attributes) of each of a user's challenges, without
+ * the stamps and notes.
+ */
+export function listChallengeStatuses(deps: Pick<DbDeps, "db" | "tableName">, uid: string, more: string[] = []): Promise<Item[]> {
+  const names: Record<string, string> = { "#s": "status" };
+  more.forEach((a, i) => (names[`#a${i}`] = a));
   return queryAll(deps, {
     KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
     ExpressionAttributeValues: { ":pk": userPk(uid), ":sk": "CH#" },
-    ProjectionExpression: "#s",
-    ExpressionAttributeNames: { "#s": "status" },
+    ProjectionExpression: ["#s", ...more.map((_, i) => `#a${i}`)].join(", "),
+    ExpressionAttributeNames: names,
   });
 }
 
@@ -146,40 +156,94 @@ export async function claimChallengeId(deps: Pick<DbDeps, "db" | "tableName">, c
 // ---------- projection sync ----------
 
 /**
- * Rewrite the denormalised nickname and the cohort projection on all of a user's challenges.
- * Called when the nickname or shareProgress changes.
+ * Whether syncUserProjection has to write this item: its cohort projection changes, or it is listed
+ * and shows an old nickname. The nickname of an item that is not listed is not shown anywhere, so it
+ * is left alone (every path that lists it again writes the nickname: updateChallenge, the sync
+ * itself, a moderator's restore). Imported and hidden items are never listed, so never written.
+ */
+export function projectionChange(
+  item: Item,
+  owner: { nickname: string; shareProgress: boolean },
+): { projection: { gsi1pk: string; gsi1sk: string } | null } | null {
+  const c = toChallenge(item);
+  const projection = cohortProjection(
+    { ...c, hiddenFromCohort: item.hiddenFromCohort === true, imported: item.imported === true },
+    owner.shareProgress,
+  );
+  const listed = typeof item.gsi1pk === "string";
+  if (!projection) return listed ? { projection } : null;
+  const same = listed && item.gsi1pk === projection.gsi1pk && item.gsi1sk === projection.gsi1sk && item.nickname === owner.nickname;
+  return same ? null : { projection };
+}
+
+/**
+ * Bring the cohort projection (and the denormalised nickname of listed items) in line with the
+ * owner's nickname / shareProgress. Called when one of them changes (PATCH /api/me, quota'd). Only
+ * items whose public projection or listed nickname actually changes are written (cost, NF-1): a
+ * nickname change while not sharing writes nothing, and imported / hidden items are never touched.
+ * Returns the number of items written.
  */
 export async function syncUserProjection(
   deps: Pick<DbDeps, "db" | "tableName">,
   uid: string,
   owner: { nickname: string; shareProgress: boolean },
-): Promise<void> {
-  const items = await listChallengeItems(deps, uid);
-  const update = async (item: Item) => {
-    const c = toChallenge(item);
-    const projection = cohortProjection(
-      { ...c, hiddenFromCohort: item.hiddenFromCohort === true, imported: item.imported === true },
-      owner.shareProgress,
-    );
+): Promise<number> {
+  const attrs = ["id", "startDate", "updatedAt", "hiddenFromCohort", "imported", "nickname", "gsi1pk", "gsi1sk"];
+  const items = await listChallengeStatuses(deps, uid, attrs);
+  const changes = items.flatMap((item) => {
+    const change = projectionChange(item, owner);
+    return change ? [{ item, projection: change.projection }] : [];
+  });
+  const write = async (item: Item, projection: { gsi1pk: string; gsi1sk: string } | null): Promise<boolean> => {
     try {
       await deps.db.send(
         new UpdateCommand({
           TableName: deps.tableName,
-          Key: challengeKey(uid, c.id),
+          Key: challengeKey(uid, String(item.id)),
           UpdateExpression: projection
             ? "SET nickname = :n, gsi1pk = :g1pk, gsi1sk = :g1sk"
             : "SET nickname = :n REMOVE gsi1pk, gsi1sk",
-          ConditionExpression: "attribute_exists(pk)",
+          // Write only what was read: the sort key embeds updatedAt, and an item moderation hid (or an
+          // import made private) meanwhile is never listed again.
+          ConditionExpression: projection
+            ? "attribute_exists(pk) AND updatedAt = :u AND (attribute_not_exists(hiddenFromCohort) OR hiddenFromCohort <> :t) AND (attribute_not_exists(imported) OR imported <> :t)"
+            : "attribute_exists(pk) AND updatedAt = :u",
           ExpressionAttributeValues: projection
-            ? { ":n": owner.nickname, ":g1pk": projection.gsi1pk, ":g1sk": projection.gsi1sk }
-            : { ":n": owner.nickname },
+            ? { ":n": owner.nickname, ":g1pk": projection.gsi1pk, ":g1sk": projection.gsi1sk, ":u": item.updatedAt, ":t": true }
+            : { ":n": owner.nickname, ":u": item.updatedAt },
         }),
       );
+      return true;
     } catch (err) {
-      if (!isConditionFailed(err)) throw err; // deleted meanwhile
+      if (isConditionFailed(err)) return false;
+      throw err;
     }
   };
-  for (let i = 0; i < items.length; i += 10) await Promise.all(items.slice(i, i + 10).map(update));
+  const update = async ({ item, projection }: (typeof changes)[number]) => {
+    let current: Item | undefined = item;
+    let next = projection;
+    // Changed meanwhile (e.g. a stamp written with the profile from before this change): read it
+    // again and apply the new profile, so turning sharing off never leaves an item listed.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await write(current, next)) return;
+      current = (
+        await deps.db.send(
+          new GetCommand({
+            TableName: deps.tableName,
+            Key: challengeKey(uid, String(item.id)),
+            ProjectionExpression: attrs.map((_, i) => `#a${i}`).join(", "),
+            ExpressionAttributeNames: Object.fromEntries(attrs.map((a, i) => [`#a${i}`, a])),
+          }),
+        )
+      ).Item;
+      if (!current) return; // deleted meanwhile
+      const change = projectionChange(current, owner);
+      if (!change) return;
+      next = change.projection;
+    }
+  };
+  for (let i = 0; i < changes.length; i += 10) await Promise.all(changes.slice(i, i + 10).map(update));
+  return changes.length;
 }
 
 // ---------- create / update / delete (routes/challenges.ts) ----------
@@ -243,8 +307,13 @@ export type ChallengeUpdate = {
   set?: Partial<Pick<Challenge, "title" | "seal" | "startDate" | "status" | "verdict" | "reflection" | "finishedAt" | "finishedDay">>;
   /** stamps.<day>: write this stamp, or remove it (null). */
   stamp?: { day: number; value: Stamp | null };
-  /** The write only happens while the stored item still has this status (and start date, verdict). */
-  expect: { status: Challenge["status"]; startDate?: string; verdict?: Challenge["verdict"] };
+  /**
+   * The write only happens while the stored item still has this status (and start date, verdict,
+   * and `counted` state when given).
+   */
+  expect: { status: Challenge["status"]; startDate?: string; verdict?: Challenge["verdict"]; counted?: boolean };
+  /** Set `counted` (the reflection that adds the verdict to STATS, in the same write). */
+  markCounted?: boolean;
   /**
    * Keep a backup import's `imported` flag (and so its privacy). Every other write is the owner
    * using the challenge the normal way, which clears the flag.
@@ -287,6 +356,13 @@ export async function updateChallenge(
     names["#verdict"] = "verdict";
     values[":expectVerdict"] = u.expect.verdict;
     conditions.push("#verdict = :expectVerdict");
+  }
+  if (u.expect.counted !== undefined || u.markCounted) {
+    names["#counted"] = "counted";
+    values[":true"] = true;
+    if (u.expect.counted === true) conditions.push("#counted = :true");
+    else if (u.expect.counted === false) conditions.push("(attribute_not_exists(#counted) OR #counted <> :true)");
+    if (u.markCounted) sets.push("#counted = :true");
   }
   const imported = u.keepImported === true && current.imported === true;
   if (!imported) {

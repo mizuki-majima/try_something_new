@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { API, AUTO_HIDE_REPORTS, ContactCreateSchema, QUOTAS, ReportCreateSchema } from "@thirty/shared";
-import { clientIpHash, optionalUser, requireUser } from "../auth";
+import { API, AUTO_HIDE_MIN_NETWORKS, AUTO_HIDE_REPORTS, ContactCreateSchema, QUOTAS, ReportCreateSchema } from "@thirty/shared";
+import { clientIpHash, clientNetworkHash, optionalUser, requireUser } from "../auth";
 import { createContact } from "../db/contacts";
 import { enforceQuota } from "../db/rate";
-import { addReport, hideTarget, isTrustedReporter, resolveTarget } from "../db/reports";
+import { addReport, countReporterNetworks, hideTarget, isTrustedReporter, resolveTarget } from "../db/reports";
 import { badRequest, notFound } from "../errors";
 import { log } from "../log";
 import type { Deps } from "../ports";
@@ -33,10 +33,18 @@ export function reportsRoutes(deps: Deps) {
 
     // Brand-new or empty accounts are recorded but do not count towards auto-hide (see isTrustedReporter).
     const trusted = await isTrustedReporter(deps, c.var.user);
-    const count = await addReport(deps, c.var.uid, target, input.reason || undefined, trusted);
-    if (trusted && count !== undefined && count >= AUTO_HIDE_REPORTS && target.status === "published") {
-      await hideTarget(deps, target);
-      log.info("auto-hidden after reports", { targetType: target.type, count });
+    const net = trusted ? clientNetworkHash(deps, c) : undefined;
+    const tally = await addReport(deps, { uid: c.var.uid, trusted, net }, target, input.reason || undefined);
+    if (trusted && tally && tally.trustedCount >= AUTO_HIDE_REPORTS && target.status === "published") {
+      // ...and only when those reporters are not all on one network (security-4).
+      const networks = await countReporterNetworks(deps, target.type, target.id, tally.since);
+      if (networks >= AUTO_HIDE_MIN_NETWORKS) {
+        await hideTarget(deps, target);
+        log.info("auto-hidden after reports", { targetType: target.type, count: tally.trustedCount, networks });
+      } else {
+        // Left to the moderator (GET /api/admin/reports lists it).
+        log.warn("auto-hide held: the reporters share one network", { targetType: target.type, count: tally.trustedCount, networks });
+      }
     }
     return c.body(null, 204);
   });

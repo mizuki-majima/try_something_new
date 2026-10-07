@@ -53,11 +53,18 @@ export function originVerifyValues(configured: string | undefined): string[] {
  * Several values are accepted so a rotation never refuses the edges that still send the old one
  * (CloudFront takes minutes to propagate, the Lambda switches in seconds). Every value is compared
  * in constant time, without stopping at the first match.
+ *
+ * Unset (local runs, tests): no check. Set but with no usable value ("", " ", ","): fail closed,
+ * every request is refused (NF-6). A broken parameter must never turn the check off.
  */
 function originVerify(configured: string | undefined): MiddlewareHandler<AppEnv> {
   const expected = originVerifyValues(configured);
+  const enforced = configured !== undefined;
+  if (enforced && expected.length === 0) {
+    log.error("ORIGIN_VERIFY is set but holds no value; refusing every request", {});
+  }
   return async (c, next) => {
-    if (expected.length > 0) {
+    if (enforced) {
       const given = c.req.header("x-origin-verify");
       let ok = false;
       if (given) for (const value of expected) ok = safeEqual(given, value) || ok;

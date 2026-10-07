@@ -1,6 +1,6 @@
 /** 利用規約 (SPEC FR-22). Plain Japanese; a free hobby service run by one person, with posts by users. */
 import { Link } from "react-router";
-import { AUTO_HIDE_REPORTS, TRANSFER_CODE_TTL_MINUTES } from "@thirty/shared";
+import { AUTO_HIDE_REPORTS, REPORTER_MIN_ACCOUNT_AGE_HOURS, TRANSFER_CODE_TTL_MINUTES } from "@thirty/shared";
 import { usePageTitle } from "../lib/hooks";
 import { ENACTED, InfoDoc, OPERATOR, type DocSection } from "./InfoDoc";
 
@@ -100,7 +100,11 @@ const SECTIONS: readonly DocSection[] = [
       <>
         <ul>
           <li>レシピ・体験談・公開カード・1日組の表示には「通報」があります（公開カードは、そのページの「このカードを通報する」から）。問題のある投稿を見つけたら知らせてください。</li>
-          <li>{AUTO_HIDE_REPORTS}人から通報された投稿は、自動で非表示になります。運営者が内容を確認し、元に戻すか削除するかを決めます。</li>
+          <li>通報はすべて運営者が確認し、必要なら投稿を非表示にしたり削除したりします。</li>
+          <li>
+            一定の条件（利用を始めて{REPORTER_MIN_ACCOUNT_AGE_HOURS}時間以上たっていることなど）を満たす{AUTO_HIDE_REPORTS}
+            人から通報があった投稿は、運営者の確認の前に自動で非表示になることがあります。自動で非表示になった投稿も運営者が確認し、元に戻すか削除するかを決めます。
+          </li>
           <li>
             権利を侵害されたときの削除のご依頼は、<Link to="/contact">お問い合わせ</Link>
             から、対象のページと理由を添えて送ってください。

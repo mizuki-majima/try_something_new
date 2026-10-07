@@ -165,11 +165,28 @@ describe("drain", () => {
     expect(store.items).toEqual([]);
   });
 
-  it("a 429 on a create is dropped even without Retry-After; a long Retry-After drops any write", async () => {
-    const short = memory(queue(create("a")));
-    expect((await drain({ ...short, send: () => Promise.reject(new ApiClientError(429, "rate_limited")) })).status).toBe("empty");
-    expect(short.items).toEqual([]);
+  it("a throttle-style 429 on a create (API Gateway: no Retry-After, no app body) is retried and nothing is lost", async () => {
+    const store = memory(queue(create("a"), stamp("a", 1)));
+    const onDropped = vi.fn();
+    // What the stage throttle answers: {"message":"Too Many Requests"} without Retry-After.
+    const throttled = new ApiClientError(429, "rate_limited");
+    const first = await drain({ ...store, send: () => Promise.reject(throttled), onDropped });
+    expect(first).toMatchObject({ status: "retry", dropped: 0, attempts: 1 });
+    expect(onDropped).not.toHaveBeenCalled();
+    expect(store.items.map((i) => i.op.kind)).toEqual(["challenge.create", "stamp.put"]);
 
+    // A short Retry-After (an hourly window, or the daily quota after 23:00 JST) is waited out too.
+    const second = await drain({ ...store, send: () => Promise.reject(new ApiClientError(429, "rate_limited", "今日はここまでです。", undefined, 1_800, { fromApi: true })) });
+    expect(second).toMatchObject({ status: "retry", dropped: 0, attempts: 2 });
+    expect(store.items).toHaveLength(2);
+
+    const sent: string[] = [];
+    const third = await drain({ ...store, send: async (item) => void sent.push(opRequest(item.op).path) });
+    expect(third).toEqual({ status: "empty", sent: 2, dropped: 0 });
+    expect(sent).toEqual(["/api/challenges", "/api/challenges/a/stamps/1"]);
+  });
+
+  it("a Retry-After beyond an hour drops any write", async () => {
     const long = memory(queue(stamp("a", 1), stamp("a", 2)));
     const r = await drain({ ...long, send: (item) => (item.op.kind === "stamp.put" && item.op.day === 1 ? Promise.reject(new ApiClientError(429, "rate_limited", undefined, undefined, 7_200)) : Promise.resolve({})) });
     expect(r).toEqual({ status: "empty", sent: 1, dropped: 1 });
@@ -258,16 +275,18 @@ describe("drain", () => {
 });
 
 describe("classifyError / backoff", () => {
-  it("429: a create or a Retry-After beyond an hour is dropped, a short one is retried", () => {
+  it("429 is decided by Retry-After, not by the kind of write: beyond an hour → drop, otherwise retry", () => {
     const limited = (retryAfter?: number) => new ApiClientError(429, "rate_limited", undefined, undefined, retryAfter);
-    expect(classifyError(limited(), create("a"))).toBe("drop");
-    expect(classifyError(limited(30), create("a"))).toBe("drop");
-    expect(classifyError(limited(), stamp("a", 1))).toBe("retry");
-    expect(classifyError(limited(60), stamp("a", 1))).toBe("retry");
-    expect(classifyError(limited(3_600), stamp("a", 1))).toBe("retry");
-    expect(classifyError(limited(3_601), { kind: "me.patch", body: { nickname: "みず" } })).toBe("drop");
-    expect(isLongRateLimit(create("a"), new ApiClientError(503, "internal"))).toBe(false);
-    expect(classifyError(new ApiClientError(503, "internal"), create("a"))).toBe("retry");
+    expect(classifyError(limited())).toBe("retry"); // the edge throttle: no Retry-After
+    expect(classifyError(limited(30))).toBe("retry");
+    expect(classifyError(limited(60))).toBe("retry");
+    expect(classifyError(limited(3_600))).toBe("retry");
+    expect(classifyError(limited(3_601))).toBe("drop");
+    expect(classifyError(limited(51_365))).toBe("drop"); // a daily quota, hours before 0:00 JST
+    expect(isLongRateLimit(limited())).toBe(false);
+    expect(isLongRateLimit(limited(3_601))).toBe(true);
+    expect(isLongRateLimit(new ApiClientError(503, "internal", undefined, undefined, 7_200))).toBe(false);
+    expect(classifyError(new ApiClientError(503, "internal"))).toBe("retry");
   });
 
   it("waits at least as long as a short 429's Retry-After (capped at an hour)", () => {

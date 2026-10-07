@@ -7,7 +7,10 @@
  * at most LIMITS.openChallenges open and LIMITS.challengesPerUser challenges in total (excess items
  * are skipped), and the route allows QUOTAS.importsPerUserPerDay imports. Imported challenges are
  * private (`imported`: no cohort projection, not in the PILOT metrics) until the owner stamps or
- * edits them, and a challenge a moderator removed from the cohort stays removed.
+ * edits them. Moderation of a challenge id outlives its item (MOD#<chId>, db/moderation.ts): a
+ * challenge a moderator took out of the cohort stays out, and a card moderation stopped cannot be
+ * published again, after export → delete → import as much as before (NF-2). The route serialises
+ * imports per user (db/lock.ts), so parallel imports cannot each use the same free room (NF-5).
  */
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import {
@@ -41,6 +44,7 @@ import {
   toChallengeItem,
   type ChallengeFlags,
 } from "./db/challenges";
+import { getModeration } from "./db/moderation";
 import { isReportDeleted } from "./db/reports";
 import type { DbDeps } from "./ports";
 
@@ -147,9 +151,16 @@ async function claimFreshId(deps: DbDeps, uid: string): Promise<string> {
   throw new Error("could not allocate a challenge id");
 }
 
-/** A moderator removed this challenge id from the cohort for good: an import of it stays removed. */
-async function moderationOf(deps: DbDeps, chId: string): Promise<ChallengeFlags> {
-  return (await isReportDeleted(deps, "member", chId)) ? { hiddenFromCohort: true, moderated: true } : {};
+/**
+ * Moderation of this challenge id that an import of it keeps (NF-2): MOD#<chId> (hidden from the
+ * cohort, card stopped), and a member a moderator deleted for good (report META, older data too).
+ */
+export async function moderationOf(deps: DbDeps, chId: string): Promise<ChallengeFlags> {
+  const [marker, deleted] = await Promise.all([getModeration(deps, chId), isReportDeleted(deps, "member", chId)]);
+  const flags: ChallengeFlags = {};
+  if (marker.memberHidden || deleted) flags.hiddenFromCohort = true;
+  if (marker.shareModerated || deleted) flags.moderated = true;
+  return flags;
 }
 
 async function importOne(deps: DbDeps, user: User, raw: Challenge, slots: Slots): Promise<Outcome> {
@@ -166,10 +177,15 @@ async function importOne(deps: DbDeps, user: User, raw: Challenge, slots: Slots)
       if (c.updatedAt <= current.updatedAt) return "skipped";
       // A reflected record stays closed (FR-6), and an import never reopens it.
       if (current.status === "done" && c.status !== "done") return "skipped";
-      // Server-maintained fields (and moderation) stay as they are.
+      // Server-maintained fields (and moderation) stay as they are. `counted` is not carried over:
+      // the import may change the verdict, so a later re-reflection must not move STATS (NF-3).
+      const marker = await moderationOf(deps, c.id);
       await put(
         { ...c, cheers: current.cheers, shareId: current.shareId, createdAt: current.createdAt },
-        { hiddenFromCohort: existing.hiddenFromCohort === true, moderated: existing.moderated === true },
+        {
+          hiddenFromCohort: existing.hiddenFromCohort === true || marker.hiddenFromCohort === true,
+          moderated: existing.moderated === true || marker.moderated === true,
+        },
       );
       return "imported";
     }

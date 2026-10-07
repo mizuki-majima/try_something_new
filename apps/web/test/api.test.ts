@@ -1,6 +1,6 @@
 import { API } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { ApiClientError, request } from "../src/lib/api";
+import { ApiClientError, THROTTLED_MESSAGE, isQuotaLimit, request } from "../src/lib/api";
 import { requestBody } from "../src/lib/http";
 import { clearSession, getToken, isSessionInvalid } from "../src/lib/session";
 import { KEYS, writeString } from "../src/lib/storage";
@@ -112,6 +112,29 @@ describe("request", () => {
     const err = await failure(request("POST", API.suggestions, { body: {}, auth: "none" }));
     expect(err.code).toBe("rate_limited");
     expect(err.retryAfter).toBe(120);
+  });
+
+  it("tells the action's own quota from the edge throttle and from a refused account creation (isQuotaLimit)", async () => {
+    // The API's quota: its JSON error and Retry-After.
+    fetchMock.mockResolvedValueOnce(json(429, { error: { code: "rate_limited", message: "今日はここまで" } }, { "Retry-After": "120" }));
+    const own = await failure(request("POST", API.suggestions, { body: {}, auth: "none" }));
+    expect(own.fromApi).toBe(true);
+    expect(isQuotaLimit(own)).toBe(true);
+
+    // API Gateway's stage throttle: {"message":"Too Many Requests"}, no Retry-After.
+    fetchMock.mockResolvedValueOnce(json(429, { message: "Too Many Requests" }));
+    const edge = await failure(request("POST", API.suggestions, { body: {}, auth: "none" }));
+    expect(edge).toMatchObject({ status: 429, code: "rate_limited", fromApi: false, retryAfter: undefined, message: THROTTLED_MESSAGE });
+    expect(isQuotaLimit(edge)).toBe(false);
+
+    // The account creation in front of the action was refused (R7: per network, and overall).
+    clearSession();
+    fetchMock.mockResolvedValueOnce(json(429, { error: { code: "rate_limited", message: "混み合っています" } }, { "Retry-After": "600" }));
+    const session = await failure(request("POST", API.suggestions, { body: {}, auth: "required" }));
+    expect(session).toMatchObject({ status: 429, fromApi: true, session: true, retryAfter: 600, message: "混み合っています" });
+    expect(isQuotaLimit(session)).toBe(false);
+    expect(isQuotaLimit(new ApiClientError(500, "internal"))).toBe(false);
+    expect(isQuotaLimit(new Error("x"))).toBe(false);
   });
 
   it("maps a failed fetch to network", async () => {

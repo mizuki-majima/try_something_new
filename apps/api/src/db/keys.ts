@@ -99,6 +99,11 @@ export const pushSlotGsi3 = (slot: string, uid: string, endpointHash: string) =>
 });
 export const slotPk = (slot: string) => `SLOT#${slot}`;
 
+// ---------- locks ----------
+
+/** A short-lived per-user lock (e.g. "import"): one at a time, expires on its own (see db/lock.ts). */
+export const lockKey = (name: string, uid: string): Key => ({ pk: `LOCK#${name}#${uid}`, sk: "LOCK" });
+
 // ---------- rate limits ----------
 
 export const rateKey = (scope: string, key: string, window: string): Key => ({ pk: `RATE#${scope}#${key}#${window}`, sk: "RATE" });
@@ -108,6 +113,14 @@ export const rateKey = (scope: string, key: string, window: string): Key => ({ p
 export const reportKey = (type: string, id: string): Key => ({ pk: `REPORT#${type}#${id}`, sk: "META" });
 export const reporterKey = (type: string, id: string, uid: string): Key => ({ pk: `REPORT#${type}#${id}`, sk: `BY#${uid}` });
 export const reportListGsi1 = (lastAt: number) => ({ gsi1pk: "REPORTS", gsi1sk: ts13(lastAt) });
+
+/**
+ * Moderation of a challenge id that outlives the challenge item (NF-2): the owner can delete the
+ * item and import it again from a backup, but a card stopped by moderation stays stopped and a
+ * member hidden from the cohort stays hidden. gsi2 AUTHOR#<owner> so it goes with the account.
+ */
+export const moderationKey = (chId: string): Key => ({ pk: `MOD#${chId}`, sk: "META" });
+export const moderationAuthorGsi2 = (uid: string, chId: string) => ({ gsi2pk: `AUTHOR#${uid}`, gsi2sk: `MOD#${chId}` });
 
 export const contactKey = (id: string): Key => ({ pk: `CONTACT#${id}`, sk: "META" });
 export const contactListGsi1 = (createdAt: number) => ({ gsi1pk: "CONTACTS", gsi1sk: ts13(createdAt) });

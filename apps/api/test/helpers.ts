@@ -70,9 +70,13 @@ export type TestApi = {
 };
 
 let ipCounter = 0;
+/**
+ * A fresh client: each call is a different IPv4 address in a different /24, so it is also a
+ * different network for report diversity (auth.ts networkKey).
+ */
 export const freshIp = () => {
   ipCounter++;
-  return `10.${(ipCounter >> 16) & 255}.${(ipCounter >> 8) & 255}.${ipCounter & 255}`;
+  return `10.${(ipCounter >> 8) & 255}.${ipCounter & 255}.${1 + ((ipCounter >> 16) & 127)}`;
 };
 
 export type SetupOptions = {

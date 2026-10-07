@@ -1,5 +1,7 @@
 import type { GetParameterCommand } from "@aws-sdk/client-ssm";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ipHashSecret } from "../src/auth";
+import { createDynamoClient, DYNAMO_MAX_ATTEMPTS } from "../src/db/client";
 import { DEFAULT_IP_HASH_KEY, loadConfig, loadSecrets, resetSecretsCache } from "../src/config";
 import { log, setLogLevel } from "../src/log";
 
@@ -12,12 +14,19 @@ describe("loadConfig", () => {
   });
 
   it("treats empty values as unset and rejects unknown log levels", () => {
-    expect(loadConfig({ ORIGIN_VERIFY: "  ", MEDIA_BUCKET: "" }).originVerify).toBeUndefined();
+    expect(loadConfig({ MEDIA_BUCKET: "", ADMIN_TOKEN: "  " })).toMatchObject({ mediaBucket: undefined, adminToken: undefined });
     expect(() => loadConfig({ LOG_LEVEL: "loud" })).toThrow(/LOG_LEVEL/);
+  });
+
+  it("keeps ORIGIN_VERIFY when it is set but blank, so the check fails closed instead of turning off (NF-6)", () => {
+    expect(loadConfig({ ORIGIN_VERIFY: "  " }).originVerify).toBe("  ");
+    expect(loadConfig({ ORIGIN_VERIFY: "" }).originVerify).toBe("");
+    expect(loadConfig({}).originVerify).toBeUndefined();
   });
 });
 
 describe("loadSecrets", () => {
+  beforeEach(() => setLogLevel("silent")); // the fail-closed paths log an error on purpose
   afterEach(() => resetSecretsCache());
 
   const fakeSsm = (values: Record<string, string>, fail = false) => {
@@ -51,18 +60,47 @@ describe("loadSecrets", () => {
     expect(ok.calls.map((c) => c.Name)).toEqual(["/thirty/vapid"]);
   });
 
-  it("falls back to the built-in IP hash key when none is configured or its parameter is missing", async () => {
+  it("never falls back to the public built-in IP hash key: a missing or empty parameter fails closed (NF-4)", async () => {
+    // Nothing configured (the reminder Lambda): no key, and no built-in one either.
     expect(await loadSecrets(loadConfig({}), fakeSsm({}) as never)).toEqual({
       adminToken: undefined,
       vapidPrivateKey: undefined,
-      ipHashKey: DEFAULT_IP_HASH_KEY,
+      ipHashKey: undefined,
     });
     resetSecretsCache();
-    // A deploy before scripts/setup-secrets.mjs created the parameter must not take the API down.
-    expect((await loadSecrets(loadConfig({ IP_HASH_KEY_PARAM: "/thirty/ip" }), fakeSsm({}) as never)).ipHashKey).toBe(DEFAULT_IP_HASH_KEY);
-    resetSecretsCache();
+    // On AWS (IP_HASH_KEY_PARAM set) a missing parameter fails the cold start: 500 + ApiErrors alarm.
+    const config = loadConfig({ IP_HASH_KEY_PARAM: "/thirty/ip" });
+    await expect(loadSecrets(config, fakeSsm({}) as never)).rejects.toMatchObject({ name: "ParameterNotFound" });
+    // An empty value too.
+    const empty = { send: vi.fn(async () => ({ Parameter: { Value: "" } })) };
+    await expect(loadSecrets(config, empty as never)).rejects.toThrow(/empty/);
     // Any other SSM failure still fails (and is retried on the next request).
-    await expect(loadSecrets(loadConfig({ IP_HASH_KEY_PARAM: "/thirty/ip" }), fakeSsm({}, true) as never)).rejects.toThrow("ssm down");
+    await expect(loadSecrets(config, fakeSsm({}, true) as never)).rejects.toThrow("ssm down");
+    // Not cached: once the parameter exists, the next request starts normally.
+    expect((await loadSecrets(config, fakeSsm({ "/thirty/ip": "ip-secret" }) as never)).ipHashKey).toBe("ip-secret");
+    expect((await loadSecrets(config, fakeSsm({}) as never)).ipHashKey).toBe("ip-secret");
+  });
+
+  it("hashes IPs with the built-in key only under tests (NODE_ENV=test) or when local.ts passes it", () => {
+    const deps = { secrets: {}, config: loadConfig({}) };
+    expect(ipHashSecret(deps)).toBe(DEFAULT_IP_HASH_KEY); // vitest: NODE_ENV=test
+    expect(ipHashSecret({ secrets: { ipHashKey: "from-ssm" }, config: loadConfig({}) })).toBe("from-ssm");
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(() => ipHashSecret(deps)).toThrow(/IP hash key is not configured/);
+      expect(ipHashSecret({ secrets: { ipHashKey: DEFAULT_IP_HASH_KEY }, config: loadConfig({}) })).toBe(DEFAULT_IP_HASH_KEY);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+describe("DynamoDB client", () => {
+  it("retries throttling a few more times on AWS, where the table's throughput is capped (R1)", async () => {
+    const aws = createDynamoClient({ region: "ap-northeast-1" });
+    expect(await aws.config.maxAttempts()).toBe(DYNAMO_MAX_ATTEMPTS);
+    expect(DYNAMO_MAX_ATTEMPTS).toBeGreaterThan(3); // the SDK default
+    aws.destroy();
   });
 });
 

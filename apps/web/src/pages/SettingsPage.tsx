@@ -9,6 +9,7 @@ import {
   API,
   BackupFileSchema,
   LIMITS,
+  QUOTAS,
   REMINDER_STEP_MINUTES,
   TRANSFER_CODE_TTL_MINUTES,
   TransferRedeemSchema,
@@ -26,7 +27,7 @@ import { SelectField, TextField } from "../components/Field";
 import { Seal } from "../components/Seal";
 import { ErrorState, Loading } from "../components/States";
 import { useToast } from "../components/Toast";
-import { ApiClientError, errorMessage, request } from "../lib/api";
+import { ApiClientError, errorMessage, isQuotaLimit, request } from "../lib/api";
 import { isOpen } from "../lib/challenge";
 import { usePageTitle } from "../lib/hooks";
 import { clearAllPhotos } from "../lib/photos";
@@ -40,6 +41,7 @@ import {
   sendTestPush,
   type PushStatus,
 } from "../lib/push";
+import { PROFILE_LIMIT_MESSAGE } from "../lib/appStore";
 import { getToken } from "../lib/session";
 import { useApp, type AppContextValue } from "../lib/store";
 import { useThemePref, type ThemePref } from "../lib/theme";
@@ -171,14 +173,23 @@ function AccountSections({ app }: { app: AppContextValue }) {
   }
   return (
     <>
-      <ProfileSection user={user} updateMe={app.updateMe} />
+      <ProfileSection user={user} updateMe={app.updateMe} limitedUntil={app.profileLimitedUntil} />
       <ReminderSection user={user} challenges={app.challenges} updateMe={app.updateMe} />
     </>
   );
 }
 
-function ProfileSection({ user, updateMe }: { user: User; updateMe: AppContextValue["updateMe"] }) {
+type ProfileProps = {
+  user: User;
+  updateMe: AppContextValue["updateMe"];
+  /** The daily profile quota refuses changes until then (ms); null when it does not. */
+  limitedUntil: number | null;
+};
+
+function ProfileSection({ user, updateMe, limitedUntil }: ProfileProps) {
   const toast = useToast();
+  // Nickname and 「みんなに表示」 changes are limited per day (each rewrites the public records).
+  const limited = limitedUntil !== null;
   const onShare = (e: ChangeEvent<HTMLInputElement>) => {
     const next = e.target.checked;
     const res = updateMe({ shareProgress: next });
@@ -187,11 +198,23 @@ function ProfileSection({ user, updateMe }: { user: User; updateMe: AppContextVa
   };
   return (
     <Section id="profile" title="プロフィール" accent="pink">
+      {limited && (
+        <p className="note err" role="status" data-testid="profile-limit">
+          {PROFILE_LIMIT_MESSAGE}
+        </p>
+      )}
       {/* Remount when the saved nickname changes (another tab, a refresh) so the field shows it. */}
-      <NicknameForm key={user.nickname} initial={user.nickname} updateMe={updateMe} />
+      <NicknameForm key={user.nickname} initial={user.nickname} updateMe={updateMe} locked={limited} />
       <div className="set-row">
         <label className="set-switch">
-          <input type="checkbox" className="set-toggle" checked={user.shareProgress} onChange={onShare} aria-describedby="share-explain" />
+          <input
+            type="checkbox"
+            className="set-toggle"
+            checked={user.shareProgress}
+            onChange={onShare}
+            disabled={limited}
+            aria-describedby="share-explain"
+          />
           <span>
             <b>みんなに進捗を表示する</b>
           </span>
@@ -210,7 +233,7 @@ function ProfileSection({ user, updateMe }: { user: User; updateMe: AppContextVa
   );
 }
 
-function NicknameForm({ initial, updateMe }: { initial: string; updateMe: AppContextValue["updateMe"] }) {
+function NicknameForm({ initial, updateMe, locked }: { initial: string; updateMe: AppContextValue["updateMe"]; locked: boolean }) {
   const toast = useToast();
   const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | undefined>();
@@ -242,7 +265,7 @@ function NicknameForm({ initial, updateMe }: { initial: string; updateMe: AppCon
         autoComplete="nickname"
         enterKeyHint="done"
       />
-      <button type="submit" className="btn" disabled={!dirty}>
+      <button type="submit" className="btn" disabled={!dirty || locked}>
         保存
       </button>
     </form>
@@ -508,7 +531,7 @@ function IssueCode() {
       setIssued({ code: res.code, deadline: at + (left > 0 && left <= ttl ? left : ttl) });
       toast("引き継ぎコードを発行しました");
     } catch (err) {
-      setError(err instanceof ApiClientError && err.status === 429 ? "コードの発行は1時間に5回までです。しばらくしてからお試しください。" : errorMessage(err));
+      setError(isQuotaLimit(err) ? "コードの発行は1時間に5回までです。しばらくしてからお試しください。" : errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -744,6 +767,16 @@ export async function readBackupFile(file: File): Promise<{ ok: true; data: Back
   return { ok: true, data: parsed.data };
 }
 
+/** Why POST /api/me/import failed, in the words the settings screen shows. */
+export function importErrorMessage(err: unknown): string {
+  // Imports are serialised per account: another import (another tab, a retried tap) is running.
+  if (err instanceof ApiClientError && err.status === 409) return "読み込み中です。少し待ってから、もう一度お試しください。";
+  if (isQuotaLimit(err)) {
+    return `バックアップの読み込みは1日${QUOTAS.importsPerUserPerDay}回までです。あすの0時（日本時間）を過ぎると、また読み込めます。`;
+  }
+  return `読み込めませんでした。${errorMessage(err)}`;
+}
+
 function BackupSection({ app }: { app: AppContextValue }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -800,7 +833,7 @@ function BackupSection({ app }: { app: AppContextValue }) {
       await app.refresh();
     } catch (err) {
       setPending(null);
-      setImportError(`読み込めませんでした。${errorMessage(err)}`);
+      setImportError(importErrorMessage(err));
     } finally {
       setImporting(false);
     }

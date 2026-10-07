@@ -1,5 +1,5 @@
-import { BatchWriteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { describe, expect, it } from "vitest";
+import { BatchWriteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { describe, expect, it, vi } from "vitest";
 import {
   LIMITS,
   QUOTAS,
@@ -26,9 +26,11 @@ import {
   storyAuthorGsi2,
   storyKey,
 } from "../src/db/keys";
+import { acquireLock, releaseLock } from "../src/db/lock";
 import { computePilotStats } from "../src/db/pilot";
 import { getStats } from "../src/db/stats";
 import type { Item } from "../src/db/util";
+import { IMPORT_BUSY, IMPORT_LOCK_SECONDS } from "../src/routes/me";
 import { ADMIN_TOKEN, json, setupApi } from "./helpers";
 
 const api = setupApi();
@@ -59,7 +61,7 @@ async function put(item: Item) {
   await api.deps.db.send(new PutCommand({ TableName: api.deps.tableName, Item: item }));
 }
 
-async function seedChallenge(s: SessionResponse, c: Challenge, extra: { hiddenFromCohort?: boolean } = {}) {
+async function seedChallenge(s: SessionResponse, c: Challenge, extra: { hiddenFromCohort?: boolean; imported?: boolean } = {}) {
   await put(toChallengeItem(s.user.id, s.user, c, extra));
   await put({ pk: `CHREF#${c.id}`, sk: "REF", userId: s.user.id });
 }
@@ -112,6 +114,101 @@ describe("PATCH /api/me", () => {
     expect(on?.gsi1sk).toBe(`${String(visible.updatedAt).padStart(13, "0")}#${visible.id}`);
     // Moderation wins over shareProgress.
     expect((await getChallengeItem(api.deps, s.user.id, hidden.id))?.gsi1pk).toBeUndefined();
+  });
+
+  it("writes only the challenges whose public projection or listed nickname changes (cost, NF-1)", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("はじめ");
+    const listed = [challenge(), challenge(), challenge()];
+    const imported = [challenge(), challenge()];
+    const hidden = challenge();
+    for (const c of listed) await seedChallenge(s, c);
+    for (const c of imported) await seedChallenge(s, c, { imported: true });
+    await seedChallenge(s, hidden, { hiddenFromCohort: true });
+
+    const send = vi.spyOn(api.deps.db, "send");
+    const challengeWrites = async (body: unknown) => {
+      send.mockClear();
+      const res = await api.request("/api/me", { method: "PATCH", token: s.token, body });
+      expect(res.status).toBe(200);
+      return send.mock.calls.filter(([cmd]) => cmd instanceof UpdateCommand && String(cmd.input.Key?.sk).startsWith("CH#")).length;
+    };
+    try {
+      expect(await challengeWrites({ shareProgress: false })).toBe(listed.length); // before: all 6
+      expect(await challengeWrites({ nickname: "ひっそり" })).toBe(0); // nothing listed: nothing to rewrite
+      expect(await challengeWrites({ shareProgress: true })).toBe(listed.length);
+      expect(await challengeWrites({ nickname: "ひっそり", shareProgress: true })).toBe(0); // no change
+      expect(await challengeWrites({ reminder: { enabled: true, time: "21:00" } })).toBe(0);
+      expect(await challengeWrites({ nickname: "つぎ" })).toBe(listed.length);
+    } finally {
+      send.mockRestore();
+    }
+    // Listed ones show the new nickname; imported and hidden ones were never touched (and stay out).
+    const members = (await json<CohortResponse>(await api.request("/api/cohorts/2026-10"))).members.filter((m) =>
+      [...listed, ...imported, hidden].some((c) => c.id === m.challengeId),
+    );
+    expect(members.map((m) => m.nickname).sort()).toEqual(["つぎ", "つぎ", "つぎ"]);
+    for (const c of [...imported, hidden]) {
+      const item = await getChallengeItem(api.deps, s.user.id, c.id);
+      expect(item?.nickname).toBe("はじめ");
+      expect(item?.gsi1pk).toBeUndefined();
+    }
+  });
+
+  it("never lists again a challenge that moderation hid while the sync was running", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("競合");
+    expect((await api.request("/api/me", { method: "PATCH", token: s.token, body: { shareProgress: false } })).status).toBe(200);
+    const c = challenge();
+    await put(toChallengeItem(s.user.id, { nickname: s.user.nickname, shareProgress: false }, c));
+    await put({ pk: `CHREF#${c.id}`, sk: "REF", userId: s.user.id });
+
+    // A moderator hides it between the sync's read and its write (hiding does not change updatedAt).
+    const db = api.deps.db;
+    const original = db.send.bind(db) as (cmd: unknown) => Promise<unknown>;
+    let raced = false;
+    const send = vi.spyOn(db, "send").mockImplementation((async (cmd: unknown) => {
+      if (!raced && cmd instanceof UpdateCommand && cmd.input.Key?.sk === `CH#${c.id}`) {
+        raced = true;
+        await original(
+          new UpdateCommand({
+            TableName: api.deps.tableName,
+            Key: { pk: `USER#${s.user.id}`, sk: `CH#${c.id}` },
+            UpdateExpression: "SET hiddenFromCohort = :t REMOVE gsi1pk, gsi1sk",
+            ExpressionAttributeValues: { ":t": true },
+          }),
+        );
+      }
+      return original(cmd);
+    }) as typeof db.send);
+    try {
+      expect((await api.request("/api/me", { method: "PATCH", token: s.token, body: { shareProgress: true } })).status).toBe(200);
+    } finally {
+      send.mockRestore();
+    }
+    expect(raced).toBe(true);
+    const item = await getChallengeItem(api.deps, s.user.id, c.id);
+    expect(item?.hiddenFromCohort).toBe(true);
+    expect(item?.gsi1pk).toBeUndefined();
+  });
+
+  it(`allows ${QUOTAS.profileChangesPerUserPerDay} nickname / sharing changes per JST day; other fields stay free (NF-1)`, async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z"); // 12:00 JST
+    const s = await api.createSession("かえる");
+    for (let i = 0; i < QUOTAS.profileChangesPerUserPerDay; i++) {
+      const body = i % 2 === 0 ? { shareProgress: i % 4 !== 0 } : { nickname: `名前${i}` };
+      expect((await api.request("/api/me", { method: "PATCH", token: s.token, body })).status, String(i)).toBe(200);
+    }
+    const limited = await api.request("/api/me", { method: "PATCH", token: s.token, body: { nickname: "もう一回" } });
+    expect(limited.status).toBe(429);
+    expect((await json<ApiError>(limited)).error.code).toBe("rate_limited");
+    expect(limited.headers.get("retry-after")).toBe(String(12 * 3600)); // until 00:00 JST
+    // The same values again, the reminder and the time zone are not changes of the profile.
+    const me = (await json<MeResponse>(await api.request("/api/me", { token: s.token }))).user;
+    expect((await api.request("/api/me", { method: "PATCH", token: s.token, body: { nickname: me.nickname, shareProgress: me.shareProgress } })).status).toBe(200);
+    expect((await api.request("/api/me", { method: "PATCH", token: s.token, body: { reminder: { enabled: true, time: "07:00" }, tz: "Asia/Tokyo" } })).status).toBe(200);
+    api.clock.set("2026-10-06T15:00:00.000Z"); // 00:00 JST
+    expect((await api.request("/api/me", { method: "PATCH", token: s.token, body: { nickname: "もう一回" } })).status).toBe(200);
   });
 
   it("puts push subscriptions on the UTC reminder slot (floored to 15 minutes)", async () => {
@@ -427,6 +524,77 @@ describe("import follows the live rules (FR-16 abuse)", () => {
     const more = many(5, { status: "done", verdict: "continue", startDate: "2026-09-01", finishedAt: 1, finishedDay: 30 });
     expect(await json<ImportResponse>(await importFile(s, more))).toEqual({ imported: 2, skipped: 3 });
     expect(await listUserChallenges(api.deps, s.user.id)).toHaveLength(LIMITS.challengesPerUser);
+  });
+
+  it("one import at a time per user: parallel imports cannot each fill the free room (NF-5)", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("同時に");
+    const results = await Promise.all([importFile(s, many(100)), importFile(s, many(100)), importFile(s, many(100))]);
+    const statuses = results.map((r) => r.status);
+    for (const st of statuses) expect([200, 409]).toContain(st);
+    expect(statuses).toContain(200);
+    for (const r of results.filter((r) => r.status === 409)) expect((await json<ApiError>(r)).error).toMatchObject({ code: "conflict", message: IMPORT_BUSY });
+    // Before: 3 × 5 = 15 open challenges.
+    expect(await listUserChallenges(api.deps, s.user.id)).toHaveLength(LIMITS.openChallenges);
+    // The lock was released: the next import runs (and finds no room left).
+    expect(await json<ImportResponse>(await importFile(s, many(3)))).toEqual({ imported: 0, skipped: 3 });
+  });
+
+  it("a held import lock answers 409 without using the quota; an expired one does not block", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("待つ");
+    const lock = await acquireLock(api.deps, "import", s.user.id, IMPORT_LOCK_SECONDS);
+    expect(lock).toBeTruthy();
+    expect(await acquireLock(api.deps, "import", s.user.id, IMPORT_LOCK_SECONDS)).toBeNull();
+    const busy = await importFile(s, many(1));
+    expect(busy.status).toBe(409);
+    expect((await json<ApiError>(busy)).error.message).toBe(IMPORT_BUSY);
+    await releaseLock(api.deps, "import", s.user.id, lock!);
+    for (let i = 0; i < QUOTAS.importsPerUserPerDay; i++) expect((await importFile(s, [])).status).toBe(200);
+    expect(await getItem(`LOCK#import#${s.user.id}`, "LOCK")).toBeUndefined();
+
+    // A lock left by a process that died expires on its own.
+    const other = await api.createSession("落ちた");
+    expect(await acquireLock(api.deps, "import", other.user.id, IMPORT_LOCK_SECONDS)).toBeTruthy();
+    api.clock.advance((IMPORT_LOCK_SECONDS + 1) * 1000);
+    expect((await importFile(other, [])).status).toBe(200);
+    api.clock.set("2026-10-06T03:00:00.000Z");
+  });
+
+  it("a member hidden by moderation stays hidden after export, delete and re-import, until a moderator restores it (NF-2)", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const admin = { "x-admin-token": ADMIN_TOKEN };
+    const s = await api.createSession("隠された");
+    const c = challenge({ title: "通報されたタイトル" });
+    await seedChallenge(s, c);
+    expect(await cohortIds("2026-10")).toContain(c.id);
+    expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "member", targetId: c.id, action: "hide" } })).status).toBe(204);
+    expect(await getItem(`MOD#${c.id}`, "META")).toMatchObject({ memberHidden: true, gsi2pk: `AUTHOR#${s.user.id}` });
+
+    const file = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
+    expect((await api.request(`/api/challenges/${c.id}`, { method: "DELETE", token: s.token })).status).toBe(204);
+    expect(await json<ImportResponse>(await api.request("/api/me/import", { token: s.token, body: file }))).toEqual({ imported: 1, skipped: 0 });
+    expect(await getChallengeItem(api.deps, s.user.id, c.id)).toMatchObject({ hiddenFromCohort: true });
+    // Using it again does not bring it back (before: the stamp put it back in the cohort).
+    expect((await api.request(`/api/challenges/${c.id}/stamps/3`, { method: "PUT", token: s.token, body: {} })).status).toBe(200);
+    expect(await cohortIds("2026-10")).not.toContain(c.id);
+
+    // A moderator's restore lifts it, and clears the marker for a later re-import too.
+    expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "member", targetId: c.id, action: "restore" } })).status).toBe(204);
+    expect(await cohortIds("2026-10")).toContain(c.id);
+    expect((await getItem(`MOD#${c.id}`, "META"))?.memberHidden).toBeUndefined();
+    const again = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
+    expect((await api.request(`/api/challenges/${c.id}`, { method: "DELETE", token: s.token })).status).toBe(204);
+    api.clock.set("2026-10-07T03:00:00.000Z"); // the import quota of the next day
+    expect((await api.request("/api/me/import", { token: s.token, body: again })).status).toBe(200);
+    expect((await getChallengeItem(api.deps, s.user.id, c.id))?.hiddenFromCohort).toBeUndefined();
+
+    // The marker goes with the owner's account.
+    expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "member", targetId: c.id, action: "hide" } })).status).toBe(204);
+    expect(await getItem(`MOD#${c.id}`, "META")).toBeDefined();
+    expect((await api.request("/api/me", { method: "DELETE", token: s.token })).status).toBe(204);
+    expect(await getItem(`MOD#${c.id}`, "META")).toBeUndefined();
+    api.clock.set("2026-10-06T03:00:00.000Z");
   });
 
   it("a member a moderator removed for good stays removed after export, delete and re-import", async () => {

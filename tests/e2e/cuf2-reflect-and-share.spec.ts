@@ -90,6 +90,14 @@ test("CUF-2: reflect on a finished 30 days, publish the card and see the 「続�
   await expect(page.getByText("23/30日", { exact: true })).toBeVisible();
   await expect(page.getByText(REFLECTION)).toBeVisible();
   await expect(page.getByRole("img", { name: `${nickname}の30日「${TITLE}」の振り返りカード` })).toBeVisible();
+  // FR-21 / D13 (r2-web-3): the public card, the most public page, links the Terms and the Privacy Policy too.
+  const footerNav = page.getByRole("contentinfo").getByRole("navigation", { name: "このサイトについて" });
+  expect(await footerNav.getByRole("link").evaluateAll((links) => links.map((a) => [a.textContent, a.getAttribute("href")]))).toEqual([
+    ["このサービスについて", "/about"],
+    ["利用規約", "/terms"],
+    ["プライバシーポリシー", "/privacy"],
+    ["お問い合わせ", "/contact"],
+  ]);
 
   const origin = new URL(shareUrl).origin;
   const ogImage = await page.locator('meta[property="og:image"]').getAttribute("content");

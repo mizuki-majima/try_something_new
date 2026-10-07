@@ -37,6 +37,8 @@ function fakeStore(over: Partial<AppSnapshot> = {}): AppStore {
     lastSyncError: null,
     lastSyncedAt: null,
     lastStamped: null,
+    throttle: null,
+    profileLimitedUntil: null,
     ...over,
   };
   return { getSnapshot: () => snap, subscribe: () => () => {}, onNotice: () => () => {}, actions: {} as AppActions, start: () => () => {} };

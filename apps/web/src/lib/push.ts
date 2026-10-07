@@ -13,7 +13,7 @@
  * to a web app opened from the Home Screen, so a Safari tab gets "ios-needs-install" guidance.
  */
 import { API, type PushPublicKeyResponse, type PushSubscriptionInput } from "@thirty/shared";
-import { ApiClientError, errorMessage, request } from "./api";
+import { errorMessage, isQuotaLimit, request } from "./api";
 import { getToken } from "./session";
 
 export type PushStatus =
@@ -51,7 +51,7 @@ export class PushError extends Error {
 /** A user-facing message for anything enablePush / disablePush / sendTestPush throws. */
 export function pushErrorMessage(err: unknown): string {
   if (err instanceof PushError) return err.message;
-  if (err instanceof ApiClientError && err.status === 429) return "テスト通知は1日5回までです。また明日お試しください。";
+  if (isQuotaLimit(err)) return "テスト通知は1日5回までです。また明日お試しください。";
   return errorMessage(err, MESSAGES.failed);
 }
 

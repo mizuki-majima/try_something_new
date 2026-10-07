@@ -7,12 +7,13 @@
  */
 import { useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
-import { API, AUTO_HIDE_REPORTS, ContactCreateSchema, ID_RE, LIMITS, QUOTAS, ReportCreateSchema, type ContactCreate } from "@thirty/shared";
+import { API, ContactCreateSchema, ID_RE, LIMITS, QUOTAS, ReportCreateSchema, type ContactCreate } from "@thirty/shared";
 import { TextAreaField, TextField } from "../components/Field";
 import { reportErrorMessage } from "../components/ReportButton";
 import { Seal } from "../components/Seal";
-import { ApiClientError, errorMessage, request } from "../lib/api";
+import { ApiClientError, errorMessage, isQuotaLimit, request } from "../lib/api";
 import { usePageTitle } from "../lib/hooks";
+import { AUTO_HIDE_CONDITION, REPORT_REVIEWED } from "../lib/reportCopy";
 import { parseWith } from "../lib/validation";
 import "./InfoPages.css";
 
@@ -60,7 +61,7 @@ function ContactForm() {
       requestAnimationFrame(() => headingRef.current?.focus());
     } catch (err) {
       setStatus("editing");
-      if (err instanceof ApiClientError && err.status === 429) {
+      if (isQuotaLimit(err)) {
         setFormError(`お問い合わせは1日${QUOTAS.contactPerUserPerDay}件までです。明日、もう一度お送りください。`);
       } else if (err instanceof ApiClientError && err.fields) {
         setErrors(err.fields);
@@ -221,8 +222,8 @@ function ShareReport({ shareId }: { shareId: string }) {
         <h1 className="info-title">カードを通報する</h1>
         <div className="info-lead">
           <p>
-            公開カード <a href={cardPath}>{cardPath}</a> を運営に知らせます。内容を確かめて、必要なら非表示にします。{AUTO_HIDE_REPORTS}
-            人から通報があると、自動で非表示になります。
+            公開カード <a href={cardPath}>{cardPath}</a> を運営者に知らせます。{REPORT_REVIEWED}
+            {AUTO_HIDE_CONDITION}
           </p>
         </div>
       </header>

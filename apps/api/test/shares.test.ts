@@ -1,14 +1,25 @@
 import { crc32, deflateSync } from "node:zlib";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
-import { AUTO_HIDE_REPORTS, LIMITS, QUOTAS, newId, type ApiError, type Challenge, type SessionResponse, type ShareResponse } from "@thirty/shared";
+import {
+  AUTO_HIDE_REPORTS,
+  LIMITS,
+  QUOTAS,
+  newId,
+  type ApiError,
+  type BackupFile,
+  type Challenge,
+  type ImportResponse,
+  type SessionResponse,
+  type ShareResponse,
+} from "@thirty/shared";
 import { getChallengeItem, toChallengeItem } from "../src/db/challenges";
 import { shareKey, statsKey } from "../src/db/keys";
 import { createShare } from "../src/db/shares";
 import { getStats } from "../src/db/stats";
 import { checkPng, decodeBase64Strict, isShareCardPng } from "../src/png";
 import { SHARE_MODERATED } from "../src/routes/shares";
-import { escapeHtml, excerpt, TED_TALK_URL } from "../src/share-page";
+import { escapeHtml, excerpt, SHARE_FOOTER_LINKS, TED_TALK_URL } from "../src/share-page";
 import { ADMIN_TOKEN, json, setupApi } from "./helpers";
 
 const api = setupApi();
@@ -283,6 +294,51 @@ describe("POST /api/shares", () => {
     await refused(await tryShare(s, legacy.id));
   });
 
+  it("a card stopped by moderation cannot come back through export → delete → import → share (NF-2)", async () => {
+    const admin = { "x-admin-token": ADMIN_TOKEN };
+    const tryShare = (s: SessionResponse, challengeId: string) =>
+      api.request("/api/shares", { token: s.token, body: { challengeId, imageBase64: PNG_B64 } });
+    const roundTrip = async (s: SessionResponse, chId: string) => {
+      const file = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
+      expect((await api.request(`/api/challenges/${chId}`, { method: "DELETE", token: s.token })).status).toBe(204);
+      const imported = await api.request("/api/me/import", { token: s.token, body: file });
+      expect(await json<ImportResponse>(imported)).toMatchObject({ imported: 1 });
+      expect((await getChallengeItem(api.deps, s.user.id, chId))?.id).toBe(chId); // the same id is back
+    };
+
+    // Auto-hidden after reports (the reviewer's probe p2).
+    const s = await api.createSession("戻したい");
+    const c = await seedChallenge(s, challenge());
+    const card = await share(s, c.id);
+    for (let i = 0; i < AUTO_HIDE_REPORTS; i++) {
+      const r = await api.trustedSession();
+      expect((await api.request("/api/reports", { token: r.token, body: { targetType: "share", targetId: card.id } })).status).toBe(204);
+    }
+    expect((await api.request(`/s/${card.id}`)).status).toBe(404);
+    expect(await getItem(`MOD#${c.id}`, "META")).toMatchObject({ shareModerated: true, gsi2pk: `AUTHOR#${s.user.id}` });
+    await roundTrip(s, c.id);
+    const res = await tryShare(s, c.id); // before: 201 and the moderated card was public again
+    expect(res.status).toBe(403);
+    expect(await errorOf(res)).toMatchObject({ code: "forbidden", message: SHARE_MODERATED });
+
+    // Deleted by the moderator: the same.
+    const other = await api.createSession("消された");
+    const d = await seedChallenge(other, challenge());
+    expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "share", targetId: (await share(other, d.id)).id, action: "delete" } })).status).toBe(204);
+    await roundTrip(other, d.id);
+    expect((await tryShare(other, d.id)).status).toBe(403);
+
+    // A moderator's restore clears it (for the card the restored challenge points at).
+    const third = await api.createSession("戻された");
+    const r3 = await seedChallenge(third, challenge());
+    const hiddenCard = await share(third, r3.id);
+    expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "share", targetId: hiddenCard.id, action: "hide" } })).status).toBe(204);
+    expect((await tryShare(third, r3.id)).status).toBe(403);
+    expect((await api.request("/api/admin/moderate", { headers: admin, body: { targetType: "share", targetId: hiddenCard.id, action: "restore" } })).status).toBe(204);
+    expect((await getItem(`MOD#${r3.id}`, "META"))?.shareModerated).toBeUndefined();
+    expect((await tryShare(third, r3.id)).status).toBe(201);
+  });
+
   it("allows sharesPerUserPerDay", async () => {
     const s = await api.createSession();
     const c = await seedChallenge(s, challenge());
@@ -433,6 +489,17 @@ describe("GET /s/:id", () => {
     expect(html).toContain(`href="/recipes/photo"`);
     expect(html).toContain("自分も30日やってみる");
     expect(html).toContain(`href="/about"`);
+    // D13 / FR-21: the footer of every screen, this one included (r2-web-3).
+    expect(SHARE_FOOTER_LINKS.map((l) => l.href)).toEqual(["/about", "/terms", "/privacy", "/contact"]);
+    const foot = html.slice(html.indexOf("<footer>"), html.indexOf("</footer>"));
+    for (const [href, label] of [
+      ["/about", "このサービスについて"],
+      ["/terms", "利用規約"],
+      ["/privacy", "プライバシーポリシー"],
+      ["/contact", "お問い合わせ"],
+    ]) {
+      expect(foot).toContain(`<a href="${href}">${label}</a>`);
+    }
     expect(html).toContain(`href="${TED_TALK_URL}"`);
     expect(html).toContain("Matt Cutts “Try something new for 30 days”");
     expect(html).toContain("着想：");
@@ -471,6 +538,8 @@ describe("GET /s/:id", () => {
       const html = await res.text();
       expect(html).toContain("カードが見つかりません");
       expect(html).not.toContain("通報する");
+      expect(html).toContain(`<a href="/terms">利用規約</a>`);
+      expect(html).toContain(`<a href="/privacy">プライバシーポリシー</a>`);
       expect(html).toContain(`<html lang="ja">`);
       expect(html).not.toMatch(/<script/i);
     }

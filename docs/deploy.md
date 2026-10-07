@@ -7,6 +7,7 @@
 ## 前提
 
 - AWS アカウントと、デプロイできる権限の認証情報（`aws configure` または `AWS_PROFILE`。初回の bootstrap には管理者相当の権限が必要）
+- AWS CLI（`aws`）。origin-verify の入れ替えの手順 3 でデプロイ済みの状態を読む（読み取りだけ）のと、秘密情報の入れ替え後に api 関数を作り直させるのに使う
 - Node.js 22（`.nvmrc`）
 - リポジトリのルートで `npm ci` 済み
 
@@ -32,13 +33,13 @@ SSM Parameter Store に次を作る。すでにあるものは変えない（何
 | `/thirty-days/vapid-public-key` | String | Web Push の公開鍵 | デプロイ時に Lambda の環境変数へ |
 | `/thirty-days/vapid-private-key` | SecureString | Web Push の秘密鍵 | api・reminder が起動時に読む |
 | `/thirty-days/admin-token` | SecureString | `/admin` の管理トークン | api が起動時に読む |
-| `/thirty-days/ip-hash-key` | SecureString | レート制限のキーにする IP の HMAC-SHA256 の鍵（32バイトの乱数。表示しない） | api が起動時に読む |
-| `/thirty-days/origin-verify` | String | API が受け付ける確認用ヘッダの値（入れ替え中だけ `古い値,新しい値`） | デプロイ時に api の `ORIGIN_VERIFY` へ |
+| `/thirty-days/ip-hash-key` | SecureString | レート制限のキーにする IP の HMAC-SHA256 の鍵（32バイトの乱数。表示しない） | api が起動時に読む。**無い・空・読めないと api は起動しない**（全リクエストが 500 になり `ApiErrors` が鳴る。リポジトリに載っている既定の鍵では動かない。R4） |
+| `/thirty-days/origin-verify` | String | API が受け付ける確認用ヘッダの値（入れ替え中だけ `古い値,新しい値`）。空や `,` だけにすると API はすべて 403 を返す（確認が外れることはない。R6） | デプロイ時に api の `ORIGIN_VERIFY` へ |
 | `/thirty-days/origin-verify-send` | String | CloudFront が API へ送る確認用ヘッダの値（1つ） | デプロイ時に CloudFront へ |
 
 **管理トークンは作成時に1回だけ表示される。** パスワードマネージャーに保存する。値はリポジトリにも CloudFormation テンプレートにも入らない。
 
-`npm run deploy` は最初に `node scripts/setup-secrets.mjs --check` を実行し、パラメータが足りない・種類が違う・CloudFront が送る値を API が受け付けない、のどれかならデプロイしない。
+`npm run deploy` は、ビルドのあと `cdk deploy` の前に `node scripts/setup-secrets.mjs --check` を実行し、パラメータが足りない・種類が違う・CloudFront が送る値を API が受け付けない（受け付ける値が空の場合も）、のどれかならデプロイしない。
 
 ### 3. 費用配分タグを有効にする（予算のため。1回だけ）
 
@@ -56,15 +57,15 @@ AWS アカウントは他のプロジェクトと共用なので、予算 `thirt
 PUBLIC_ORIGIN=https://d1zw3n37kpuo7t.cloudfront.net ALERT_EMAIL=you@example.com npm run deploy
 ```
 
-`setup-secrets.mjs --check` → ビルド（API と Web）→ `cdk deploy` の順に実行する。最後に出る `ThirtyDays.SiteUrl` が公開 URL。初回は CloudFront の作成で 5〜10 分かかる。
+ビルド（API と Web）→ `setup-secrets.mjs --check` → `cdk deploy` の順に実行する（ルートの `npm run deploy` は `npm run build && npm run deploy -w infra`、`infra` の `deploy` が `--check` のあと `cdk deploy`）。`--check` で止まるのはビルドのあと。最後に出る `ThirtyDays.SiteUrl` が公開 URL。初回は CloudFront の作成で 5〜10 分かかる。
 
 | 環境変数・オプション | 内容 |
 |---|---|
 | `PUBLIC_ORIGIN=https://<CloudFront のドメイン>` | **毎回指定する。** Web のビルドで `index.html` の `og:image` / `twitter:image` を絶対 URL にする（X・LINE のリンクのプレビューに画像を出すため）。末尾の `/` は不要。初回はドメインがまだ無いので付けずにデプロイし、出てきた `SiteUrl` を付けてもう一度デプロイする。付け忘れると `cdk` が「警告: Web のビルドの OGP 画像が公開用になっていません」と出す |
-| `ALERT_EMAIL=...`（または `-c alertEmail=...`） | **強く推奨。** 予算（月 $10、`Project=thirty-days` の費用だけ。実績 80%・予測 100% 超えでメール）とアラーム3つ（下の「アラーム」）を作る。初回は AWS から届く確認メールの「Confirm subscription」を押す。**毎回のデプロイで指定する**（外すと予算とアラームが消える） |
+| `ALERT_EMAIL=...`（または `-c alertEmail=...`） | **強く推奨。** 予算（月 $10、`Project=thirty-days` の費用だけ。実績 80%・予測 100% 超えでメール）とアラーム4つ（下の「アラーム」）を作る。初回は AWS から届く確認メールの「Confirm subscription」を押す。**毎回のデプロイで指定する**（外すと予算とアラームが消える） |
 | `-c webDistPath=...` `-c apiDistPath=...` `-c reminderDistPath=...` | ビルド済みファイルの場所を変える（既定は `apps/web/dist`、`apps/api/dist/api`、`apps/api/dist/reminder`） |
 
-`-c` を使うときは `infra/` から実行する（ルートの `npm run deploy` 経由だと npm がフラグを受け取ってしまう）。この場合 `--check` は自動では走らないので先に実行する。
+`-c` を使うときは `infra/` から実行する（ルートの `npm run deploy` 経由だと npm がフラグを受け取ってしまう）。この場合 `--check` は自動では走らないので先に実行する（飛ばして `ip-hash-key` が無いと、デプロイは通っても API が 500 になる）。
 
 ```sh
 node scripts/setup-secrets.mjs --check
@@ -85,7 +86,8 @@ cd infra && npx cdk deploy -c alertEmail=you@example.com
 3. API Gateway の URL（`https://<apiId>.execute-api.ap-northeast-1.amazonaws.com/api/health`）を直接開くと 403（CloudFront 経由のみ受け付ける）。AWS アカウントは他のプロジェクトと共用なので、コンソールでは API 名 `ThirtyDaysApi`、スタックの説明「30日だけ (try_something_new)」で見分ける
 4. `<SiteUrl>/media/hidden/share/x.png` が 404（公開されるのは `/media/share/<id>.png` だけ。通報や管理で非表示にしたカードの画像は `hidden/share/` に移る）
 5. `curl -s <SiteUrl>/ | grep og:image` が `https://` で始まる URL を返す
-6. （`ALERT_EMAIL` を付けたとき）確認メールの購読を承認した。CloudWatch のアラームが3つ（下）あり、Budgets に `thirty-days-monthly` がある
+6. （`ALERT_EMAIL` を付けたとき）確認メールの購読を承認した。CloudWatch のアラームが4つ（下）あり、Budgets に `thirty-days-monthly` がある
+7. DynamoDB のテーブル（コンソールの「追加の設定」→ 読み込み/書き込みキャパシティ）で、テーブルと GSI 3つの最大オンデマンドスループットが読み込み 400・書き込み 100 になっている
 
 ## アラーム（`ALERT_EMAIL` 指定時）
 
@@ -96,6 +98,7 @@ cd infra && npx cdk deploy -c alertEmail=you@example.com
 | `Api5xx` | API Gateway（`ThirtyDaysApi`、ステージ `$default`）の 5xx が5分間に5回以上 | ルートの例外（DynamoDB の権限エラーなど）。API はこれを普通の 500 として返すので、Lambda の Errors には数えられない |
 | `ApiErrors` | api Lambda の Errors が5分間に5回以上 | 起動・SSM の読み込み・タイムアウトの失敗 |
 | `ReminderErrors` | reminder Lambda の Errors が1時間に2回以上 | リマインドの実行そのものの失敗（1人ずつの送信失敗はログにだけ出る） |
+| `DynamoThrottles` | DynamoDB のスロットル（`ThrottledRequests`、api と reminder が使う操作の合計）が5分間に1回以上 | 費用の上限（下の「費用の目安」。テーブルと GSI ごとに読み込み 400・書き込み 100 ユニット/秒）に当たった。100人規模では当たらないので、荒らしか、バックアップの読み込みのような大きな書き込みの集中。スロットルされた要求は SDK が数回やり直し、それでも通らなければ API は 500 を返す（`Api5xx` も鳴りうる）。上限に当たっている間は、ほかの人の書き込みも遅れる（端末の送信待ちに残り、あとで送られる） |
 
 ## 費用の目安
 
@@ -110,12 +113,13 @@ cd infra && npx cdk deploy -c alertEmail=you@example.com
 | SSM Parameter Store（Standard 6個） | $0 | Standard パラメータは無料 |
 | CloudWatch Logs（14日保持） | $0 | 取り込み 5GB の無料枠の範囲 |
 | API Gateway HTTP API | 約 $0.06 | 100万リクエストあたり約 $1.29 |
-| DynamoDB（オンデマンド＋PITR） | 約 $0.02 | 書き込み・読み込みと PITR（数 MB） |
+| DynamoDB（オンデマンド＋PITR） | 約 $0.02 | 書き込み・読み込みと PITR（数 MB）。オンデマンドの最大スループットに上限あり（下） |
 | アラーム・SNS・Budgets（`ALERT_EMAIL` 指定時） | $0 | アラームはアカウント全体で10個まで無料、超えると1個 $0.10。メール通知・予算（アクションなし）は無料 |
 | **合計** | **約 $0.1** | 目標は月 $1 未満（SPEC） |
 
 - 無料枠はアカウント単位なので、他のプロジェクトが使い切っている場合は CloudFront・Lambda・Logs にも費用が付く。その場合でも100人規模なら月 $0.5 前後の見込み
-- **上限の目安（荒らしなどで API がステージの上限 20 リクエスト/秒で使われ続けた場合）**: 月約5,200万リクエストで、CloudFront 約 $60、API Gateway 約 $67、Lambda 約 $20、CloudWatch Logs 約 $20 ほか DynamoDB で、**月 $170 以上**。予算（実績 80%・予測 100%）と `Api5xx` のメールで気づけるようにしてある（費用配分タグの有効化が前提）。月 $10 を超えそうなら CEO に報告する（ADR 0001）
+- **DynamoDB の費用の上限（R1）**: テーブルと GSI 3つのそれぞれに、オンデマンドの最大スループット（読み込み 400・書き込み 100 ユニット/秒。`infra/lib/config.ts` の `TABLE_MAX_THROUGHPUT`）を付けてある。超えた分は課金されずにスロットル（拒否）される。全部が上限まで使われ続けても **1時間 約 $1.9**（書き込み 約 $1.0・読み込み 約 $0.8。1日 約 $44）で止まり、上限に当たると5分以内に `DynamoThrottles` のメールが来る。API 側でも書き込みの量を抑えている: ニックネーム・進捗公開の変更は1人1日10回まで（そのたびに自分のチャレンジの公開用の情報を書き直すため）、書き直すのは中身が変わる項目だけ、保存する文字は UTF-8 のバイト数でも上限（`文字数 × 4 + 32` バイト）、バックアップの読み込みは1人1日3回・同時に1つだけ
+- **それ以外の上限の目安（荒らしなどで API がステージの上限 20 リクエスト/秒で使われ続けた場合）**: 月約5,200万リクエストで、CloudFront 約 $60、API Gateway 約 $67、Lambda 約 $20、CloudWatch Logs 約 $20 で、**月 $170 前後**（DynamoDB は上の上限まで）。こうしたリクエストは 2xx か 429 で終わるので `Api5xx` は鳴らない。気づけるのは予算のメール（実績 80%・予測 100%）だけで、**費用配分タグを有効にするまで予算は $0 のまま**（「費用配分タグを有効にする」）。月 $10 を超えそうなら CEO に報告する（ADR 0001）
 
 ## 秘密情報の入れ替え
 
@@ -143,12 +147,13 @@ CloudFront の反映には数分かかり、Lambda の切り替えは数秒で�
 | 3 | 同じコマンド → `npm run deploy` | `origin-verify` = 新しい値 | 古い値は 403。入れ替え完了 |
 
 - スタックは api 関数を CloudFront より先に更新する。手順 1 と 2 を1回のデプロイで出しても、API が新しい値を受け付けてから CloudFront が送り始める
-- 手順 2 と 3 を1回のデプロイで出してはいけない（API が古い値を捨てたとき、まだ古い値を送る拠点が残る）。スクリプトは手順 2 から10分たつまで手順 3 を断る
+- 手順 2 と 3 を1回のデプロイで出してはいけない（API が古い値を捨てたとき、まだ古い値を送る拠点が残る）。そのため**手順 3 の前に、スクリプトはデプロイ済みの状態を AWS CLI で読む**（読み取りだけ: `aws cloudformation describe-stacks` と `aws cloudfront get-distribution`）。スタックが `UPDATE_COMPLETE`（初回なら `CREATE_COMPLETE`）で、最後のデプロイが新しい `origin-verify-send` を使っていて、CloudFront が `Deployed` で新しい値を送っているときだけ進む。手順 2 のあとのデプロイが失敗した・飛ばした・まだ終わっていない・ロールバックした、CloudFront の反映中、AWS CLI が無い・読めない、のどれでも何も変えずに止まる（R6）
+- 手順 3 だけを1回のデプロイで出すのは安全（CloudFront はもう新しい値だけを送っている）
 - 途中かどうかは `node scripts/setup-secrets.mjs --check` が表示する。手で直すときは、`origin-verify` が `origin-verify-send` の値を必ず含むようにする（含まないと `--check` がデプロイを止める）
 
 ## ロールバック
 
-- **コード**: 直前の正常なコミットに戻して、同じ手順でデプロイし直す（`git checkout <commit>` → `npm ci` → `npm run deploy`）。Web の古いハッシュ付きファイルは消さない設定なので、開いたままのタブも壊れない。2026-10 のレビュー修正より前の版は CloudFront にも `origin-verify` の値を送らせるので、戻すのは `origin-verify` と `origin-verify-send` が同じ1つの値のとき（入れ替えが終わった状態）だけにする。違うまま戻すと、そのデプロイの数分間 API が 403 になる
+- **コード**: 直前の正常なコミットに戻して、同じ手順でデプロイし直す（`git checkout <commit>` → `npm ci` → `npm run deploy`）。Web の古いハッシュ付きファイルは消さない設定なので、開いたままのタブも壊れない。2026-10 のレビュー修正より前の版は CloudFront にも `origin-verify` の値を送らせるので、戻すのは `origin-verify` と `origin-verify-send` が同じ1つの値のとき（入れ替えが終わった状態）だけにする。違うまま戻すと、そのデプロイの数分間 API が 403 になる。2026-10 の再レビュー修正（R1〜R10）より前の版に戻すと、DynamoDB のスループットの上限と `DynamoThrottles` のアラームも外れる
 - **データ**: DynamoDB はポイントインタイムリカバリ（PITR、35日）が有効。コンソールの DynamoDB → テーブル → バックアップ →「ポイントインタイムに復元」で**別名の新しいテーブル**に復元し、必要な項目を元のテーブルへ書き戻す。スタックのテーブルを差し替えない（CloudFormation の管理から外れる）
 
 ## 片付け（停止するとき）

@@ -2,7 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import { isIPv4, isIPv6 } from "node:net";
 import type { Context, MiddlewareHandler } from "hono";
 import type { User } from "@thirty/shared";
-import { DEFAULT_IP_HASH_KEY } from "./config";
+import { DEFAULT_IP_HASH_KEY, isTestEnv } from "./config";
 import { getTokenOwner, getUser } from "./db/users";
 import { forbidden, unauthorized } from "./errors";
 import type { Deps } from "./ports";
@@ -126,23 +126,62 @@ function ipv6Groups(ip: string): number[] {
   return groups.map((g) => parseInt(g, 16));
 }
 
-/**
- * What a rate limit counts as "one client": an IPv4 address, or the /64 prefix of an IPv6 address
- * (one home or one VPS gets at least a /64, so counting single IPv6 addresses would limit nothing).
- * An IPv4-mapped IPv6 address counts as its IPv4 address. Anything unparsable is used as it is.
- */
-export function ipKey(raw: string): string {
+type ParsedIp = { v4: [number, number, number, number] } | { v6: number[] } | { raw: string };
+
+/** Brackets, zone ids and IPv4-mapped IPv6 addresses handled; anything unparsable is kept as it is. */
+function parseIp(raw: string): ParsedIp {
   let ip = raw.trim().toLowerCase();
   if (ip.startsWith("[")) ip = ip.slice(1, ip.includes("]") ? ip.indexOf("]") : undefined);
   const zone = ip.indexOf("%");
   if (zone >= 0) ip = ip.slice(0, zone);
-  if (isIPv4(ip)) return ip;
-  if (!isIPv6(ip)) return raw.trim();
+  if (isIPv4(ip)) return { v4: ip.split(".").map(Number) as [number, number, number, number] };
+  if (!isIPv6(ip)) return { raw: raw.trim() };
   const g = ipv6Groups(ip);
   if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) {
-    return [g[6]! >> 8, g[6]! & 255, g[7]! >> 8, g[7]! & 255].join(".");
+    return { v4: [g[6]! >> 8, g[6]! & 255, g[7]! >> 8, g[7]! & 255] };
   }
-  return `${g.slice(0, 4).map((x) => x.toString(16)).join(":")}::/64`;
+  return { v6: g };
+}
+
+const hex16 = (x: number) => x.toString(16);
+
+/**
+ * What a rate limit counts as "one client": an IPv4 address, or the /56 prefix of an IPv6 address.
+ * One home gets at least a /64, and Japanese IPoE (FLET'S v6 / IPv6 IPoE) homes get a /56 = 256 /64s,
+ * so counting anything finer would let one home open 256 times the quota (security-3).
+ * An IPv4-mapped IPv6 address counts as its IPv4 address. Anything unparsable is used as it is.
+ */
+export function ipKey(raw: string): string {
+  const p = parseIp(raw);
+  if ("raw" in p) return p.raw;
+  if ("v4" in p) return p.v4.join(".");
+  const g = p.v6;
+  return `${g.slice(0, 3).map(hex16).join(":")}:${hex16(g[3]! & 0xff00)}::/56`;
+}
+
+/**
+ * The network a client is on, coarser than ipKey: an IPv4 /24 or an IPv6 /48 (what one person can
+ * easily hold: a home, a VPS range, a free tunnel broker's /48). Auto-hide needs reporters from at
+ * least AUTO_HIDE_MIN_NETWORKS of these (security-4), so one person's accounts on one connection
+ * cannot hide anything.
+ */
+export function networkKey(raw: string): string {
+  const p = parseIp(raw);
+  if ("raw" in p) return p.raw;
+  if ("v4" in p) return `${p.v4.slice(0, 3).join(".")}.0/24`;
+  return `${p.v6.slice(0, 3).map(hex16).join(":")}::/48`;
+}
+
+/**
+ * The secret for the HMACs below. On AWS it comes from SSM (/thirty-days/ip-hash-key, loadSecrets
+ * fails without it); local.ts passes DEFAULT_IP_HASH_KEY itself. The public default is used only
+ * under tests: anywhere else a missing key is a 500, never a reversible hash (NF-4).
+ */
+export function ipHashSecret(deps: Pick<Deps, "secrets" | "config">): string {
+  const secret = deps.secrets.ipHashKey ?? deps.config.ipHashKey;
+  if (secret) return secret;
+  if (isTestEnv()) return DEFAULT_IP_HASH_KEY;
+  throw new Error("IP hash key is not configured (IP_HASH_KEY or IP_HASH_KEY_PARAM)");
 }
 
 /** HMAC-SHA256 of ipKey(ip) with a secret, so stored rate-limit keys cannot be reversed by enumerating IPs. */
@@ -150,13 +189,27 @@ export function hashIp(ip: string, secret: string): string {
   return createHmac("sha256", secret).update(ipKey(ip)).digest("hex");
 }
 
+/** HMAC of networkKey(ip) (domain-separated from hashIp), shortened: only compared for equality. */
+export function hashNetwork(ip: string, secret: string): string {
+  return createHmac("sha256", secret).update(`net:${networkKey(ip)}`).digest("hex").slice(0, 32);
+}
+
+/** The viewer's address as CloudFront passes it (x-viewer-ip), or the first x-forwarded-for hop. */
+function clientIp(c: Context): string {
+  const viewer = c.req.header("x-viewer-ip")?.trim();
+  const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
+  return viewer || forwarded || "unknown";
+}
+
 /**
  * The client's rate-limit key (CloudFront puts the viewer address in x-viewer-ip). Raw IPs are
  * never stored or logged. The secret comes from SSM (/thirty-days/ip-hash-key) on AWS.
  */
 export function clientIpHash(deps: Pick<Deps, "secrets" | "config">, c: Context): string {
-  const viewer = c.req.header("x-viewer-ip")?.trim();
-  const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
-  const secret = deps.secrets.ipHashKey ?? deps.config.ipHashKey ?? DEFAULT_IP_HASH_KEY;
-  return hashIp(viewer || forwarded || "unknown", secret);
+  return hashIp(clientIp(c), ipHashSecret(deps));
+}
+
+/** The client's network (see networkKey), as a keyed hash. */
+export function clientNetworkHash(deps: Pick<Deps, "secrets" | "config">, c: Context): string {
+  return hashNetwork(clientIp(c), ipHashSecret(deps));
 }

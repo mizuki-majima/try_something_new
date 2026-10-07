@@ -4,18 +4,22 @@
  * Creates whatever is missing and never overwrites, unless asked with --rotate <name>.
  *
  *   node scripts/setup-secrets.mjs                       作る（足りないものだけ）
- *   node scripts/setup-secrets.mjs --check               確かめるだけ（npm run deploy が最初に実行する）
+ *   node scripts/setup-secrets.mjs --check               確かめるだけ（npm run deploy がビルドのあと、cdk deploy の前に実行する）
  *   node scripts/setup-secrets.mjs --rotate <name>       vapid | admin-token | ip-hash-key | origin-verify
  *
  * origin-verify rotates in three steps, one `npm run deploy` after each (nextOriginVerifyStep).
+ * Step 3 first reads the deployed state with the AWS CLI (read-only: CloudFormation DescribeStacks
+ * and CloudFront GetDistribution) and refuses unless CloudFront already sends the new value
+ * (planOriginVerifyRotation).
  * Region: AWS_REGION, else ap-northeast-1 (the stack's region).
  * The only secret ever printed is a newly created admin token, once. SecureStrings are never read
  * back (listed without decryption); the origin-verify Strings are compared but never printed.
  */
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
+import { parseArgs, promisify } from "node:util";
 
 // Keep in sync with infra/lib/config.ts (infra/test checks they are equal).
 export const PARAM = {
@@ -47,18 +51,16 @@ const DESCRIPTION = {
 };
 
 const STACK_REGION = "ap-northeast-1";
+// Keep in sync with infra/lib/config.ts and the stack's outputs (infra/test checks them).
+export const STACK_NAME = "ThirtyDays";
+export const DISTRIBUTION_ID_OUTPUT = "DistributionId";
+export const ORIGIN_VERIFY_HEADER = "x-origin-verify";
 export const ROTATABLE = ["vapid", "admin-token", "ip-hash-key", "origin-verify"];
-
-/**
- * Step 3 of an origin-verify rotation drops the old value. It must wait until CloudFront sends the
- * new one everywhere (the deploy after step 2 waits for that); this only stops step 3 from being
- * run straight after step 2, before any deploy.
- */
-export const ORIGIN_VERIFY_SETTLE_MINUTES = 10;
 
 const USAGE = `使い方: node scripts/setup-secrets.mjs [--check | --rotate ${ROTATABLE.join("|")}]
   足りないパラメータだけを作ります。既存の値は --rotate で指定したものしか変えません。
-  --check は作らずに確かめるだけです（npm run deploy が最初に実行します）。`;
+  --check は作らずに確かめるだけです（npm run deploy がビルドのあと、cdk deploy の前に実行します）。
+  --rotate origin-verify の手順 3/3 は AWS CLI（aws）でデプロイ済みの状態を読みます（読み取りだけ）。`;
 
 /** The values the API accepts, from /thirty-days/origin-verify ("old,new" while rotating). */
 export function acceptList(value) {
@@ -111,6 +113,113 @@ export function nextOriginVerifyStep(accept, send, newValue) {
   }
 }
 
+/** Stack states in which the last deploy finished (no rollback, nothing in progress). */
+const DEPLOYED_STACK_STATUSES = new Set(["CREATE_COMPLETE", "UPDATE_COMPLETE"]);
+
+/**
+ * Why step 3 (the API drops the old value) is not safe yet, or undefined when it is: CloudFront must
+ * already send `expected` (the new value) from every edge.
+ *   stack         DescribeStacks' Stacks[0]: the last deploy finished, and it resolved
+ *                 /thirty-days/origin-verify-send to `expected` (ResolvedValue of the SSM parameter)
+ *   distribution  GetDistribution's Distribution: Deployed (not InProgress), and every x-origin-verify
+ *                 origin header it sends is `expected`
+ * A rollback, a failed or skipped deploy, or a deploy still running all leave CloudFront sending the
+ * old value (NF-6). Values are compared, never printed.
+ */
+export function deployedSendProblem(deployed, expected) {
+  const { stack, distribution } = deployed ?? {};
+  if (!stack) return `スタック ${STACK_NAME} が見つかりません`;
+  if (!DEPLOYED_STACK_STATUSES.has(stack.StackStatus)) {
+    return `スタック ${STACK_NAME} が ${stack.StackStatus} です（最後のデプロイが終わっていないか、失敗して元に戻った）`;
+  }
+  const resolved = (stack.Parameters ?? []).find((p) => p.ParameterValue === PARAM.originVerifySend)?.ResolvedValue;
+  if (!expected || resolved !== expected) {
+    return `最後に成功したデプロイは、いまの ${PARAM.originVerifySend}（手順 2/3 の新しい値）をまだ使っていません`;
+  }
+  if (!distribution) return `CloudFront の配信（スタックの出力 ${DISTRIBUTION_ID_OUTPUT}）が見つかりません`;
+  if (distribution.Status !== "Deployed") return `CloudFront の反映がまだ終わっていません（${distribution.Status}）`;
+  const sent = (distribution.DistributionConfig?.Origins?.Items ?? [])
+    .flatMap((o) => o.CustomHeaders?.Items ?? [])
+    .filter((h) => String(h.HeaderName).toLowerCase() === ORIGIN_VERIFY_HEADER)
+    .map((h) => h.HeaderValue);
+  if (sent.length === 0 || sent.some((v) => v !== expected)) {
+    return `CloudFront が送っている ${ORIGIN_VERIFY_HEADER} が、まだ新しい値ではありません`;
+  }
+  return undefined;
+}
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Runs a read-only AWS CLI command and parses its JSON. Anything but describe-* / get-* / list-* is
+ * refused, so this script can never change the stack or the distribution by itself.
+ * exec: (file, args, options) => Promise<{ stdout }> (child_process.execFile, promisified; tests pass a fake).
+ */
+export async function awsCliJson(args, exec = execFileAsync) {
+  if (!/^(describe|get|list)-/.test(args[1] ?? "")) {
+    throw new Error(`読み取り以外の AWS CLI は実行しません（aws ${args.slice(0, 2).join(" ")}）`);
+  }
+  let stdout;
+  try {
+    // AWS_PAGER="": CLI v2 would otherwise pipe the output through a pager.
+    ({ stdout } = await exec("aws", [...args, "--output", "json"], {
+      maxBuffer: 16 * 1024 * 1024,
+      env: { ...process.env, AWS_PAGER: "" },
+    }));
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      throw new Error("AWS CLI（aws）が見つかりません。インストールして、デプロイと同じ認証情報（AWS_PROFILE など）で使えるようにしてください。", {
+        cause: err,
+      });
+    }
+    const detail = String(err?.stderr || err?.message || err)
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .pop();
+    throw new Error(`aws ${args.slice(0, 2).join(" ")} が失敗しました: ${detail}`, { cause: err });
+  }
+  return JSON.parse(stdout);
+}
+
+/** The deployed stack and its CloudFront distribution (read-only). run: awsCliJson or a fake. */
+export async function readDeployedOriginVerify(region, run = awsCliJson) {
+  const res = await run(["cloudformation", "describe-stacks", "--stack-name", STACK_NAME, "--region", region]);
+  const stack = res?.Stacks?.[0];
+  const distributionId = (stack?.Outputs ?? []).find((o) => o.OutputKey === DISTRIBUTION_ID_OUTPUT)?.OutputValue;
+  // CloudFront is global; its API is signed in us-east-1 whatever the stack's region is.
+  const distribution = distributionId
+    ? (await run(["cloudfront", "get-distribution", "--id", distributionId, "--region", "us-east-1"]))?.Distribution
+    : undefined;
+  return { stack, distribution };
+}
+
+const STEP3_REFUSED = "origin-verify の手順 3/3（古い値を外す）にはまだ進めません: ";
+const STEP3_HOW =
+  "手順 2/3 のあと npm run deploy を最後まで成功させ、CloudFront の反映（Deployed）を待ってから、もう一度 --rotate origin-verify を実行してください（origin-verify のパラメータは変えていません）。";
+
+/**
+ * The next rotation step (nextOriginVerifyStep), but step 3 only once the deployed CloudFront sends the
+ * new value: before that, an API that accepts only the new value would refuse every request (403) and
+ * the clients' queued writes would be dropped (NF-6). Steps 1 and 2 need no check: the stack updates
+ * the api function before CloudFront, so the API always accepts what CloudFront sends.
+ * readDeployed: () => Promise<{ stack, distribution }> (readDeployedOriginVerify; tests pass a fake).
+ */
+export async function planOriginVerifyRotation(accept, send, newValue, readDeployed) {
+  const next = nextOriginVerifyStep(accept, send, newValue);
+  if (next.step !== 3) return next;
+  let deployed;
+  try {
+    deployed = await readDeployed();
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`${STEP3_REFUSED}デプロイ済みの状態を読めませんでした（${reason}）。${STEP3_HOW}`, { cause: err });
+  }
+  const problem = deployedSendProblem(deployed, send);
+  if (problem) throw new Error(`${STEP3_REFUSED}${problem}。${STEP3_HOW}`);
+  return next;
+}
+
 const ORIGIN_VERIFY_BROKEN = `${PARAM.originVerify}（API が受け付ける値）が ${PARAM.originVerifySend}（CloudFront が送る値）を含んでいないか、値が3つ以上あります。このままデプロイすると API がすべて 403 になります`;
 
 /**
@@ -134,7 +243,7 @@ export function checkParameters(found) {
 
 const ROTATION_NOTE = {
   1: "origin-verify 入れ替え 1/3: API が古い値と新しい値の両方を受け付けるようにしました。npm run deploy を最後まで実行してから、もう一度 --rotate origin-verify を実行してください。",
-  2: "origin-verify 入れ替え 2/3: CloudFront が新しい値を送るようにしました。npm run deploy を最後まで実行してから（CloudFront の反映を待つので数分かかります）、もう一度 --rotate origin-verify を実行してください。",
+  2: "origin-verify 入れ替え 2/3: CloudFront が新しい値を送るようにしました。npm run deploy を最後まで実行してから（CloudFront の反映を待つので数分かかります）、もう一度 --rotate origin-verify を実行してください。手順 3/3 は、デプロイ済みの CloudFront が新しい値を送っていることを AWS CLI で確かめてから進みます。",
   3: "origin-verify 入れ替え 3/3: 古い値を受け付けないようにしました。npm run deploy で反映すると完了です。",
 };
 
@@ -185,10 +294,7 @@ async function main() {
   // No decryption: a SecureString's value stays encrypted and is dropped right away.
   const res = await ssm.send(new GetParametersCommand({ Names: Object.values(PARAM) }));
   const found = new Map(
-    (res.Parameters ?? []).map((p) => [
-      p.Name,
-      { type: p.Type, value: p.Type === "String" ? p.Value : undefined, modified: p.LastModifiedDate },
-    ]),
+    (res.Parameters ?? []).map((p) => [p.Name, { type: p.Type, value: p.Type === "String" ? p.Value : undefined }]),
   );
 
   if (check) {
@@ -298,13 +404,7 @@ async function main() {
 
   const state = originVerifyState(accept, send);
   if (rotate === "origin-verify") {
-    const sendModified = found.get(PARAM.originVerifySend)?.modified;
-    if (state === "step2" && sendModified && Date.now() - sendModified.getTime() < ORIGIN_VERIFY_SETTLE_MINUTES * 60_000) {
-      throw new Error(
-        `手順 2/3 から ${ORIGIN_VERIFY_SETTLE_MINUTES} 分たっていません。npm run deploy が最後まで終わって CloudFront が新しい値を送るようになってから、もう一度実行してください。`,
-      );
-    }
-    const next = nextOriginVerifyStep(accept, send, newOriginVerifyValue());
+    const next = await planOriginVerifyRotation(accept, send, newOriginVerifyValue(), () => readDeployedOriginVerify(region));
     if (next.accept !== undefined) await put(PARAM.originVerify, next.accept, true);
     if (next.send !== undefined) await put(PARAM.originVerifySend, next.send, true);
     notes.push(ROTATION_NOTE[next.step]);

@@ -3,8 +3,11 @@
  *   REPORT#<type>#<id> / META   count (distinct reporters), trustedCount (those that count towards
  *                                auto-hide, see isTrustedReporter), reasons (last 10), lastAt,
  *                                deletedAt (moderator deleted it); gsi1 REPORTS / <lastAt13>
- *   REPORT#<type>#<id> / BY#<uid>  one per reporter (a repeat report is not counted);
- *                                  gsi2 AUTHOR#<uid> so it goes with the reporter's account
+ *                                resetAt (a moderator's restore: the count starts over)
+ *   REPORT#<type>#<id> / BY#<uid>  one per reporter (a repeat report is not counted): createdAt,
+ *                                  trusted, net (keyed hash of the reporter's IPv4 /24 or IPv6 /48,
+ *                                  trusted reporters only); gsi2 AUTHOR#<uid> so it goes with the
+ *                                  reporter's account
  * Targets: recipe = community recipe id, story = "<recipeId>:<storyId>", share = share id,
  * member = challenge id (owner found through CHREF).
  */
@@ -30,10 +33,11 @@ import {
   setStoryStatus,
   type PublicStatus,
 } from "./recipes";
+import { clearModeration, markModeration, type ModerationFlag } from "./moderation";
 import { deleteShare, getShareItem, setChallengeModerated, setShareStatus } from "./shares";
 import { GSI1 } from "./table";
 import { getUser } from "./users";
-import { isConditionFailed, type Item } from "./util";
+import { isConditionFailed, queryAll, type Item } from "./util";
 
 type D = DbDeps;
 /** Moderation also moves or deletes card images. */
@@ -128,19 +132,20 @@ export async function isTrustedReporter(deps: D, user: Pick<User, "id" | "create
   return (res.Items ?? []).length > 0;
 }
 
+/** Who reported: whether it counts towards auto-hide, and (trusted only) the keyed hash of their network. */
+export type Reporter = { uid: string; trusted: boolean; net?: string };
+
+/** The auto-hide count after a report, and when it last started over (a restore). */
+export type ReportTally = { trustedCount: number; since: number };
+
 /**
- * Record one report. Only the first report of each user counts. Returns the current number of
- * trusted reporters (the auto-hide count; undefined when this reporter had already reported the
- * target). An untrusted report is recorded but leaves that number as it is.
+ * Record one report. Only the first report of each user counts. Returns the number of trusted
+ * reporters since the last restore (the auto-hide count), or undefined when this reporter had already
+ * reported the target. An untrusted report is recorded but leaves that number as it is.
  */
-export async function addReport(
-  deps: Deps,
-  reporterUid: string,
-  target: Target,
-  reason: string | undefined,
-  trusted: boolean,
-): Promise<number | undefined> {
+export async function addReport(deps: Deps, reporter: Reporter, target: Target, reason: string | undefined): Promise<ReportTally | undefined> {
   const now = deps.now().getTime();
+  const reporterUid = reporter.uid;
   try {
     await deps.db.send(
       new PutCommand({
@@ -151,6 +156,8 @@ export async function addReport(
           gsi2sk: `REPORT#${target.type}#${target.id}`,
           type: "reporter",
           createdAt: now,
+          trusted: reporter.trusted,
+          ...(reporter.trusted && reporter.net ? { net: reporter.net } : {}),
         },
         ConditionExpression: "attribute_not_exists(pk)",
       }),
@@ -168,7 +175,7 @@ export async function addReport(
     ":g1pk": list.gsi1pk,
     ":g1sk": list.gsi1sk,
     ":one": 1,
-    ":trusted": trusted ? 1 : 0,
+    ":trusted": reporter.trusted ? 1 : 0,
     ":empty": [],
   };
   let reasons = "reasons = if_not_exists(reasons, :empty)";
@@ -187,9 +194,26 @@ export async function addReport(
     }),
   );
   const trustedCount = Number(res.Attributes?.trustedCount ?? 0);
+  const since = Number(res.Attributes?.resetAt ?? 0);
   const kept = Array.isArray(res.Attributes?.reasons) ? res.Attributes.reasons.length : 0;
   if (kept > MAX_REPORT_REASONS) await trimReasons(deps, target, kept);
-  return trustedCount;
+  return { trustedCount, since };
+}
+
+/**
+ * Distinct networks among the trusted reporters of a target since `since` (security-4): auto-hide
+ * needs AUTO_HIDE_MIN_NETWORKS of them, so one person's aged accounts on one connection cannot hide
+ * anything. Read only once the trusted count reaches the threshold.
+ */
+export async function countReporterNetworks(deps: D, type: ReportTargetType, id: string, since: number): Promise<number> {
+  const markers = await queryAll(deps, {
+    KeyConditionExpression: "pk = :pk AND begins_with(sk, :by)",
+    FilterExpression: "#trusted = :t AND #createdAt >= :since AND attribute_exists(#net)",
+    ProjectionExpression: "#net",
+    ExpressionAttributeNames: { "#trusted": "trusted", "#createdAt": "createdAt", "#net": "net" },
+    ExpressionAttributeValues: { ":pk": reportKey(type, id).pk, ":by": "BY#", ":t": true, ":since": since },
+  });
+  return new Set(markers.map((m) => String(m.net))).size;
 }
 
 /** Drop the oldest reasons. Conditional on the length we saw, so a concurrent append is never lost. */
@@ -211,17 +235,20 @@ async function trimReasons(deps: D, target: Target, length: number): Promise<voi
   }
 }
 
-/** After a restore the target starts over: it takes AUTO_HIDE_REPORTS new reporters to hide it again. */
+/**
+ * After a restore the target starts over: it takes AUTO_HIDE_REPORTS new reporters (from
+ * AUTO_HIDE_MIN_NETWORKS networks, counted from resetAt) to hide it again.
+ */
 export async function resetReportCount(deps: D, type: ReportTargetType, id: string): Promise<void> {
   try {
     await deps.db.send(
       new UpdateCommand({
         TableName: deps.tableName,
         Key: reportKey(type, id),
-        UpdateExpression: "SET #count = :zero, #trusted = :zero",
+        UpdateExpression: "SET #count = :zero, #trusted = :zero, resetAt = :now",
         ConditionExpression: "attribute_exists(pk)",
         ExpressionAttributeNames: { "#count": "count", "#trusted": "trustedCount" },
-        ExpressionAttributeValues: { ":zero": 0 },
+        ExpressionAttributeValues: { ":zero": 0, ":now": deps.now().getTime() },
       }),
     );
   } catch (err) {
@@ -258,17 +285,21 @@ async function restoreMember(deps: D, ownerId: string, chId: string): Promise<bo
     if (!item) return false;
     const c = toChallenge(item);
     const projection = cohortProjection({ ...c, hiddenFromCohort: false, imported: item.imported === true }, owner?.shareProgress ?? false);
+    // Back in the list: the nickname too, since syncUserProjection skips items that are not listed.
+    const nickname = owner?.nickname ?? (typeof item.nickname === "string" ? item.nickname : "");
     try {
       await deps.db.send(
         new UpdateCommand({
           TableName: deps.tableName,
           Key: challengeKey(ownerId, chId),
-          UpdateExpression: projection ? "SET gsi1pk = :g1pk, gsi1sk = :g1sk REMOVE hiddenFromCohort" : "REMOVE hiddenFromCohort, gsi1pk, gsi1sk",
+          UpdateExpression: projection
+            ? "SET gsi1pk = :g1pk, gsi1sk = :g1sk, nickname = :n REMOVE hiddenFromCohort"
+            : "REMOVE hiddenFromCohort, gsi1pk, gsi1sk",
           // The sort key embeds updatedAt; retry if the challenge changed since we read it.
           ConditionExpression: "attribute_exists(pk) AND updatedAt = :u",
           ExpressionAttributeValues: {
             ":u": item.updatedAt,
-            ...(projection ? { ":g1pk": projection.gsi1pk, ":g1sk": projection.gsi1sk } : {}),
+            ...(projection ? { ":g1pk": projection.gsi1pk, ":g1sk": projection.gsi1sk, ":n": nickname } : {}),
           },
         }),
       );
@@ -311,9 +342,23 @@ async function removeMember(deps: MD, ownerId: string, chId: string): Promise<vo
   }
 }
 
+/** The challenge a card was made from, and its owner (undefined on cards that predate challengeId). */
+function cardChallenge(share: Item): { chId: string; ownerUid: string } | undefined {
+  return typeof share.challengeId === "string" && typeof share.userId === "string"
+    ? { chId: share.challengeId, ownerUid: share.userId }
+    : undefined;
+}
+
+/** MOD#<chId> for a card's challenge (see db/moderation.ts). */
+async function markCard(deps: D, share: Item, flags: ModerationFlag[]): Promise<void> {
+  const ch = cardChallenge(share);
+  if (ch) await markModeration(deps, ch.chId, ch.ownerUid, flags);
+}
+
 /**
  * Hide a target (auto-hide or admin). Returns false when it no longer exists. A hidden card's image
- * leaves the public prefix, and its challenge is marked so the owner cannot publish it again.
+ * leaves the public prefix, and its challenge is marked so the owner cannot publish it again. Card and
+ * member moderation is also written to MOD#<chId> first, which outlives the challenge item (NF-2).
  */
 export async function hideTarget(deps: MD, t: Target): Promise<boolean> {
   switch (t.type) {
@@ -322,13 +367,16 @@ export async function hideTarget(deps: MD, t: Target): Promise<boolean> {
     case "story":
       return setStoryStatus(deps, t.item, "hidden");
     case "share":
+      await markCard(deps, t.item, ["shareModerated"]);
       await setChallengeModerated(deps, t.item, true);
       return setShareStatus(deps, t.id, "hidden");
     case "member":
+      await markModeration(deps, t.id, t.ownerId!, ["memberHidden"]);
       return hideMember(deps, t.ownerId!, t.id);
   }
 }
 
+/** A moderator's restore. The MOD#<chId> flag is cleared only once the target is back. */
 export async function restoreTarget(deps: MD, t: Target): Promise<boolean> {
   switch (t.type) {
     case "recipe":
@@ -338,10 +386,15 @@ export async function restoreTarget(deps: MD, t: Target): Promise<boolean> {
     case "share": {
       if (!(await setShareStatus(deps, t.id, "published"))) return false;
       await setChallengeModerated(deps, t.item, false);
+      const ch = cardChallenge(t.item);
+      if (ch) await clearModeration(deps, ch.chId, "shareModerated");
       return true;
     }
-    case "member":
-      return restoreMember(deps, t.ownerId!, t.id);
+    case "member": {
+      if (!(await restoreMember(deps, t.ownerId!, t.id))) return false;
+      await clearModeration(deps, t.id, "memberHidden");
+      return true;
+    }
   }
 }
 
@@ -353,9 +406,12 @@ export async function deleteTarget(deps: Deps, t: Target): Promise<void> {
     case "story":
       return deleteStoryItem(deps, t.item);
     case "share":
+      await markCard(deps, t.item, ["shareModerated"]);
       await setChallengeModerated(deps, t.item, true);
       return deleteShare(deps, t.item);
     case "member":
+      // removeMember also hides the card and blocks a new one (moderated).
+      await markModeration(deps, t.id, t.ownerId!, ["memberHidden", "shareModerated"]);
       return removeMember(deps, t.ownerId!, t.id);
   }
 }

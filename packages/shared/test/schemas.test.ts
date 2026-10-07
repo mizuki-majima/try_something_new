@@ -9,7 +9,9 @@ import {
   TransferRedeemSchema,
   rawTextLimit,
   text,
+  textByteLimit,
 } from "../src/schemas";
+import { utf8Length } from "../src/text";
 
 const FAMILY = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
 const ZWSP = String.fromCodePoint(0x200b);
@@ -57,9 +59,31 @@ describe("text()", () => {
     expect(note.safeParse(fat).success).toBe(false);
     expect(messages(note.safeParse(fat))).toEqual(["ひとことが長すぎます"]);
     expect(rawTextLimit(LIMITS.note)).toBe(LIMITS.note * 4 + 16);
-    // Real text still fits: the maximum in kana, and emoji sequences up to the grapheme limit.
+    // Real text still fits: the maximum in kana, and emoji sequences within the byte cap.
     expect(note.safeParse("あ".repeat(LIMITS.note)).success).toBe(true);
-    expect(text({ max: 8, label: "x" }).safeParse(FAMILY.repeat(5)).success).toBe(true);
+    expect(text({ max: 8, label: "x" }).safeParse(FAMILY.repeat(3)).success).toBe(true);
+  });
+
+  it("caps the stored size in UTF-8 bytes (max × 4 + 32), not only graphemes and UTF-16 units (NF-1)", () => {
+    const note = text({ min: 0, max: LIMITS.note, label: "ひとこと" });
+    expect(textByteLimit(LIMITS.note)).toBe(LIMITS.note * 4 + 32);
+    // Exactly at the raw UTF-16 cap (496 units), one grapheme, ~1.5 KB of UTF-8: refused.
+    const fat = "a" + String.fromCodePoint(0x20dd).repeat(LIMITS.note * 4 + 15);
+    expect(fat.length).toBe(rawTextLimit(LIMITS.note));
+    expect(messages(note.safeParse(fat))).toEqual(["ひとことが長すぎます"]);
+    // Ordinary text at the grapheme limit fits: Japanese is 3 bytes, a plain emoji 4.
+    expect(note.safeParse("あ".repeat(LIMITS.note)).success).toBe(true);
+    expect(note.safeParse(String.fromCodePoint(0x1f600).repeat(LIMITS.note)).success).toBe(true);
+    // Heavy ZWJ sequences count by their bytes: 5 families (90 bytes) do not fit in max 8 (64 bytes).
+    expect(messages(text({ max: 8, label: "x" }).safeParse(FAMILY.repeat(5)))).toEqual(["xが長すぎます"]);
+  });
+});
+
+describe("utf8Length", () => {
+  it("matches TextEncoder", () => {
+    for (const s of ["", "abc", "あいう", "é", FAMILY, String.fromCodePoint(0x1f600), "a" + String.fromCodePoint(0x20dd).repeat(3), "\ud800x"]) {
+      expect(utf8Length(s), JSON.stringify(s)).toBe(new TextEncoder().encode(s).length);
+    }
   });
 });
 

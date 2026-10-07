@@ -37,6 +37,21 @@ export function graphemeLength(s: string): number {
   return n;
 }
 
+/** Size of a string in UTF-8 bytes (what DynamoDB stores and bills), without allocating. */
+export function utf8Length(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
+      n += 4; // a surrogate pair is one 4-byte code point
+      i++;
+    } else n += 3; // BMP (and a lone surrogate, which TextEncoder writes as U+FFFD: 3 bytes)
+  }
+  return n;
+}
+
 /** A seal (印) is exactly one visible character that is not whitespace or punctuation-only ASCII. */
 export function isValidSeal(s: string): boolean {
   if (graphemeLength(s) !== 1) return false;
