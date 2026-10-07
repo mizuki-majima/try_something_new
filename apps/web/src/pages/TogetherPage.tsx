@@ -83,7 +83,8 @@ export function memberStatus(m: Pick<CohortMember, "startDate" | "done" | "verdi
   const day = dayIndex(m.startDate, today);
   if (m.done) {
     const verdict = m.verdict && m.verdict in VERDICTS ? VERDICTS[m.verdict].label : null;
-    const ended = day < TOTAL_DAYS ? "途中で区切りました" : "振り返りを終えました";
+    // day is the viewer's, which can be a day off the owner's (time zones): only say 「途中で」 when it is sure.
+    const ended = day <= TOTAL_DAYS - 2 ? "途中で区切りました" : "振り返りを終えました";
     return verdict ? `${ended}（「${verdict}」）` : ended;
   }
   if (day < 1) return `${jpDate(m.startDate)}から始まります`;
@@ -424,9 +425,10 @@ function MemberDetailSheet({
   const stamped = new Set(m.stampDays.filter((d) => Number.isInteger(d) && d >= 1 && d <= TOTAL_DAYS));
   const verdict = m.done && m.verdict && m.verdict in VERDICTS ? m.verdict : null;
   // A closed challenge may have ended early and the day it ended is not public: days after the last
-  // stamp are drawn as "not yet", never as missed.
+  // stamp are drawn as "not yet", never as missed. A stamped day is never drawn as future (the viewer's
+  // day can be one behind the owner's).
   const lastStamped = Math.max(0, ...stamped);
-  const gridDay = Math.min(Math.max(day, 0), TOTAL_DAYS, m.done ? lastStamped : TOTAL_DAYS);
+  const gridDay = m.done ? lastStamped : Math.min(Math.max(day, lastStamped, 0), TOTAL_DAYS);
   const locked = m.done || day < 1 || day > TOTAL_DAYS;
   const disabled = m.isMine || m.cheeredToday || busy;
   const who = m.isMine ? "あなた" : `${nickname}さん`;
@@ -469,6 +471,7 @@ function MemberDetailSheet({
           </div>
         </dl>
         <Grid30 seal={m.seal} stampedDays={stamped} today={gridDay} locked={locked} label={`${who}の30日のカード`} readOnly />
+        {m.done && gridDay < TOTAL_DAYS && <p className="note">最後に押した日より後は、斜線で表示しています。</p>}
         <div className="row between gap fw tg-actions">
           {/* aria-disabled, not disabled: focus stays on the button after cheering (inside the dialog). */}
           <button

@@ -130,6 +130,8 @@ describe("member detail helpers", () => {
     expect(memberStatus({ startDate: "2026-10-01", done: true, verdict: "stop" }, today)).toBe("途中で区切りました（「やめる」）");
     // Day 30 or later: closed early or not, the public data cannot tell, so no "30日".
     expect(memberStatus({ startDate: "2026-09-01", done: true, verdict: "stop" }, today)).not.toMatch(/30日/);
+    // Day 29 for the viewer may be day 30 for the owner (time zones): not "途中で".
+    expect(memberStatus({ startDate: "2026-09-10", done: true, verdict: "continue" }, today)).toBe("振り返りを終えました（「続ける」）");
   });
 });
 
@@ -347,6 +349,19 @@ describe("TogetherPage member detail", () => {
     // Days 6–30 are "not yet" (hatched), not empty elapsed days.
     expect(cells.slice(5).every((c) => c.classList.contains("future"))).toBe(true);
     expect(cells.slice(0, 5).some((c) => c.classList.contains("future"))).toBe(false);
+    expect(within(dialog).getByText("最後に押した日より後は、斜線で表示しています。")).toBeTruthy();
+  });
+
+  it("never draws a stamped day as future when the owner's day is ahead of the viewer's", async () => {
+    // Viewer's day 6 (2026-10-06), but the owner (another time zone) already stamped day 7.
+    const ahead = member({ challengeId: "ch00000000000008", nickname: "うみ", startDate: "2026-10-01", stampDays: [6, 7] });
+    fetchMock.mockResolvedValue(json(200, { month: "2026-10", members: [ahead] }));
+    renderTogether();
+    fireEvent.click(within(await screen.findByTestId("member")).getByTestId("member-open"));
+    const dialog = await screen.findByRole("dialog", { name: "うみさんの30日" });
+    const cells = [...dialog.querySelectorAll(".cell")];
+    expect(cells[6]!.classList.contains("future")).toBe(false);
+    expect(within(dialog).queryByText("最後に押した日より後は、斜線で表示しています。")).toBeNull();
   });
 
   it("your own challenge is yours (あなた) and links to your record", async () => {

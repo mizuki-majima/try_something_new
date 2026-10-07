@@ -42,6 +42,7 @@ test("CUF-3: B sees A in 今月の組, cheers once, and A disappears after turni
 
     // The card's buttons stay one line tall (「詳しく見る」 wraps under 応援 on narrow screens, the labels never break).
     for (const button of [memberA.getByTestId("cheer"), memberA.getByTestId("member-open")]) {
+      await expect(button).toBeVisible();
       const box = await button.boundingBox();
       expect(box?.height ?? 0).toBeLessThanOrEqual(48);
     }
