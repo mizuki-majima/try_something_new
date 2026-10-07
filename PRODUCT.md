@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Current Phase** | BUILD |
-| Health | 🟢 GREEN |
-| Next Gate | [Gate 4: BUILD → REVIEW](https://github.com/mizuki-majima/try_something_new/issues/1) |
-| Last updated | 2026-10-06 |
+| **Current Phase** | TEST（PILOT 開始は 2026-10-07 に CEO が承認: [ADR 0005](docs/decisions/0005-pilot-approval.md)。招待は Gate 6 の後） |
+| Health | 🟡 YELLOW（招待の前に2つ残る: 実機での Live smoke [#8](https://github.com/mizuki-majima/try_something_new/issues/8)、障害・費用の通知メール [#6](https://github.com/mizuki-majima/try_something_new/issues/6)。どちらも 2026-10-31 まで） |
+| Next Gate | [Gate 6: TEST → PILOT](https://github.com/mizuki-majima/try_something_new/issues/4)（#8 と #6 の後に AI QA が判定）→ [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)（2026-11-30 の後） |
+| Last updated | 2026-10-07 |
 
 > 趣味のサービス。収益を目的にしないため、Gate 1 の収益・価格の項目と Gate 2（支払意思）は CEO 判断で免除（[ADR 0001](docs/decisions/0001-hobby-service-skip-payment-validation.md)）。
 
@@ -40,11 +40,11 @@ SPEC.md v1 のフルサービス（CEO 判断で MVP ではなく全機能）:
 - **1日1タップ記録**: ラジオ体操カード風の30マスに、チャレンジの「印（漢字1文字）」を押す
 - **1日組（同期スタート）**: 同じ月に始めた人の進捗が並び、応援できる
 - **振り返りカード**: 30日目に続ける／やめる／形を変えるを選ぶと、シェア用の画像と公開ページができる
-- **次の30日ガチャ**: 時間・気分・場所で抽選。AI がオリジナル案も出す
+- **次の30日ガチャ**: 時間・気分・場所で抽選。「ひらめき提案（お試し）」も出す（AI は使わない）
 
 ### Why AI
 
-AI は中心ではなく、「何をやるか決められない」人への補助（ガチャの AI 案）に使う。条件と一言から、その人向けの30日チャレンジを作れるのは固定のレシピ集ではできない。AI が使えなくてもサービスの中心は動く。
+**AI は使わない**（CEO 決定 2026-10-06、[ADR 0003](docs/decisions/0003-no-ai-mock-suggestions.md)）。価値の中心は「30日で区切る仕組み」「1日組」「振り返りカード」で、AI がなくても成り立つ。ガチャの「ひらめき提案（お試し）」は見た目だけ用意し、中身は内蔵データからルールで選ぶ。
 
 ## Value Proposition
 
@@ -55,11 +55,20 @@ AI は中心ではなく、「何をやるか決められない」人への補�
 
 ## Competitors
 
-<!-- 調査中（出典付きで記入） -->
+価格は 2026-10-06 時点の App Store / 公式ページ。「重なり」は AI PM の推測。
 
 | 名前 | 内容 | 価格 | 重なり | 出典 |
 |---|---|---|---|---|
-| | | | | |
+| 30-Day Trials（Nishco） | 新しい習慣を30日「試乗」し、合わなければ戻す。SNS 機能なし。英語のみ | 無料＋$1.49/月・$3.99/年・買い切り$5.99 | **高**（考え方がほぼ同じ。1人用・レシピなし・2023年から更新なし） | https://apps.apple.com/us/app/id1255607622 |
+| 30 Day Challenge - LockIn30 | 36本のチャレンジ集＋自作。写真とストリーク、30日目にシェア用動画 | 無料＋Pro $2.99/週・$29.99/年 | **高**（チャレンジ集とゴール時のシェアが重なる。「やめる」判断はない） | https://apps.apple.com/app/id6770272031 |
+| 継続する技術（bondavi） | 目標を1つに絞って毎日記録。30日継続の達成を強調 | 無料（任意課金あり） | 中〜高（30日の単位は同じ。目的は継続、仲間・レシピなし） | https://apps.apple.com/jp/app/id1120239484 |
+| みんチャレ（A10 Lab） | 匿名5人チームで証拠写真を投稿し励まし合う | 基本無料＋500円/月・4,700円/年 | 中（仲間で進める点が1日組に近い。ゴールは習慣化） | https://apps.apple.com/jp/app/id1047462806 |
+| Dry January / Inktober | 毎年決まった月に全員で同じテーマに1か月取り組む | 無料 | 中（「1か月だけ・同じ日に開始」が同じ。テーマ固定・年1回） | https://alcoholchange.org.uk/ ／ https://inktober.com/rules |
+| Habitify / Streaks / Habitica | 習慣トラッカー・連続記録・ゲーム化 | Streaks 買い切り1,000円、Habitica $4.99/月 など | 低（ずっと続ける前提） | https://apps.apple.com/jp/app/streaks/id963034692 ／ https://apps.apple.com/us/app/habitica-gamified-taskmanager/id994882113 |
+
+**差別化**: ①30日目の「続ける／やめる／形を変える」を完了として扱う ②毎月1日の「1日組」でテーマは自由 ③日本語の実体験レシピ ④無料・匿名・インストール不要の PWA。日本語の「30日チャレンジ」専用 Web サービスは今回の調査範囲では見つからなかった。
+
+着想: Matt Cutts「Try something new for 30 days」（TED2011） https://www.ted.com/talks/matt_cutts_try_something_new_for_30_days
 
 ## Revenue Hypothesis
 
@@ -75,22 +84,25 @@ PILOT の **完走率**（30日目または7日目以降の区切りで振り返
 
 ## Current Goal
 
-Gate 4 → 5 → 6 を通し、AWS にデプロイして PILOT の準備をする。
+2026-10-31 までに実機での Live smoke（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）と通知メール（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）を済ませて Gate 6 を通す。そのあと CEO が友人・同僚 10人前後に URL を配り、**2026-11-01 開始の1日組**を1回走らせる（AI は連絡しない）。30日目（2026-11-30）の後に、管理画面の指標と感想で Gate 7 を判定する（基準は [docs/validation-plan.md](docs/validation-plan.md) のまま変えない）。PILOT 中は機能を足さず、バグと運用だけ直す。
 
 ## Current Risks
 
 | リスク | 対処 |
 |---|---|
 | 作ったが使われない | PILOT の基準を事前に固定。使われなければ機能を足さず PAUSE / KILL を検討 |
-| AWS 費用が想定を超える | サーバーレス・on-demand。AI は1日50回上限。Budgets で月 $10 超を通知 |
-| 匿名の投稿による荒らし | 公開テキストは URL 禁止、レート制限、通報3件で自動非表示、管理画面 |
+| AWS 費用が想定を超える | サーバーレス・on-demand・AI なし（100人規模で月約 $0.1）。DynamoDB はテーブルと GSI ごとに最大スループットの上限（1時間あたりの速さの上限。テーブルか GSI 1つにつき、上限まで使われて読み込み 約 $0.51/時・書き込み 約 $0.26/時。月の合計の上限ではない。R16）とスロットルのアラーム、書き込みを増やす操作（プロフィール変更・読み込み）に回数の上限（R1）。Budgets で `Project=thirty-days` の費用が月 $10 を超えそうなら通知（費用配分タグは 2026-10-07 に有効化。DynamoDB 以外の荒らしの費用はこれだけが頼り）。API の 5xx とエラーのアラーム。**予算とアラームは `ALERT_EMAIL` の設定後**（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。それまでは費用の増加をメールで知る手段がない（アカウント全体の予算アラートは他の費用ですでに超過している）ので、招待は #6 の後。AI PM がセッションのたびに Cost Explorer とログを確認する |
+| 匿名の投稿による荒らし | 公開テキストは URL 禁止、レート制限（IP は IPv6 なら /56 単位。アカウント作成はネットワーク（IPv4 /16・IPv6 /48）ごとに1時間60件、全体でも1時間2000件で、全体に当たるとアラーム）、バックアップ読み込みの回数・件数の上限と1人ずつの実行、通報3件で自動非表示（作成24時間以上・チャレンジのあるアカウントで、2つ以上のネットワークからの通報だけ）、止めたものは消して（アカウントごと消しても）読み込み直しても戻らない、管理画面 |
+| PILOT の参加者以外に URL が広まる | URL は README にもある。広まっても困らない作り（匿名・URL 禁止・レート制限・通報）だが、参加者以外の利用が目立ったら CEO に報告する |
+| iPhone（WebKit）だけで起きる不具合 | 自動テストは Chromium だけ。招待の前に実機で Live smoke（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)） |
 | iOS で通知が届かない | ホーム画面追加の案内。カレンダー連携を代替に |
 | 端末を失くすとデータが戻らない | 引き継ぎコードとバックアップ書き出しを設定画面で案内 |
 
 ## Do Not Build
 
 - 料金・広告・決済
-- メールアドレス・電話番号の収集、メール／SNS ログイン
+- 生成 AI の呼び出し（ひらめき提案はルールで代用。ADR 0003）
+- アカウントのためのメールアドレス・電話番号の収集、メール／SNS ログイン（お問い合わせに任意で書かれた返信先だけは例外: 返信にだけ使い、180日で消す。D12、CEO 承認 2026-10-07: [ADR 0005](docs/decisions/0005-pilot-approval.md)）
 - ユーザー間のメッセージ・コメント（応援数のみ）
 - 写真のサーバ保存
 - ネイティブアプリ

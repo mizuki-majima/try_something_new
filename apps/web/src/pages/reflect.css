@@ -1,0 +1,258 @@
+/* 振り返り (ReflectPage). Neo-brutalism per docs/design.md, tokens with fallbacks. */
+
+.rf-page {
+  display: grid;
+  gap: 20px;
+}
+.rf-back {
+  justify-self: start;
+  margin-bottom: -10px;
+}
+.rf-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.rf-headtext {
+  flex: 1;
+  min-width: 0;
+}
+.rf-kicker {
+  display: inline-block;
+  padding: 0 8px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+  font-size: 12px;
+  font-weight: 700;
+  transform: rotate(-2deg);
+}
+.rf-h1 {
+  margin-top: 6px;
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: clamp(20px, 5.6vw, 28px);
+  font-weight: 400;
+  line-height: 1.3;
+}
+.rf-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 4px;
+  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+}
+.rf-meta b {
+  color: var(--ink, #111);
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 16px;
+  font-weight: 400;
+}
+
+/* 1 決める → 2 シェアする */
+.rf-steps {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+.rf-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 4px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--muted, #4a4a4a);
+}
+.rf-steps li span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ink, #111);
+  color: var(--surface, #fff);
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 12px;
+  font-weight: 400;
+}
+.rf-steps li[aria-current="step"] {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111);
+}
+.rf-steps li[aria-current="step"] span {
+  background: #111;
+  color: #fff;
+}
+
+.rf-form,
+.rf-share {
+  display: grid;
+  gap: 18px;
+}
+.rf-h2 {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 22px;
+  font-weight: 400;
+  scroll-margin-top: 96px;
+}
+.rf-h2:focus {
+  outline: none;
+}
+.rf-early {
+  padding: 10px 12px;
+  border: 2px dashed var(--ink, #111);
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+/* Three big verdict buttons (native radios, visually hidden). */
+.rf-verdicts {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+@media (min-width: 560px) {
+  .rf-verdicts {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .rf-verdicts .field-err {
+    grid-column: 1 / -1;
+  }
+}
+.rf-verdict {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-height: 96px;
+  padding: 16px 16px 14px;
+  border: var(--border, 3px) solid var(--ink, #111);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+  box-shadow: 5px 5px 0 var(--ink, #111);
+  cursor: pointer;
+  transition:
+    transform 0.1s ease-out,
+    box-shadow 0.1s ease-out,
+    background-color 0.1s;
+}
+.rf-verdict input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.rf-verdict b {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.25;
+}
+.rf-verdict small {
+  font-size: 13px;
+  line-height: 1.55;
+}
+@media (hover: hover) {
+  .rf-verdict:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 7px 7px 0 var(--ink, #111);
+  }
+}
+.rf-verdict:has(input:focus-visible) {
+  outline: 3px solid var(--blue, #6c8cff);
+  outline-offset: 4px;
+}
+.rf-verdict:has(input:checked) {
+  transform: translate(3px, 3px) rotate(-1deg);
+  box-shadow: 2px 2px 0 var(--ink, #111);
+}
+.rf-verdict:has(input:checked)::after {
+  content: "これにする";
+  position: absolute;
+  top: -12px;
+  right: 10px;
+  padding: 0 8px;
+  border: 2px solid #111;
+  border-radius: 6px;
+  background: #fff;
+  color: #111;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.7;
+  transform: rotate(4deg);
+}
+.rf-continue:has(input:checked) {
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111);
+}
+.rf-stop:has(input:checked) {
+  background: var(--gray, #e6e1d3);
+  color: var(--ink, #111);
+}
+.rf-modify:has(input:checked) {
+  background: var(--blue, #6c8cff);
+  color: var(--on-accent, #111);
+}
+/* Colour hint before choosing: a stripe on the left. */
+.rf-continue {
+  border-left-width: 12px;
+  border-left-color: var(--mint, #3ddc97);
+}
+.rf-modify {
+  border-left-width: 12px;
+  border-left-color: var(--blue, #6c8cff);
+}
+.rf-stop {
+  border-left-width: 12px;
+  border-left-color: var(--gray, #e6e1d3);
+}
+.rf-verdict:has(input:checked) {
+  border-left-color: var(--ink, #111);
+}
+
+.rf-submit,
+.rf-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.rf-decide,
+.rf-gacha {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 18px;
+  font-weight: 400;
+}
+.rf-next .rf-gacha {
+  flex-basis: 100%;
+}
+.rf-share-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.rf-wait {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 16px;
+  border: var(--border, 3px) dashed var(--ink, #111);
+  border-radius: var(--radius, 12px);
+}
+.rf-wait-h {
+  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-size: 18px;
+}

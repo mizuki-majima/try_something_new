@@ -52,26 +52,59 @@ export const LIMITS = {
   shareImageBytes: 600_000,
   /** Items in an imported backup. */
   importChallenges: 100,
+  /** Challenges one account can hold in total (checked by backup import; excess items are skipped). */
+  challengesPerUser: 200,
 } as const;
 
 /** Per-user and global quotas (per JST day unless noted). Enforced server-side. */
 export const QUOTAS = {
-  aiPerUserPerDay: 3,
-  aiGlobalPerDay: 50,
+  /** ひらめき提案（AI は使わない。ADR 0003）. */
+  suggestionsPerUserPerDay: 10,
+  /**
+   * New challenges (POST /api/challenges that actually creates; idempotent replays do not count).
+   * Stops create → delete loops from inflating a recipe's startCount (the "人気" order).
+   */
+  challengesPerUserPerDay: 10,
   recipesPerUserPerDay: 5,
   storiesPerUserPerDay: 10,
   sharesPerUserPerDay: 10,
   reportsPerUserPerDay: 20,
   cheersPerUserPerDay: 100,
   contactPerUserPerDay: 3,
+  /** Per client: an IPv4 address or an IPv6 /56 (a Japanese IPoE home gets a /56). */
   sessionsPerIpPerHour: 20,
+  /**
+   * Per network: an IPv4 /16 or an IPv6 /48 (what one actor can easily hold: a VPS range, a free
+   * tunnel broker's /48 = 256 /56s). Keeps one network from using up the global ceiling (R11).
+   */
+  sessionsPerNetworkPerHour: 60,
+  /**
+   * New anonymous accounts per hour across ALL clients: a cost bound only (a session is a few writes),
+   * far above real sign-ups. The API logs ALARMED_LOGS.sessionCeiling when it trips, and an alarm
+   * mails the operator (R7, R11).
+   */
+  sessionsGlobalPerHour: 2000,
+  /**
+   * PATCH /api/me requests that change the nickname or shareProgress. Each one rewrites the user's
+   * cohort projection, so it is bounded (cost: NF-1).
+   */
+  profileChangesPerUserPerDay: 10,
   transferCodesPerUserPerHour: 5,
   transferRedeemPerIpPerHour: 10,
   pushTestsPerUserPerDay: 5,
+  /** POST /api/me/import (backup restore). */
+  importsPerUserPerDay: 3,
 } as const;
 
-/** A public item is hidden automatically when this many distinct users report it. */
+/**
+ * A public item is hidden automatically when this many distinct users report it. Only reporters
+ * whose account is REPORTER_MIN_ACCOUNT_AGE_HOURS old and holds a challenge count towards it, and
+ * those reporters must come from at least AUTO_HIDE_MIN_NETWORKS different networks (an IPv4 /24
+ * or an IPv6 /48), so one person's accounts on one connection cannot hide anything.
+ */
 export const AUTO_HIDE_REPORTS = 3;
+export const REPORTER_MIN_ACCOUNT_AGE_HOURS = 24;
+export const AUTO_HIDE_MIN_NETWORKS = 2;
 
 /** Transfer codes (device hand-over) expire after this many minutes. */
 export const TRANSFER_CODE_TTL_MINUTES = 15;

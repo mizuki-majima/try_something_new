@@ -5,15 +5,13 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "synth": "cdk synth",
-    "deploy": "cdk deploy --all --require-approval never",
-    "diff": "cdk diff"
-  },
-  "dependencies": {
-    "aws-cdk-lib": "^2.272.0",
-    "constructs": "^10.8.1"
+    "synth": "cdk synth --quiet --no-notices",
+    "deploy": "node ../scripts/setup-secrets.mjs --check && cdk deploy --all --require-approval never --no-notices",
+    "diff": "cdk diff --no-notices"
   },
   "devDependencies": {
-    "aws-cdk": "^2.1144.0"
+    "aws-cdk": "^2.1144.0",
+    "aws-cdk-lib": "^2.272.0",
+    "constructs": "^10.8.1"
   }
 }

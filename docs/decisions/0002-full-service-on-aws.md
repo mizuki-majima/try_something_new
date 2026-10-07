@@ -15,7 +15,7 @@
 | ホスティング | S3 + CloudFront（静的 PWA）、API Gateway HTTP API + Lambda（Node 22 / arm64）、DynamoDB on-demand | 常時起動のサーバ（EC2・App Runner）は最低でも月数ドル〜 |
 | アカウント | メール不要の匿名アカウント＋引き継ぎコード | Cognito＋メールは SES の本番申請が要り、個人情報（メール）を持つことになる |
 | 通知 | Web Push（VAPID）＋カレンダー連携 | LINE Notify は終了。メールは SES の本番申請が必要 |
-| AI | Claude in Amazon Bedrock（IAM で呼ぶ。API キーを持たない）。既定は Claude Opus 5.5、`-c aiModel` で Haiku 4.5 に切替可。1人1日3回・全体1日50回 | Anthropic API 直は API キーの管理が増える |
+| AI | 使わない（[ADR 0003](0003-no-ai-mock-suggestions.md)）。ガチャの「ひらめき提案」は内蔵データから選ぶ | — |
 | 写真 | 端末内（IndexedDB）だけ | サーバ保存は容量・モデレーション・位置情報の扱いが重い |
 | IaC | AWS CDK（TypeScript） | — |
 | ローカル・CI | dynalite（純 JS の DynamoDB 互換）で Java / Docker 不要 | DynamoDB Local は Java が必要 |
@@ -27,4 +27,3 @@ Gate 3 のチェック: SPEC.md の全節（Goal〜Definition of Done）、Criti
 - 公開 URL は `*.cloudfront.net`。独自ドメインは後から追加できる
 - 匿名アカウントなので、端末を失くして引き継ぎコードも無いとデータは戻らない（バックアップ書き出しで補う）
 - Web Push は iOS ではホーム画面に追加した場合のみ。案内文で補う
-- AI は IAM 権限と Bedrock のモデルアクセスが前提。使えないときは AI ボタンだけ無効になり、ほかは動く

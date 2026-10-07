@@ -21,7 +21,7 @@ export const API = {
   recipe: (id: string) => `/api/recipes/${id}`, // GET → RecipeDetailResponse / DELETE (author)
   stories: (recipeId: string) => `/api/recipes/${recipeId}/stories`, // POST StoryInput → { story }
   story: (recipeId: string, storyId: string) => `/api/recipes/${recipeId}/stories/${storyId}`, // DELETE (author)
-  aiSuggest: "/api/ai/suggest", // POST AiSuggestRequest → AiSuggestResponse (503 ai_unavailable when off)
+  suggestions: "/api/suggestions", // POST SuggestRequest → SuggestResponse (rule-based ひらめき提案, no AI)
   shares: "/api/shares", // POST ShareCreate → ShareResponse
   share: (id: string) => `/api/shares/${id}`, // DELETE (owner)
   shareMetric: "/api/metrics/share", // POST ShareMetric → 204 (anonymous count only, for the pilot's share-rate metric)

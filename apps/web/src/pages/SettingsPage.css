@@ -1,0 +1,389 @@
+/* 設定 — page-only styles. Tokens from docs/design.md, each with a fallback. */
+
+.set-page {
+  display: grid;
+  gap: 22px;
+}
+
+.set-top {
+  display: grid;
+  gap: 10px;
+}
+
+.set-title {
+  margin: 0;
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: clamp(26px, 7vw, 34px);
+  line-height: 1.2;
+}
+
+/* Jump links: a row of small stickers. */
+.set-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.set-jump a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 999px;
+  background: var(--surface, #ffffff);
+  color: var(--ink, #111111);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.set-jump a:hover {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+}
+@media (pointer: coarse) {
+  .set-jump a {
+    min-height: 44px;
+  }
+}
+
+/* Section cards with a colored sticker heading. */
+.set-sec {
+  --accent: var(--surface, #ffffff);
+  display: grid;
+  gap: 14px;
+  scroll-margin-top: calc(var(--header-h, 56px) + 16px);
+}
+.set-sec[data-accent="pink"] {
+  --accent: var(--pink, #ff9ec7);
+}
+.set-sec[data-accent="yellow"] {
+  --accent: var(--yellow, #ffd43b);
+}
+.set-sec[data-accent="blue"] {
+  --accent: var(--blue, #6c8cff);
+}
+.set-sec[data-accent="mint"] {
+  --accent: var(--mint, #3ddc97);
+}
+.set-sec[data-accent="lilac"] {
+  --accent: var(--lilac, #b9a2ff);
+}
+.set-sec[data-accent="shu"] {
+  --accent: var(--shu, #ff4b2b);
+  border-color: var(--shu, #ff4b2b);
+}
+
+.set-h {
+  justify-self: start;
+  margin: 0;
+  padding: 4px 12px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--on-accent, #111111);
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.4;
+  transform: rotate(-2deg);
+  box-shadow: 3px 3px 0 var(--ink, #111111);
+}
+
+.set-sub {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--ink, #111111);
+}
+
+.set-block {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.set-block + .set-block {
+  padding-top: 14px;
+  border-top: 2px dashed color-mix(in srgb, var(--ink, #111111) 35%, transparent);
+}
+.set-block > .field,
+.set-block > form,
+.set-block > p {
+  justify-self: stretch;
+}
+
+.set-inline-form {
+  display: grid;
+  gap: 10px;
+  align-items: end;
+}
+@media (min-width: 560px) {
+  .set-inline-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .set-inline-form > .btn {
+    margin-bottom: 26px;
+  }
+}
+
+.set-time {
+  max-width: 220px;
+}
+
+/* Toggle switches (a real checkbox, drawn as a switch). */
+.set-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.set-switch b {
+  font-weight: 700;
+}
+.set-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 32px;
+  margin: 0;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: 999px;
+  background: var(--gray, var(--soft, #e6e1d3));
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.set-toggle::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 50%;
+  background: var(--surface, #ffffff);
+  transition: transform 120ms ease;
+}
+.set-toggle:checked {
+  background: var(--mint, #3ddc97);
+}
+.set-toggle:checked::before {
+  transform: translateX(24px);
+}
+.set-toggle:focus-visible {
+  outline: 3px solid var(--blue, #6c8cff);
+  outline-offset: 3px;
+}
+
+.set-row {
+  display: grid;
+  gap: 8px;
+}
+.set-explain {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 10px;
+  background: var(--bg, var(--paper, #fff4d6));
+  font-size: 13px;
+}
+
+/* Callouts */
+.set-callout,
+.set-warn {
+  padding: 10px 12px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 10px;
+  font-size: 14px;
+}
+.set-callout {
+  background: var(--surface, #ffffff);
+  box-shadow: 3px 3px 0 var(--ink, #111111);
+}
+.set-warn {
+  display: grid;
+  gap: 6px;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+}
+.set-warn .note,
+.set-warn .btn {
+  color: var(--on-accent, #111111);
+}
+.set-warn .btn {
+  background: var(--surface, #ffffff);
+}
+:root[data-theme="dark"] .set-warn .btn {
+  color: var(--ink, #f7f3e8);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .set-warn .btn {
+    color: var(--ink, #f7f3e8);
+  }
+}
+
+.set-push,
+.set-cal {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding-top: 14px;
+  border-top: 2px dashed color-mix(in srgb, var(--ink, #111111) 35%, transparent);
+}
+.set-push > p,
+.set-push > .set-live,
+.set-cal > p {
+  justify-self: stretch;
+}
+
+.set-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+.set-dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 50%;
+  background: var(--gray, var(--soft, #e6e1d3));
+}
+.set-dot.on {
+  background: var(--mint, #3ddc97);
+}
+.set-ok {
+  color: var(--ink, #111111);
+}
+
+.set-cal-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.set-cal-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 12px 4px 6px;
+  border: 2px solid var(--ink, #111111);
+  border-radius: 999px;
+  background: var(--surface, #ffffff);
+  color: var(--ink, #111111);
+  font-weight: 700;
+  text-decoration: none;
+}
+.set-cal-list a:hover {
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+}
+
+/* Transfer code: a big sticker. */
+.set-codebox {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  justify-self: stretch;
+  padding: 14px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: var(--radius, 12px);
+  background: var(--bg, var(--paper, #fff4d6));
+}
+.set-code {
+  display: inline-flex;
+  gap: 0.4em;
+  margin: 0;
+  padding: 8px 16px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: 10px;
+  background: var(--yellow, #ffd43b);
+  color: var(--on-accent, #111111);
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-size: clamp(24px, 7vw, 44px);
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 5px 5px 0 var(--ink, #111111);
+  transform: rotate(-2deg);
+  user-select: all;
+}
+.set-countdown {
+  margin: 0;
+  font-size: 14px;
+}
+.set-countdown b {
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-weight: 400;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.set-codefield input {
+  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.set-intro p {
+  margin: 0;
+}
+
+/* Footer links */
+.set-links-wrap {
+  display: grid;
+  gap: 10px;
+}
+.set-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.set-links a {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: var(--border, 3px) solid var(--ink, #111111);
+  border-radius: var(--radius, 12px);
+  background: var(--surface, #ffffff);
+  color: var(--ink, #111111);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 3px 3px 0 var(--ink, #111111);
+  transition: transform 100ms ease, box-shadow 100ms ease;
+}
+.set-links a:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 var(--ink, #111111);
+}
+.set-links a:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink, #111111);
+}
+.set-version {
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .set-links a,
+  .set-links a:hover,
+  .set-links a:active {
+    transform: none;
+    transition: none;
+  }
+}

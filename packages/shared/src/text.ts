@@ -1,13 +1,15 @@
 /** Text normalisation and checks shared by client forms and API validation. */
 
 // Control characters, zero-width characters and bidi overrides, built from code points so the
-// source stays plain ASCII: C0 controls (except \t \n \r), DEL, U+200B-U+200F, U+202A-U+202E, U+2066-U+2069, U+FEFF.
+// source stays plain ASCII: C0 controls (except \t \n \r), DEL, U+200B, U+200E-U+200F, U+202A-U+202E, U+2066-U+2069, U+FEFF.
+// U+200C/U+200D (ZWNJ/ZWJ) are kept: emoji sequences such as a family or "woman running" need them.
 const CONTROL_RANGES: [number, number][] = [
   [0x00, 0x08],
   [0x0b, 0x0c],
   [0x0e, 0x1f],
   [0x7f, 0x7f],
-  [0x200b, 0x200f],
+  [0x200b, 0x200b],
+  [0x200e, 0x200f],
   [0x202a, 0x202e],
   [0x2066, 0x2069],
   [0xfeff, 0xfeff],
@@ -35,6 +37,35 @@ export function graphemeLength(s: string): number {
   return n;
 }
 
+/** Size of a string in UTF-8 bytes (what DynamoDB stores and bills), without allocating. */
+export function utf8Length(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length && (s.charCodeAt(i + 1) & 0xfc00) === 0xdc00) {
+      n += 4; // a surrogate pair is one 4-byte code point
+      i++;
+    } else n += 3; // BMP (and a lone surrogate, which TextEncoder writes as U+FFFD: 3 bytes)
+  }
+  return n;
+}
+
+/**
+ * How many characters (graphemes) must go from the end of `s` for the rest to fit in `maxBytes` of
+ * UTF-8 (0 when it fits). Used to tell the user how much to remove when emoji make a text too large.
+ */
+export function graphemesOverByteLimit(s: string, maxBytes: number): number {
+  const parts = segmenter ? Array.from(segmenter.segment(s), (seg) => seg.segment) : Array.from(s);
+  let bytes = 0;
+  for (let i = 0; i < parts.length; i++) {
+    bytes += utf8Length(parts[i]!);
+    if (bytes > maxBytes) return parts.length - i;
+  }
+  return 0;
+}
+
 /** A seal (印) is exactly one visible character that is not whitespace or punctuation-only ASCII. */
 export function isValidSeal(s: string): boolean {
   if (graphemeLength(s) !== 1) return false;
@@ -44,8 +75,11 @@ export function isValidSeal(s: string): boolean {
 }
 
 /** Public text must not carry links (spam). Private notes may. */
+const JOINERS_RE = new RegExp("[" + hex(0x200c) + hex(0x200d) + "]", "g");
+
 export function containsUrl(s: string): boolean {
-  return /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|jp|io|xyz|info|biz|ly|me|co)\b)/i.test(s);
+  // Joiners survive cleanText (emoji), so drop them here: "example<ZWJ>.com" is still a link.
+  return /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|jp|io|xyz|info|biz|ly|me|co)\b)/i.test(s.replace(JOINERS_RE, ""));
 }
 
 /** First grapheme of a string, used as the default seal. */

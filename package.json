@@ -15,10 +15,10 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "lint": "eslint .",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tests/e2e",
     "test": "vitest run",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run build -w apps/web && playwright test",
     "synth": "npm run build && npm run synth -w infra",
     "deploy": "npm run build && npm run deploy -w infra"
   },

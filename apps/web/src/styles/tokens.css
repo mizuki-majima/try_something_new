@@ -1,0 +1,123 @@
+/*
+ * Design tokens — NEO-BRUTALISM (docs/design.md).
+ * Thick ink lines, hard offset shadows, flat saturated colours, heavy display type.
+ * Dark mode follows the OS unless the user picked a theme (data-theme on <html>).
+ *
+ * Text on a coloured fill (--shu / --yellow / --mint / --blue / --pink / --lilac) always uses
+ * --on-accent (#111, also in dark mode). Small coloured TEXT uses the "-ink" variants
+ * (--shu-ink, --link, --mint-ink, --amber-ink), which meet WCAG AA on --bg and --surface.
+ * Contrast table: docs/design.md "Classes".
+ */
+:root {
+  /* ---- palette (docs/design.md) ---- */
+  --bg: #fff4d6;
+  --surface: #ffffff;
+  --ink: #111111;
+  --muted: #4a4a4a;
+  --shu: #ff4b2b;
+  --yellow: #ffd43b;
+  --mint: #3ddc97;
+  --blue: #6c8cff;
+  --pink: #ff9ec7;
+  --lilac: #b9a2ff;
+  --gray: #e6e1d3;
+  --on-accent: #111111;
+
+  /* ---- text-safe accents (AA 4.5:1 on --bg and --surface) ---- */
+  --shu-ink: #c42b0e;
+  --link: #2f4fd6;
+  --mint-ink: #0b7343;
+  --amber-ink: #855600;
+
+  /* ---- lines, shadows, shapes ---- */
+  --border: 3px;
+  --border-thin: 2px;
+  --shadow: 5px 5px 0 var(--ink);
+  --shadow-sm: 3px 3px 0 var(--ink);
+  --shadow-lg: 6px 6px 0 var(--ink);
+  --shadow-hover: 7px 7px 0 var(--ink);
+  --shadow-press: 2px 2px 0 var(--ink);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  /* 方眼 (1px lines every 24px) and the "not yet" hatch. */
+  --grid: rgba(17, 17, 17, 0.08);
+  --hatch: color-mix(in srgb, var(--ink) 22%, transparent);
+  --overlay: rgba(17, 17, 17, 0.6);
+  /* Keeps the theme's --muted reachable where a coloured fill overrides --muted. */
+  --muted-base: var(--muted);
+
+  /* ---- type ---- */
+  --font-display: "Dela Gothic One", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-num: var(--font-display);
+
+  /* ---- motion / layout ---- */
+  --press: 100ms;
+  --tap: 44px;
+  --header-h: 60px;
+  --tabbar-h: 68px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ---- legacy names (foundation) → new values. Prefer the names above in new code. ---- */
+  --paper: var(--bg);
+  --soft: var(--bg);
+  --line: var(--ink);
+  --shu-fill: var(--shu);
+  --on-shu: var(--on-accent);
+  --ai: var(--link);
+  --wakaba: var(--mint-ink);
+  --amber: var(--amber-ink);
+  --danger: var(--shu-ink);
+  --r: var(--radius);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141414;
+    --surface: #1f1f1f;
+    --ink: #f7f3e8;
+    --muted: #c9c4b8;
+    --shu: #ff5a3c;
+    --yellow: #ffd43b;
+    --mint: #3ddc97;
+    --blue: #7c98ff;
+    --pink: #ff9ec7;
+    --lilac: #b9a2ff;
+    --gray: #3a3a3a;
+    --on-accent: #111111;
+    --shu-ink: #ff6a4f;
+    --link: #8fa6ff;
+    --mint-ink: #3ddc97;
+    --amber-ink: #ffd43b;
+    --grid: rgba(247, 243, 232, 0.08);
+    --overlay: rgba(0, 0, 0, 0.7);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #141414;
+  --surface: #1f1f1f;
+  --ink: #f7f3e8;
+  --muted: #c9c4b8;
+  --shu: #ff5a3c;
+  --yellow: #ffd43b;
+  --mint: #3ddc97;
+  --blue: #7c98ff;
+  --pink: #ff9ec7;
+  --lilac: #b9a2ff;
+  --gray: #3a3a3a;
+  --on-accent: #111111;
+  --shu-ink: #ff6a4f;
+  --link: #8fa6ff;
+  --mint-ink: #3ddc97;
+  --amber-ink: #ffd43b;
+  --grid: rgba(247, 243, 232, 0.08);
+  --overlay: rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}

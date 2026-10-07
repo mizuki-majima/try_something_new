@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { CATEGORY_KEYS, LIMITS, PLACE_KEYS, TOTAL_DAYS, VERDICT_KEYS } from "./constants";
 import { isValidDate, isValidTimeZone } from "./dates";
-import { cleanLine, cleanText, containsUrl, graphemeLength, isValidSeal } from "./text";
+import { cleanLine, cleanText, containsUrl, graphemeLength, graphemesOverByteLimit, isValidSeal, utf8Length } from "./text";
 
 // ---------- primitives ----------
 
@@ -27,16 +27,37 @@ export const DaySchema = z.coerce.number().int().min(1).max(TOTAL_DAYS);
 
 type TextOpts = { min?: number; max: number; multiline?: boolean; noUrl?: boolean; label: string };
 
-/** Normalised text with a grapheme-based length check. */
+/**
+ * Raw UTF-16 length allowed before normalisation: room for emoji sequences (a few code units per
+ * grapheme) but not for one "grapheme" made of hundreds of combining marks.
+ */
+export const rawTextLimit = (max: number) => max * 4 + 16;
+
+/**
+ * Stored size cap in UTF-8 bytes (cost: what DynamoDB stores and bills). Japanese is 3 bytes a
+ * character and most emoji 4, so `max` ordinary characters always fit; one "character" stuffed with
+ * combining marks (1 grapheme, ~1.5 KB) does not.
+ */
+export const textByteLimit = (max: number) => max * 4 + 32;
+
+/**
+ * Normalised text with a grapheme-based length check, a UTF-16 cap on the raw input (rawTextLimit)
+ * and a UTF-8 byte cap on what is stored (textByteLimit). Over the byte cap the message says how many
+ * characters to remove (R14): the text is within `max` characters, so heavy emoji are the cause.
+ */
 export function text({ min = 1, max, multiline = false, noUrl = false, label }: TextOpts) {
   return z
     .string()
-    .max(max * 8 + 64, `${label}が長すぎます`)
+    .max(rawTextLimit(max), `${label}が長すぎます`)
     .transform((s) => (multiline ? cleanText(s) : cleanLine(s)))
     .superRefine((s, ctx) => {
       const n = graphemeLength(s);
       if (n < min) ctx.addIssue({ code: "custom", message: min === 1 ? `${label}を入力してください` : `${label}は${min}文字以上で入力してください` });
       if (n > max) ctx.addIssue({ code: "custom", message: `${label}は${max}文字以内で入力してください` });
+      else if (utf8Length(s) > textByteLimit(max)) {
+        const over = graphemesOverByteLimit(s, textByteLimit(max));
+        ctx.addIssue({ code: "custom", message: `${label}が長すぎます（絵文字などが多いため、あと${over}文字減らしてください）` });
+      }
       if (noUrl && containsUrl(s)) ctx.addIssue({ code: "custom", message: `${label}にURLは入れられません` });
     });
 }
@@ -179,7 +200,13 @@ export type CohortMember = {
 export type CohortResponse = { month: string; members: CohortMember[] };
 export type UpcomingResponse = {
   startDate: string;
+  /** Reservations (challenges), not people: one person may reserve several. */
   count: number;
+  /**
+   * Distinct people among those reservations (counted on the server; no ids leave it). Always sent by
+   * this API; optional only so a client tolerates an older API during a deploy.
+   */
+  peopleCount?: number;
   byRecipe: { recipeId: string | null; title: string; seal: string; count: number }[];
 };
 export type CheerResponse = { cheers: number; cheeredToday: true };
@@ -248,18 +275,18 @@ export type StoryInput = z.input<typeof StoryInputSchema>;
 export type RecipeListResponse = { recipes: Recipe[] };
 export type RecipeDetailResponse = { recipe: Recipe; stories: Story[] };
 
-// ---------- AI suggestions ("次の30日ガチャ" AI 案) ----------
+// ---------- ひらめき提案 (rule-based, no generative AI — ADR 0003) ----------
 
-export const AiSuggestRequestSchema = z.object({
+export const SuggestRequestSchema = z.object({
   maxMinutes: z.coerce.number().int().min(0).max(180).optional(),
   category: CategorySchema.optional(),
   place: PlaceSchema.optional(),
   hint: text({ min: 0, max: LIMITS.aiHint, noUrl: true, label: "ひとこと" }).optional(),
 });
-export type AiSuggestRequest = z.input<typeof AiSuggestRequestSchema>;
+export type SuggestRequest = z.input<typeof SuggestRequestSchema>;
 
-/** What the model must return for each suggestion. Validated before anything reaches the client. */
-export const AiSuggestionSchema = z.object({
+/** One suggestion. The provider output is validated against this before it reaches the client. */
+export const SuggestionSchema = z.object({
   seal: SealSchema,
   title: text({ max: LIMITS.recipeTitle, noUrl: true, label: "タイトル" }),
   category: CategorySchema,
@@ -270,8 +297,8 @@ export const AiSuggestionSchema = z.object({
   how: z.array(text({ max: LIMITS.recipeHowItem, noUrl: true, label: "コツ" })).min(1).max(LIMITS.recipeHowItems),
   after: text({ min: 0, max: LIMITS.recipeAfter, multiline: true, noUrl: true, label: "30日後" }),
 });
-export type AiSuggestion = z.output<typeof AiSuggestionSchema>;
-export type AiSuggestResponse = { suggestions: AiSuggestion[]; remainingToday: number };
+export type Suggestion = z.output<typeof SuggestionSchema>;
+export type SuggestResponse = { suggestions: Suggestion[]; remainingToday: number };
 
 // ---------- share cards ----------
 
@@ -316,7 +343,7 @@ export type ReportCreate = z.input<typeof ReportCreateSchema>;
 
 export const ContactCreateSchema = z.object({
   message: text({ max: LIMITS.contactMessage, multiline: true, label: "お問い合わせ内容" }),
-  replyTo: text({ min: 0, max: LIMITS.contactReplyTo, label: "連絡先" }).optional(),
+  replyTo: text({ min: 0, max: LIMITS.contactReplyTo, label: "返信先" }).optional(),
 });
 export type ContactCreate = z.input<typeof ContactCreateSchema>;
 
@@ -341,6 +368,29 @@ export type AdminReportItem = {
 export type AdminReportsResponse = { items: AdminReportItem[] };
 export type AdminContactItem = { id: string; message: string; replyTo: string | null; createdAt: number };
 export type AdminContactsResponse = { items: AdminContactItem[] };
+/**
+ * PILOT metrics (docs/validation-plan.md), counted per PERSON from the challenges that exist now
+ * (deleted ones drop out; imported ones do not count). "Today" is the JST date; a reservation whose
+ * start date has not come yet is not counted.
+ */
+export type PilotStats = {
+  /** People with at least one challenge whose start date has come (開始した人; the 完走 denominator). */
+  starters: number;
+  /** Starters whose first started challenge is on day 8 or later (day 7 has passed): the 7日継続 denominator. */
+  eligible7: number;
+  /** Of eligible7, people with any challenge that has 5 or more stamps within days 1–7. */
+  retained7: number;
+  /** People with at least one reflected (done) challenge: the 完走 numerator and the 共有 denominator. */
+  reflected: number;
+  /** People with at least one done challenge that currently has a public card: the 共有 numerator. */
+  sharers: number;
+  /**
+   * true when the scan stopped before the end of the table (after 20 seconds, or at its cap): the
+   * numbers count only the challenges read so far (R15). Absent when complete.
+   */
+  partial?: boolean;
+};
+
 export type AdminStats = {
   users: number;
   challengesStarted: number;
@@ -351,9 +401,9 @@ export type AdminStats = {
   shares: number;
   /** Share actions by channel (from POST /api/metrics/share). */
   shareActions: Record<string, number>;
-  aiCallsToday: number;
-  aiGlobalLimit: number;
+  suggestionsToday: number;
   pushSubscriptions: number;
+  pilot: PilotStats;
 };
 
 // ---------- backup ----------
@@ -370,7 +420,11 @@ export const BackupFileSchema = z.object({
   challenges: z.array(ChallengeSchema).max(LIMITS.importChallenges),
 });
 export type BackupFile = z.infer<typeof BackupFileSchema>;
-export type ImportResponse = { imported: number; skipped: number };
+/**
+ * `notesDropped` (only when > 0): day notes that break today's text rules (e.g. a backup written
+ * before the UTF-8 cap) were left out; their stamps and the challenge were kept (R14).
+ */
+export type ImportResponse = { imported: number; skipped: number; notesDropped?: number };
 
 // ---------- errors ----------
 
