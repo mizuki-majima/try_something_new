@@ -160,7 +160,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] `/admin` に管理トークンで入り、統計（開始した人・7日継続・完走）とお問い合わせが見える。別アカウントで通報した項目が一覧に出る
 - [ ] 設定 →「すべてのデータを削除」で、アカウント・公開カード（`/s/<id>` が 404）・1日組の表示が消える
 - [ ] CloudWatch Logs に 5xx が無い。ログにトークン・ひとこと・投稿本文・Push の宛先・IP が出ていない
-- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム5つ（`Api5xx`・`ApiErrors`・`ReminderErrors`・`DynamoThrottles`・`SessionCeiling`）、api のロググループのメトリクスフィルタ `SessionCeilingFilter` がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている
+- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム5つ（`Api5xx`・`ApiErrors`・`ReminderErrors`・`DynamoThrottles`・`SessionCeiling`）、api のロググループのメトリクスフィルタ（名前に `SessionCeilingFilter` を含む）がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている
 - [ ] DynamoDB のテーブルと GSI 3つに最大オンデマンドスループット（読み込み 1000・書き込み 100）が付いている。`DynamoThrottles` と `SessionCeiling` が「OK」（Live smoke の操作で上限に当たらない）
 - [ ] `node scripts/setup-secrets.mjs --check` が「6 個がそろっています」
 

@@ -52,7 +52,7 @@ CEO の友人・同僚 10人前後。CEO が直接声をかける（AI は連絡
 ## 期間と予算
 
 - 期間: 公開から最初の1日組の30日目まで
-- 予算: AWS 月 $1 未満の見込み（$10 超で通知。通知は `ALERT_EMAIL` の設定後: [#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。AI は使わない
+- 予算: AWS 月 $1 未満の見込み（$10 超でメール。2026-10-07 に設定: [#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。AI は使わない
 
 ## 法令・倫理
 
