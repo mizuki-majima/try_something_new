@@ -1,24 +1,26 @@
 # Roadmap — 30日だけ
 
-最終更新: 2026-10-07 ／ 現在: **REVIEW**（次: [Gate 5: REVIEW → TEST](https://github.com/mizuki-majima/try_something_new/issues/2)）
+最終更新: 2026-10-07 ／ 現在: **PILOT**（次: [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)）
 
 直近の学習を最優先にする。細かい長期計画は書かない。Later は約束ではない。
 
 ## Done
 
 - [x] BUILD: SPEC v1 の全機能（FR-1〜22）と CUF-1〜3 の E2E（Gate 4: #1）
-- [x] AWS へのテスト用デプロイ（`https://d1zw3n37kpuo7t.cloudfront.net`）。**PILOT の参加者にはまだ配っていない**（本番公開は CEO 承認）。レビュー修正前のコードが載っているので、修正版をデプロイするまで URL を広めない
+- [x] REVIEW: 独立レビュー3回、Critical / High 0件（Gate 5: #2、[ADR 0004](docs/decisions/0004-gate5-review-fixes.md)。D1〜D13・R1〜R16 は SPEC v1.3）
+- [x] TEST: 修正版を AWS にデプロイ（`https://d1zw3n37kpuo7t.cloudfront.net`）し Live smoke を通過。CEO が PILOT 開始と #3（返信先・運営者表示）の案A を承認（Gate 6: #4、[ADR 0005](docs/decisions/0005-pilot-approval.md)）
+- [x] 費用配分タグ `Project` の有効化（2026-10-07）
 
 ## Now
 
-- [ ] REVIEW（Gate 5）: 独立レビューの指摘を直す（Critical: バックアップ読み込みに上限が無い、High: 公開カードを通報できない、を含む。AI PM 決定 D1〜D13 は SPEC に反映済み）→ 再レビューの指摘（Critical: 書き込みの費用に上限が無い、を含む。R1〜R10 は SPEC v1.2 に反映済み）を直す → 別エージェントで再々レビューし、Critical / High 0件（Gate 5 通過）→ 残った Medium / Low を R11〜R16（SPEC v1.3）で直す
-- [ ] 修正版をテスト環境にデプロイ（先に `node scripts/setup-secrets.mjs`、`PUBLIC_ORIGIN` と `ALERT_EMAIL` を付ける。[docs/deploy.md](docs/deploy.md)）。費用配分タグ `Project` の有効化
-- [ ] TEST（Gate 6）: 実環境の Live smoke（[docs/test-plan.md](docs/test-plan.md)）、重大バグ 0件
+- [ ] 障害・費用の通知メール（`ALERT_EMAIL`）を付けて再デプロイ（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)。通知先のメールアドレス待ち）
+- [ ] CEO が友人・同僚 10人前後に URL を配り、**2026-11-01 開始の1日組**に誘う（AI は連絡しない）
+- [ ] PILOT 中: 機能は足さない。バグと運用だけ直す。週次レビューで管理画面の指標・AWS の請求・ログを見る
 
 ## Next
 
-- PILOT（**CEO の承認後**。本番公開＝URL を人に配ること）: 友人・同僚 10人前後で「1日組」を1回（[docs/validation-plan.md](docs/validation-plan.md)）
-- お問い合わせの返信先（任意入力・180日保存）を残すことの CEO 確認（個人情報。D12）。CEO 確認待ち: [#3](https://github.com/mizuki-majima/try_something_new/issues/3)
+- Gate 7（2026-11-30 の後）: 管理画面の PILOT の指標と参加者の感想で判定（[docs/validation-plan.md](docs/validation-plan.md)）。CONTINUE なら一般公開（**CEO の承認**）、そうでなければ PAUSE / PIVOT を提案
+- 一般公開の前に、運営者表示（個人情報保護法 §32 の読み方）を専門家に確認
 - CEO 本人の体験を公式レシピ・体験談として追加（現在の公式23本は一般的な例）
 
 ## Later

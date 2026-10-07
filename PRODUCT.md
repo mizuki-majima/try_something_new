@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Current Phase** | TEST |
-| Health | 🔴 RED（CEO 判断待ち: PILOT 開始の承認と [#3](https://github.com/mizuki-majima/try_something_new/issues/3)。技術面は Gate 5 PASS・本番環境の動作確認済み） |
-| Next Gate | [Gate 6: TEST → PILOT](https://github.com/mizuki-majima/try_something_new/issues/4) |
+| **Current Phase** | PILOT（2026-10-07 Gate 6 PASS、CEO 承認: [ADR 0005](docs/decisions/0005-pilot-approval.md)） |
+| Health | 🟡 YELLOW（障害・費用の通知メールが未設定: [#6](https://github.com/mizuki-majima/try_something_new/issues/6)。通知先のメールアドレス待ち） |
+| Next Gate | [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)（1日組の30日目 2026-11-30 の後に判定） |
 | Last updated | 2026-10-07 |
 
 > 趣味のサービス。収益を目的にしないため、Gate 1 の収益・価格の項目と Gate 2（支払意思）は CEO 判断で免除（[ADR 0001](docs/decisions/0001-hobby-service-skip-payment-validation.md)）。
@@ -84,7 +84,7 @@ PILOT の **完走率**（30日目または7日目以降の区切りで振り返
 
 ## Current Goal
 
-Gate 5 のレビュー指摘（AI PM 決定 D1〜D13、再レビューの R1〜R10、最終確認の R11〜R16。SPEC.md v1.3 に反映）を直して Gate 5 → 6 を通し、修正版をテスト環境にデプロイする。PILOT（URL を人に配る）は CEO の承認後。
+PILOT: CEO が友人・同僚 10人前後に URL を配り、**2026-11-01 開始の1日組**を1回走らせる（AI は連絡しない）。30日目（2026-11-30）の後に、管理画面の指標と感想で Gate 7 を判定する（基準は [docs/validation-plan.md](docs/validation-plan.md) のまま変えない）。PILOT 中は機能を足さず、バグと運用（通知メール [#6](https://github.com/mizuki-majima/try_something_new/issues/6)）だけ直す。
 
 ## Current Risks
 
@@ -93,7 +93,8 @@ Gate 5 のレビュー指摘（AI PM 決定 D1〜D13、再レビューの R1〜R
 | 作ったが使われない | PILOT の基準を事前に固定。使われなければ機能を足さず PAUSE / KILL を検討 |
 | AWS 費用が想定を超える | サーバーレス・on-demand・AI なし（100人規模で月約 $0.1）。DynamoDB はテーブルと GSI ごとに最大スループットの上限（1時間あたりの速さの上限。テーブルか GSI 1つにつき、上限まで使われて読み込み 約 $0.51/時・書き込み 約 $0.26/時。月の合計の上限ではない。R16）とスロットルのアラーム、書き込みを増やす操作（プロフィール変更・読み込み）に回数の上限（R1）。Budgets で `Project=thirty-days` の費用が月 $10 を超えそうなら通知（費用配分タグの有効化が前提。それまではアカウント全体の予算アラート。DynamoDB 以外の荒らしの費用はこれだけが頼り）。API の 5xx とエラーのアラーム |
 | 匿名の投稿による荒らし | 公開テキストは URL 禁止、レート制限（IP は IPv6 なら /56 単位。アカウント作成はネットワーク（IPv4 /16・IPv6 /48）ごとに1時間60件、全体でも1時間2000件で、全体に当たるとアラーム）、バックアップ読み込みの回数・件数の上限と1人ずつの実行、通報3件で自動非表示（作成24時間以上・チャレンジのあるアカウントで、2つ以上のネットワークからの通報だけ）、止めたものは消して（アカウントごと消しても）読み込み直しても戻らない、管理画面 |
-| テスト用の環境が誰でも開ける | URL は README にあるが、PILOT の参加者には配っていない。修正版をデプロイするまで広めない |
+| PILOT の参加者以外に URL が広まる | URL は README にもある。広まっても困らない作り（匿名・URL 禁止・レート制限・通報）だが、参加者以外の利用が目立ったら CEO に報告する |
+| 障害や費用の増加に気づくのが遅れる | 通知メール（`ALERT_EMAIL`）が付くまでは、週次レビューで AWS の請求とログを見る（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)） |
 | iOS で通知が届かない | ホーム画面追加の案内。カレンダー連携を代替に |
 | 端末を失くすとデータが戻らない | 引き継ぎコードとバックアップ書き出しを設定画面で案内 |
 
@@ -101,7 +102,7 @@ Gate 5 のレビュー指摘（AI PM 決定 D1〜D13、再レビューの R1〜R
 
 - 料金・広告・決済
 - 生成 AI の呼び出し（ひらめき提案はルールで代用。ADR 0003）
-- アカウントのためのメールアドレス・電話番号の収集、メール／SNS ログイン（お問い合わせに任意で書かれた返信先だけは例外: 返信にだけ使い、180日で消す。AI PM 決定 D12、CEO 確認待ち: [try_something_new#3](https://github.com/mizuki-majima/try_something_new/issues/3)）
+- アカウントのためのメールアドレス・電話番号の収集、メール／SNS ログイン（お問い合わせに任意で書かれた返信先だけは例外: 返信にだけ使い、180日で消す。D12、CEO 承認 2026-10-07: [ADR 0005](docs/decisions/0005-pilot-approval.md)）
 - ユーザー間のメッセージ・コメント（応援数のみ）
 - 写真のサーバ保存
 - ネイティブアプリ

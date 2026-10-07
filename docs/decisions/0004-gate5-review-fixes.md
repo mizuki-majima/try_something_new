@@ -1,6 +1,6 @@
 # 0004. Gate 5 の独立レビューの指摘を D1〜D13（再レビューは R1〜R10、最終確認は R11〜R16）の決定で直す
 
-- Status: Accepted（D12 は個人情報に当たるので CEO 確認待ち: [try_something_new#3](https://github.com/mizuki-majima/try_something_new/issues/3)）。2026-10-07 の再レビューを受けて R1〜R10、最終確認（3回目）の Medium / Low を受けて R11〜R16 を追加
+- Status: Accepted（D12 は個人情報に当たるので CEO に確認し、2026-10-07 に承認: [ADR 0005](0005-pilot-approval.md)）。2026-10-07 の再レビューを受けて R1〜R10、最終確認（3回目）の Medium / Low を受けて R11〜R16 を追加
 - Date: 2026-10-07
 - Decider: AI PM
 
@@ -76,7 +76,7 @@ D1〜D13 の修正（コミット fef7802）を別のエージェントが再レ
 - DynamoDB 以外（CloudFront・API Gateway・Lambda・Logs）は、ステージの上限 20 rps で月 $170 前後までありうる。2xx か 429 で終わるので `Api5xx` は鳴らず、気づけるのは予算のメールだけ（費用配分タグの有効化が前提）。API Gateway のリクエスト数のアラームは今回は足さない（下の「見直す条件」）
 - origin-verify の入れ替えの手順 3 には AWS CLI と、`cloudformation:DescribeStacks`・`cloudfront:GetDistribution` の権限が要る（デプロイできる認証情報なら持っている）
 - IP のハッシュ鍵が無いままデプロイすると、API は止まる（500）。`npm run deploy` は `--check` で先に止めるが、`cd infra && npx cdk deploy` で直接デプロイするときは先に `--check` を実行する
-- **CEO 確認待ち**: D12（お問い合わせの返信先）は [#3](https://github.com/mizuki-majima/try_something_new/issues/3)（`status:needs-ceo`）。PRODUCT.md の Do Not Build の例外は、CEO が答えるまで暫定
+- **CEO 承認済み**: D12（お問い合わせの返信先）は [#3](https://github.com/mizuki-majima/try_something_new/issues/3) で案A（2026-10-07、[ADR 0005](0005-pilot-approval.md)）。PRODUCT.md の Do Not Build の例外として確定
 - 見直す条件: 上限（スループット・プロフィール変更・アカウント作成の全体の上限）に、荒らしではない利用で当たったら上限を見直す。予算のタグを有効にできない、または DynamoDB 以外の費用の荒らしが起きたら、API Gateway のリクエスト数のアラームを足す
 
 ## 最終確認（3回目、2026-10-07）

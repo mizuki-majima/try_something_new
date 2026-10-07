@@ -2,7 +2,7 @@
 
 構成は [SPEC.md](../SPEC.md) の Architecture。IaC は `infra/`（AWS CDK、スタック名 `ThirtyDays`、リージョン `ap-northeast-1`）。生成 AI は使っていないので、Bedrock の設定やモデルの有効化は不要（[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
-> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。2026-10-07 時点の環境（`https://d1zw3n37kpuo7t.cloudfront.net`）はテスト用のデプロイで、PILOT の参加者にはまだ配っていない。
+> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT の環境。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
 
 ## 前提
 
@@ -42,6 +42,8 @@ SSM Parameter Store に次を作る。すでにあるものは変えない（何
 `npm run deploy` は、ビルドのあと `cdk deploy` の前に `node scripts/setup-secrets.mjs --check` を実行し、パラメータが足りない・種類が違う・CloudFront が送る値を API が受け付けない（受け付ける値が空の場合も）、のどれかならデプロイしない。
 
 ### 3. 費用配分タグを有効にする（予算のため。1回だけ）
+
+**2026-10-07 に有効化済み**（いまの AWS アカウント。アカウントを変えたらやり直す）。
 
 AWS アカウントは他のプロジェクトと共用なので、予算 `thirty-days-monthly` は **`Project=thirty-days` タグの付いた費用だけ**を数える（`ALERT_EMAIL` を付けてデプロイしたとき）。そのためにタグを費用配分タグとして有効にする。
 

@@ -3,8 +3,8 @@
 新しいことを **30日だけ** 試して、30日目に「続ける／やめる／形を変える」を自分で決める Web サービス（PWA）。
 TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰でもすぐ試せる形にしたもの。習慣化アプリではなく「お試し」のためのサービスで、やめることも成果として扱う。
 
-- テスト用の環境: https://d1zw3n37kpuo7t.cloudfront.net（PILOT の前。CEO の承認まで参加者には配らない）
-- 現在の Phase: **REVIEW**（次は [Gate 5: REVIEW → TEST](https://github.com/mizuki-majima/try_something_new/issues/2)）。何を作り、何を作らないかは [PRODUCT.md](PRODUCT.md)、仕様は [SPEC.md](SPEC.md)
+- PILOT の環境: https://d1zw3n37kpuo7t.cloudfront.net（友人・同僚 10人前後の1日組。2026-11-01 開始）
+- 現在の Phase: **PILOT**（次は [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)）。何を作り、何を作らないかは [PRODUCT.md](PRODUCT.md)、仕様は [SPEC.md](SPEC.md)
 
 ## できること
 
@@ -45,7 +45,7 @@ npm run test:e2e    # Critical User Flow の E2E（Playwright。tests/e2e/）
 
 ほかに `npm run lint`（ESLint）、`npm run typecheck`（全ワークスペースの tsc）。CI（`.github/workflows/ci.yml`）は lint → typecheck → test → build → audit → E2E → CDK synth の順に実行する。
 
-デプロイ（AWS）は [docs/deploy.md](docs/deploy.md)。初回は CDK bootstrap、`node scripts/setup-secrets.mjs`、費用配分タグ `Project` の有効化。以降は `PUBLIC_ORIGIN=https://<CloudFront のドメイン> ALERT_EMAIL=you@example.com npm run deploy`（ビルドのあと、`cdk deploy` の前に `setup-secrets.mjs --check` が SSM のパラメータを確かめる）。本番公開（URL を人に配ること）は CEO の承認が要る。
+デプロイ（AWS）は [docs/deploy.md](docs/deploy.md)。初回は CDK bootstrap、`node scripts/setup-secrets.mjs`、費用配分タグ `Project` の有効化。以降は `PUBLIC_ORIGIN=https://<CloudFront のドメイン> ALERT_EMAIL=you@example.com npm run deploy`（ビルドのあと、`cdk deploy` の前に `setup-secrets.mjs --check` が SSM のパラメータを確かめる）。一般公開（LIVE）は CEO の承認が要る（Gate 7）。
 
 ## リポジトリの構成
 
