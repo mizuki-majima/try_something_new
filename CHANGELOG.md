@@ -4,7 +4,7 @@
 
 ### 修正（運用）
 
-- アラームのメールが1通も送られていなかった。SNS トピックに TLS のみの方針（`enforceSSL`）を付けたことで既定のトピックポリシーが置き換わり、CloudWatch のアラームが `SNS:Publish` できなかった（`CloudWatch Alarms is not authorized to perform: SNS:Publish`）。このアカウント・リージョンのアラームだけに Publish を許可する文を足した（#6。2026-10-07 のテスト送信で発見、修正後のテスト送信で `Successfully executed action` を確認）
+- アラームのメールが1通も送られていなかった。SNS トピックに TLS のみの方針（`enforceSSL`）を付けたことで既定のトピックポリシーが置き換わり、CloudWatch のアラームが `SNS:Publish` できなかった（`CloudWatch Alarms is not authorized to perform: SNS:Publish`）。このアカウント・リージョンのアラームだけに Publish を許可する文を足した（#6。2026-10-07 のテスト送信で発見、修正後のテスト送信で `Successfully executed action`、メールの到着も確認）
 
 ### 修正（Gate 5 の最終確認の Medium / Low、AI PM 決定 R11〜R16。詳細は [SPEC.md](SPEC.md) v1.3）
 

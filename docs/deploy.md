@@ -11,7 +11,7 @@
 > - 確認メールのリンクには期限がある（数日。過ぎると承認されないまま消える）。期限が過ぎたら、同じコマンドの代わりに `aws sns subscribe --topic-arn <上の ARN> --protocol email --notification-endpoint <宛先>` で確認メールを送り直す（CloudFormation は消えた購読に気づかないので、再デプロイでは送り直されない）
 > - **購読は承認のあとでも消えることがある。** 2026-10-07 は1・2回目とも承認の直後に `Deleted` になった（メールアプリのリンク確認や、承認後のページ・通知メールの下にある unsubscribe リンクが開かれると消える。原因は特定できていない）。3回目で有効。AI PM はセッションのたびに `aws sns list-subscriptions-by-topic --topic-arn <上の ARN> --query 'Subscriptions[].SubscriptionArn'` が ARN（`PendingConfirmation` や `Deleted` ではない）であることを確かめ、消えていたら上の `subscribe` で送り直す
 > - 解除にサインインを要るようにしたいときは、確認メールのリンクを開かずにコピーしてもらい、その中の `Token` で `aws sns confirm-subscription --topic-arn <上の ARN> --token <Token> --authenticate-on-unsubscribe true` を実行する
-> - 届くかの確認: `aws cloudwatch set-alarm-state --alarm-name <ThirtyDays-CostGuardApi5xx… の名前> --state-value ALARM --state-reason "TEST"` でテストのメールが1通届く（無料。次の評価で OK に戻る。OK のメールは送らない設定）。アラームの履歴に `Successfully executed action` が出れば送信できている（`Failed to execute action` ならトピックのポリシーを疑う）。2026-10-07 の1回目は失敗し（TLS のみの方針でトピックの既定のポリシーが置き換わり、CloudWatch が Publish できなかった）、修正して再デプロイした2回目で成功
+> - 届くかの確認: `aws cloudwatch set-alarm-state --alarm-name <ThirtyDays-CostGuardApi5xx… の名前> --state-value ALARM --state-reason "TEST"` でテストのメールが1通届く（無料。次の評価で OK に戻る。OK のメールは送らない設定）。アラームの履歴に `Successfully executed action` が出れば送信できている（`Failed to execute action` ならトピックのポリシーを疑う）。2026-10-07 の1回目は失敗し（TLS のみの方針でトピックの既定のポリシーが置き換わり、CloudWatch が Publish できなかった）、修正して再デプロイした2回目で成功し、CEO にメールが届いたことを確認した
 
 ## 前提
 
