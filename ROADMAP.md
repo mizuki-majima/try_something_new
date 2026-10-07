@@ -18,9 +18,11 @@
 
 PILOT:
 
-- [ ] CEO が友人・同僚 10人前後に URL を配り（10月末まで）、**2026-11-01 開始の1日組**に誘う（AI は連絡しない）
-- [ ] 招待の日と 2026-11-01: AI PM が本番のログで参加者の操作（アカウント作成・チャレンジ作成・印・通知の購読）と 4xx / 5xx を確かめる。最初の1週間はリマインドの送信数も（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）
-- [ ] PILOT 中: 機能は足さない。バグと運用だけ直す。週次レビューで管理画面の指標・AWS の請求・ログを見る
+- [ ] CEO が友人・同僚 10人前後に URL を配り（10月末まで）、**2026-11-01 開始の1日組**に誘う（AI は連絡しない）。2026-10-07 に招待を始めた（人数は非公開の pilot-log）
+- [x] 招待の日（2026-10-07）: AI PM が本番のログで参加者の操作を確かめた。開始・印・応援・引き継ぎが届き、4xx / 5xx は0件。通知の購読はまだ0件（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)、[ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md) の追記）
+- [ ] 2026-11-01: 同じく本番のログで参加者の操作と 4xx / 5xx を確かめ、CEO が参加者に「同期済み」かを聞く。最初の1週間はリマインドの送信数も（#8）
+- [ ] iPhone: Safari で予約した記録がホーム画面アプリに出ない件の画面での案内（[#15](https://github.com/mizuki-majima/try_something_new/issues/15)、P1）。11/1 より前に入れるかを AI PM が判断し、入れないなら招待文の補足で代える
+- [ ] PILOT 中: 機能は足さない。バグと運用だけ直す（例外: CEO の依頼で「みんな」の「詳しく見る」を追加。[#16](https://github.com/mizuki-majima/try_something_new/issues/16)）。週次レビューで管理画面の指標・AWS の請求・ログを見る
 
 ## Next
 

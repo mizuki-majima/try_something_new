@@ -40,13 +40,18 @@ test("CUF-3: B sees A in 今月の組, cheers once, and A disappears after turni
     await expect(memberA.getByText("静", { exact: true })).toBeVisible();
     await expect(memberA.getByRole("img", { name: "30日中1日押した" })).toBeVisible();
 
+    // The card's buttons stay one line tall (「詳しく見る」 wraps under 応援 on narrow screens, the labels never break).
+    for (const button of [memberA.getByTestId("cheer"), memberA.getByTestId("member-open")]) {
+      const box = await button.boundingBox();
+      expect(box?.height ?? 0).toBeLessThanOrEqual(48);
+    }
+
     // 2b. B opens A's details (the same public data, in a sheet): the 30 cells with day 1 stamped, no notes.
     await memberA.getByTestId("member-open").click();
     const detail = pageB.getByRole("dialog", { name: `${nicknameA}さんの30日` });
     await expect(detail).toBeVisible();
     await expect(detail).toContainText(TITLE);
-    await expect(detail.getByRole("group", { name: `${nicknameA}さんの30日のカード` })).toBeVisible();
-    await expect(detail.getByRole("button", { name: "1日目（済）" })).toBeVisible();
+    await expect(detail.getByRole("img", { name: `${nicknameA}さんの30日のカード：30日中1日押した（1日目）` })).toBeVisible();
     await expect(detail.getByText("ひとことメモと写真は、本人だけが見られます。")).toBeVisible();
     await pageB.keyboard.press("Escape");
     await expect(detail).toHaveCount(0);

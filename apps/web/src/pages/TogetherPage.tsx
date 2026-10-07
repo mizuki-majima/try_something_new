@@ -75,12 +75,16 @@ export function longestStreak(stampDays: readonly number[]): number {
   return best;
 }
 
-/** Where a member's 30 days stand today, in words (the detail sheet). */
+/**
+ * Where a member's 30 days stand today, in words (the detail sheet). `done` can mean the owner closed
+ * early (「ここで区切る」, from day 7) and the public data has no finishedDay, so it never claims 30 days.
+ */
 export function memberStatus(m: Pick<CohortMember, "startDate" | "done" | "verdict">, today: string): string {
   const day = dayIndex(m.startDate, today);
   if (m.done) {
     const verdict = m.verdict && m.verdict in VERDICTS ? VERDICTS[m.verdict].label : null;
-    return verdict ? `30日を終えて「${verdict}」` : "30日を終えました";
+    const ended = day < TOTAL_DAYS ? "途中で区切りました" : "振り返りを終えました";
+    return verdict ? `${ended}（「${verdict}」）` : ended;
   }
   if (day < 1) return `${jpDate(m.startDate)}から始まります`;
   if (day > TOTAL_DAYS) return "振り返り待ち";
@@ -375,7 +379,7 @@ function MemberCard({
           {!m.done && day > TOTAL_DAYS && <span className="pill">振り返り待ち</span>}
           {verdict && <span className={`badge ${verdict}`}>{VERDICTS[verdict].label}</span>}
         </div>
-        <div className="row between gap tg-actions">
+        <div className="row between gap fw tg-actions">
           <button
             type="button"
             className={m.cheeredToday ? "btn sm tg-cheer done" : "btn sm tg-cheer"}
@@ -419,10 +423,15 @@ function MemberDetailSheet({
   const day = dayIndex(m.startDate, today);
   const stamped = new Set(m.stampDays.filter((d) => Number.isInteger(d) && d >= 1 && d <= TOTAL_DAYS));
   const verdict = m.done && m.verdict && m.verdict in VERDICTS ? m.verdict : null;
-  const gridDay = m.done ? TOTAL_DAYS : Math.min(Math.max(day, 0), TOTAL_DAYS);
+  // A closed challenge may have ended early and the day it ended is not public: days after the last
+  // stamp are drawn as "not yet", never as missed.
+  const lastStamped = Math.max(0, ...stamped);
+  const gridDay = Math.min(Math.max(day, 0), TOTAL_DAYS, m.done ? lastStamped : TOTAL_DAYS);
+  const locked = m.done || day < 1 || day > TOTAL_DAYS;
   const disabled = m.isMine || m.cheeredToday || busy;
+  const who = m.isMine ? "あなた" : `${nickname}さん`;
   return (
-    <Sheet open onClose={onClose} title={`${nickname}さんの30日`}>
+    <Sheet open onClose={onClose} title={`${who}の30日`}>
       <div className="tg-detail" data-testid="member-detail">
         <div className="tg-detail-head">
           <Seal char={m.seal} size="lg" />
@@ -459,32 +468,26 @@ function MemberDetailSheet({
             </dd>
           </div>
         </dl>
-        <Grid30 seal={m.seal} stampedDays={stamped} today={gridDay} locked={m.done || day < 1} label={`${nickname}さんの30日のカード`} />
+        <Grid30 seal={m.seal} stampedDays={stamped} today={gridDay} locked={locked} label={`${who}の30日のカード`} readOnly />
         <div className="row between gap fw tg-actions">
+          {/* aria-disabled, not disabled: focus stays on the button after cheering (inside the dialog). */}
           <button
             type="button"
             className={m.cheeredToday ? "btn sm tg-cheer done" : "btn sm tg-cheer"}
-            disabled={disabled}
+            aria-disabled={disabled || undefined}
             aria-busy={busy || undefined}
-            onClick={onCheer}
+            onClick={disabled ? undefined : onCheer}
           >
             <HeartIcon />
             <span className="sr-only">{m.isMine ? "あなたへの" : `${nickname}さんを`}</span>
             {m.cheeredToday ? "応援済み" : "応援"}
             <span className="tg-cheer-n">{m.cheers}</span>
           </button>
-          <div className="row gap fw tg-actions-end">
-            {m.isMine && (
-              <Link to={`/c/${m.challengeId}`} className="btn sm ghost tg-open" onClick={onClose}>
-                自分の記録を開く
-              </Link>
-            )}
-            {m.recipeId && (
-              <Link to={`/recipes/${m.recipeId}`} className="btn sm ghost tg-open" onClick={onClose}>
-                このレシピを見る
-              </Link>
-            )}
-          </div>
+          {m.isMine && (
+            <Link to={`/c/${m.challengeId}`} className="btn sm ghost tg-open" onClick={onClose}>
+              自分の記録を開く
+            </Link>
+          )}
         </div>
         <p className="note">ひとことメモと写真は、本人だけが見られます。</p>
       </div>

@@ -121,8 +121,15 @@ describe("member detail helpers", () => {
     expect(memberStatus({ startDate: "2026-10-01", done: false, verdict: null }, today)).toBe("6日目");
     expect(memberStatus({ startDate: "2026-11-01", done: false, verdict: null }, today)).toBe("11月1日から始まります");
     expect(memberStatus({ startDate: "2026-09-01", done: false, verdict: null }, today)).toBe("振り返り待ち");
-    expect(memberStatus({ startDate: "2026-09-01", done: true, verdict: "continue" }, today)).toBe("30日を終えて「続ける」");
-    expect(memberStatus({ startDate: "2026-09-01", done: true, verdict: null }, today)).toBe("30日を終えました");
+    expect(memberStatus({ startDate: "2026-09-01", done: true, verdict: "continue" }, today)).toBe("振り返りを終えました（「続ける」）");
+    expect(memberStatus({ startDate: "2026-09-01", done: true, verdict: null }, today)).toBe("振り返りを終えました");
+  });
+
+  it("never says 30 days for a challenge closed early (「ここで区切る」 from day 7)", () => {
+    const today = "2026-10-08"; // day 8 of a 10-01 start
+    expect(memberStatus({ startDate: "2026-10-01", done: true, verdict: "stop" }, today)).toBe("途中で区切りました（「やめる」）");
+    // Day 30 or later: closed early or not, the public data cannot tell, so no "30日".
+    expect(memberStatus({ startDate: "2026-09-01", done: true, verdict: "stop" }, today)).not.toMatch(/30日/);
   });
 });
 
@@ -291,13 +298,14 @@ describe("TogetherPage member detail", () => {
     expect(d.getByText("毎日20分歩く")).toBeTruthy();
     expect(d.getByText("10月4日〜11月2日")).toBeTruthy();
     expect(d.getByText("3日目")).toBeTruthy();
-    expect(d.getByRole("group", { name: "たろうさんの30日のカード" })).toBeTruthy();
-    expect(d.getByRole("button", { name: "3日目（済）" })).toBeTruthy();
-    expect(d.getByRole("button", { name: "4日目" })).toBeTruthy();
+    // Someone else's card is a picture, not 30 buttons the viewer cannot press.
+    expect(d.getByRole("img", { name: "たろうさんの30日のカード：30日中3日押した（1・2・3日目）" })).toBeTruthy();
+    expect(d.queryByRole("button", { name: /日目/ })).toBeNull();
     expect(d.getByText("ひとことメモと写真は、本人だけが見られます。")).toBeTruthy();
-    expect(d.getByRole("link", { name: "このレシピを見る" }).getAttribute("href")).toBe("/recipes/photo");
-    // Already cheered today: the button in the sheet is disabled too.
-    expect((d.getByRole("button", { name: /たろうさんを/ }) as HTMLButtonElement).disabled).toBe(true);
+    // Only what the card already shows: no link to the recipe the challenge started from.
+    expect(d.queryByRole("link", { name: /レシピ/ })).toBeNull();
+    // Already cheered today: the button in the sheet is unavailable too.
+    expect(d.getByRole("button", { name: /たろうさんを/ }).getAttribute("aria-disabled")).toBe("true");
     expect(fetchMock.mock.calls.length).toBe(calls);
 
     fireEvent.keyDown(dialog, { key: "Escape" });
@@ -313,19 +321,42 @@ describe("TogetherPage member detail", () => {
     const card = screen.getAllByTestId("member").find((li) => within(li).queryByText("みず"))!;
     fireEvent.click(within(card).getByTestId("member-open"));
     const dialog = await screen.findByRole("dialog", { name: "みずさんの30日" });
-    fireEvent.click(within(dialog).getByRole("button", { name: /みずさんを/ }));
+    const button = within(dialog).getByRole("button", { name: /みずさんを/ });
+    button.focus();
+    fireEvent.click(button);
     await waitFor(() => expect(within(dialog).getByRole("button", { name: /みずさんを/ }).textContent).toMatch(/応援済み\s*3$/));
     expect(within(card).getByTestId("cheer").textContent).toMatch(/応援済み\s*3$/);
+    // Focus stays in the dialog (the button is aria-disabled, not disabled), so Escape still closes it.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: /みずさんを/ }));
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it("your own challenge links to your record instead of a report button", async () => {
+  it("a challenge closed early does not show the days after the last stamp as missed", async () => {
+    const early = member({ challengeId: "ch00000000000009", nickname: "そら", startDate: "2026-09-28", stampDays: [1, 2, 5], done: true, verdict: "stop" });
+    fetchMock.mockResolvedValue(json(200, { month: "2026-09", members: [early] }));
+    renderTogether("/together?tab=prev");
+    const card = await screen.findByTestId("member");
+    fireEvent.click(within(card).getByTestId("member-open"));
+    const dialog = await screen.findByRole("dialog", { name: "そらさんの30日" });
+    expect(within(dialog).getByText("途中で区切りました（「やめる」）")).toBeTruthy();
+    const cells = [...dialog.querySelectorAll(".cell")];
+    expect(cells).toHaveLength(30);
+    // Days 6–30 are "not yet" (hatched), not empty elapsed days.
+    expect(cells.slice(5).every((c) => c.classList.contains("future"))).toBe(true);
+    expect(cells.slice(0, 5).some((c) => c.classList.contains("future"))).toBe(false);
+  });
+
+  it("your own challenge is yours (あなた) and links to your record", async () => {
     fetchMock.mockResolvedValue(json(200, { month: "2026-10", members: MEMBERS }));
     renderTogether();
     await screen.findAllByTestId("member");
     const card = screen.getAllByTestId("member").find((li) => within(li).queryByText("わたし"))!;
     fireEvent.click(within(card).getByTestId("member-open"));
-    const dialog = await screen.findByRole("dialog", { name: "わたしさんの30日" });
+    const dialog = await screen.findByRole("dialog", { name: "あなたの30日" });
     expect(within(dialog).getByRole("link", { name: "自分の記録を開く" }).getAttribute("href")).toBe("/c/ch00000000000003");
-    expect(within(dialog).queryByRole("button", { name: /通報/ })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: /あなたへの/ }).getAttribute("aria-disabled")).toBe("true");
   });
 });

@@ -6,6 +6,7 @@
  * - `locked`: the record is fixed (done) or not started; cells are not stamp toggles. Clicks still
  *   reach onCellClick (the detail page opens the day's memo), unless the cell is in the future.
  * - Without onCellClick every cell is disabled (read-only card).
+ * - `readOnly`: someone else's card (みんな). Not buttons at all: one image whose name sums it up.
  */
 import { TOTAL_DAYS } from "@thirty/shared";
 
@@ -22,12 +23,31 @@ type Props = {
   /** Accessible name of the whole card. */
   label?: string;
   className?: string;
+  readOnly?: boolean;
 };
 
 const DAYS = Array.from({ length: TOTAL_DAYS }, (_, i) => i + 1);
 
-export function Grid30({ seal, stampedDays, today, locked = false, justStamped, selectedDay, onCellClick, label, className }: Props) {
+export function Grid30({ seal, stampedDays, today, locked = false, justStamped, selectedDay, onCellClick, label, className, readOnly = false }: Props) {
   const stamped = stampedDays instanceof Set ? stampedDays : new Set(stampedDays as readonly number[]);
+  if (readOnly) {
+    const on = DAYS.filter((d) => stamped.has(d));
+    const summary = `30日中${on.length}日押した${on.length > 0 ? `（${on.join("・")}日目）` : ""}`;
+    return (
+      <div className={className ? `grid30 ro ${className}` : "grid30 ro"} role="img" aria-label={`${label ?? "30日のカード"}：${summary}`}>
+        {DAYS.map((day) => (
+          <span
+            key={day}
+            className={["cell", !locked && day === today ? "today" : "", day > today ? "future" : "", locked ? "locked" : ""].filter(Boolean).join(" ")}
+            aria-hidden="true"
+          >
+            <span className="n">{day}</span>
+            {stamped.has(day) && <span className="st">{seal}</span>}
+          </span>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className={className ? `grid30 ${className}` : "grid30"} role="group" aria-label={label ?? "30日のカード"}>
       {DAYS.map((day) => {

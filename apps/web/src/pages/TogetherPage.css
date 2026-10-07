@@ -161,9 +161,16 @@
   text-align: center;
 }
 
+/* The card's row wraps on narrow phones (「詳しく見る」 and 通報 move under 応援) rather than
+   squeezing the labels onto two lines. */
 .tg-actions-end {
   align-items: center;
   justify-content: end;
+  margin-left: auto;
+}
+.tg-cheer,
+.tg-open {
+  white-space: nowrap;
 }
 .tg-open {
   min-height: var(--tap, 44px);
