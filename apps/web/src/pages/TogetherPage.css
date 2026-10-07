@@ -161,6 +161,53 @@
   text-align: center;
 }
 
+.tg-actions-end {
+  align-items: center;
+  justify-content: end;
+}
+.tg-open {
+  min-height: var(--tap, 44px);
+}
+
+/* ---------- member detail (sheet) ---------- */
+.tg-detail {
+  display: grid;
+  gap: 14px;
+}
+.tg-detail-head {
+  display: flex;
+  align-items: start;
+  gap: 12px;
+}
+.tg-detail-title {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 20px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.tg-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.tg-detail-stats > div {
+  padding: 8px 10px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface, #fff);
+}
+.tg-detail-stats dt {
+  color: var(--muted, #4a4a4a);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tg-detail-stats dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- next 1日組 ---------- */
 .tg-next {
   display: grid;

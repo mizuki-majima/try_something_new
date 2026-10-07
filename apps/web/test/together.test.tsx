@@ -6,7 +6,7 @@ import { ToastHost, ToastProvider } from "../src/components/Toast";
 import type { AppActions } from "../src/lib/appStore";
 import { KEYS, writeString } from "../src/lib/storage";
 import { AppProvider, type AppSnapshot, type AppStore } from "../src/lib/store";
-import TogetherPage, { cohortMonths, sortMembers } from "../src/pages/TogetherPage";
+import TogetherPage, { cohortMonths, longestStreak, memberStatus, sortMembers } from "../src/pages/TogetherPage";
 
 vi.mock("../src/features/start/StartChallengeSheet", () => ({
   StartChallengeSheet: (p: { open: boolean; recipe?: { title: string } | null; preset?: { title?: string; firstOfMonth?: boolean } | null }) =>
@@ -106,6 +106,23 @@ describe("cohort helpers", () => {
 
   it("puts your own challenge first, then the most recently active", () => {
     expect(sortMembers(MEMBERS).map((m) => m.nickname)).toEqual(["わたし", "みず", "たろう"]);
+  });
+});
+
+describe("member detail helpers", () => {
+  it("finds the longest run of consecutive stamped days, ignoring duplicates and out-of-range days", () => {
+    expect(longestStreak([])).toBe(0);
+    expect(longestStreak([1, 2, 3, 5, 6])).toBe(3);
+    expect(longestStreak([7, 3, 4, 4, 5, 6, 0, 31, 30])).toBe(5);
+  });
+
+  it("says where the 30 days stand today", () => {
+    const today = "2026-10-06";
+    expect(memberStatus({ startDate: "2026-10-01", done: false, verdict: null }, today)).toBe("6日目");
+    expect(memberStatus({ startDate: "2026-11-01", done: false, verdict: null }, today)).toBe("11月1日から始まります");
+    expect(memberStatus({ startDate: "2026-09-01", done: false, verdict: null }, today)).toBe("振り返り待ち");
+    expect(memberStatus({ startDate: "2026-09-01", done: true, verdict: "continue" }, today)).toBe("30日を終えて「続ける」");
+    expect(memberStatus({ startDate: "2026-09-01", done: true, verdict: null }, today)).toBe("30日を終えました");
   });
 });
 
@@ -257,5 +274,58 @@ describe("TogetherPage", () => {
     expect(screen.getByText(/あなたの進捗は、いま非公開です/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "設定で公開する" }).getAttribute("href")).toBe("/settings#profile");
     await screen.findByText("まだ誰もいません。最初の1人になりませんか？");
+  });
+});
+
+describe("TogetherPage member detail", () => {
+  it("opens one member's details from the same public data, with no extra request, and closes", async () => {
+    fetchMock.mockResolvedValue(json(200, { month: "2026-10", members: MEMBERS }));
+    renderTogether();
+    await screen.findAllByTestId("member");
+    const calls = fetchMock.mock.calls.length;
+    const card = screen.getAllByTestId("member").find((li) => within(li).queryByText("たろう"))!;
+    fireEvent.click(within(card).getByTestId("member-open"));
+
+    const dialog = await screen.findByRole("dialog", { name: "たろうさんの30日" });
+    const d = within(dialog);
+    expect(d.getByText("毎日20分歩く")).toBeTruthy();
+    expect(d.getByText("10月4日〜11月2日")).toBeTruthy();
+    expect(d.getByText("3日目")).toBeTruthy();
+    expect(d.getByRole("group", { name: "たろうさんの30日のカード" })).toBeTruthy();
+    expect(d.getByRole("button", { name: "3日目（済）" })).toBeTruthy();
+    expect(d.getByRole("button", { name: "4日目" })).toBeTruthy();
+    expect(d.getByText("ひとことメモと写真は、本人だけが見られます。")).toBeTruthy();
+    expect(d.getByRole("link", { name: "このレシピを見る" }).getAttribute("href")).toBe("/recipes/photo");
+    // Already cheered today: the button in the sheet is disabled too.
+    expect((d.getByRole("button", { name: /たろうさんを/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(fetchMock.mock.calls.length).toBe(calls);
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("cheering in the sheet updates the card in the list", async () => {
+    fetchMock.mockImplementation(async (_input, init) =>
+      init?.method === "POST" ? json(200, { cheers: 3, cheeredToday: true }) : json(200, { month: "2026-10", members: MEMBERS }),
+    );
+    renderTogether();
+    await screen.findAllByTestId("member");
+    const card = screen.getAllByTestId("member").find((li) => within(li).queryByText("みず"))!;
+    fireEvent.click(within(card).getByTestId("member-open"));
+    const dialog = await screen.findByRole("dialog", { name: "みずさんの30日" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /みずさんを/ }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: /みずさんを/ }).textContent).toMatch(/応援済み\s*3$/));
+    expect(within(card).getByTestId("cheer").textContent).toMatch(/応援済み\s*3$/);
+  });
+
+  it("your own challenge links to your record instead of a report button", async () => {
+    fetchMock.mockResolvedValue(json(200, { month: "2026-10", members: MEMBERS }));
+    renderTogether();
+    await screen.findAllByTestId("member");
+    const card = screen.getAllByTestId("member").find((li) => within(li).queryByText("わたし"))!;
+    fireEvent.click(within(card).getByTestId("member-open"));
+    const dialog = await screen.findByRole("dialog", { name: "わたしさんの30日" });
+    expect(within(dialog).getByRole("link", { name: "自分の記録を開く" }).getAttribute("href")).toBe("/c/ch00000000000003");
+    expect(within(dialog).queryByRole("button", { name: /通報/ })).toBeNull();
   });
 });

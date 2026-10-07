@@ -84,7 +84,7 @@ PILOT の **完走率**（30日目または7日目以降の区切りで振り返
 
 ## Current Goal
 
-PILOT: CEO が友人・同僚 10人前後に URL を配り（10月末まで）、**2026-11-01 開始の1日組**を1回走らせる（AI は連絡しない）。30日目（2026-11-30）の後に、管理画面の指標と感想で Gate 7 を判定する（基準は [docs/validation-plan.md](docs/validation-plan.md) のまま変えない）。PILOT 中は機能を足さず、バグと運用だけ直す。実機での裏付けがないまま進めたので（[ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md)）、招待の日と 2026-11-01 に参加者の操作が本番に届いているかを AI PM が確かめる（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）。
+PILOT: CEO が友人・同僚 10人前後に URL を配り（10月末まで）、**2026-11-01 開始の1日組**を1回走らせる（AI は連絡しない）。30日目（2026-11-30）の後に、管理画面の指標と感想で Gate 7 を判定する（基準は [docs/validation-plan.md](docs/validation-plan.md) のまま変えない）。PILOT 中は機能を足さず、バグと運用だけ直す（例外: 2026-10-07 に CEO の依頼で「みんな」の「詳しく見る」を追加。画面だけで、公開する範囲とデータは変えない）。実機での裏付けがないまま進めたので（[ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md)）、招待の日と 2026-11-01 に参加者の操作が本番に届いているかを AI PM が確かめる（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）。
 
 ## Current Risks
 
