@@ -499,22 +499,18 @@ describe("cost guard", () => {
           Match.objectLike({
             Sid: "AllowThisAccountsAlarmsToPublish",
             Effect: "Allow",
-            Principal: { Service: "cloudwatch.amazonaws.com" },
+            // Only alarms of this account and region (synth pins the env), not any CloudWatch caller.
+            Principal: Match.exact({ Service: "cloudwatch.amazonaws.com" }),
             Action: "sns:Publish",
             Resource: { Ref: topic },
-            Condition: {
-              StringEquals: { "aws:SourceAccount": Match.anyValue() },
-              ArnLike: { "aws:SourceArn": Match.anyValue() },
-            },
+            Condition: Match.exact({
+              StringEquals: { "aws:SourceAccount": "123456789012" },
+              ArnLike: { "aws:SourceArn": "arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:*" },
+            }),
           }),
         ]),
       },
     });
-    // Only alarms of this account and region, not any CloudWatch caller.
-    const policy = Object.values(guarded.findResources("AWS::SNS::TopicPolicy"))[0] as Resource;
-    const allow = JSON.stringify(policy.Properties?.PolicyDocument);
-    expect(allow).toContain(":cloudwatch:");
-    expect(allow).toContain(":alarm:*");
   });
 
   it("alarms on API Gateway 5xx, which counts route errors the Lambda answers with 500", () => {

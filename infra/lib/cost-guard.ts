@@ -99,7 +99,8 @@ export class CostGuard extends Construct {
     // enforceSSL gives the topic a policy of its own, which replaces the default one, and the default
     // is what let this account's CloudWatch alarms publish. Without this statement every alarm action
     // failed with "CloudWatch Alarms is not authorized to perform: SNS:Publish" (a test notification
-    // on 2026-10-07 found it).
+    // on 2026-10-07 found it). The account is shared, so any alarm in this account and region may
+    // publish here, which is still narrower than the default policy it replaces.
     const { account, partition, region } = Stack.of(this);
     topic.addToResourcePolicy(
       new iam.PolicyStatement({
