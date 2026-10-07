@@ -2,6 +2,7 @@
  * /together — みんなの30日 (SPEC FR-8, FR-9, CUF-3). Tabs: 今月の組 / 次の1日組 / 先月の組.
  * A month tab lists GET /api/cohorts/:month (nickname, seal, title, stamped days, cheers);
  * "応援" is optimistic (+1, once a day). 次の1日組 shows GET /api/cohorts/upcoming.
+ * 「詳しく見る」 opens one member's details in a sheet, from the same public data (no extra request).
  * Only nickname, seal, title and stamped days are public; the daily notes never are.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
@@ -15,6 +16,7 @@ import {
   diffDays,
   isFirstOfMonth,
   jpDate,
+  jpPeriod,
   monthKey,
   nextFirst,
   type CheerResponse,
@@ -22,10 +24,12 @@ import {
   type CohortResponse,
   type UpcomingResponse,
 } from "@thirty/shared";
+import { Grid30 } from "../components/Grid30";
 import { HeartIcon } from "../components/Icons";
 import { MiniGrid30 } from "../components/MiniGrid30";
 import { ReportButton } from "../components/ReportButton";
 import { Seal } from "../components/Seal";
+import { Sheet } from "../components/Sheet";
 import { EmptyState, ErrorState, Loading } from "../components/States";
 import { useToast } from "../components/Toast";
 import { StartChallengeSheet, type StartChallengeSheetProps } from "../features/start/StartChallengeSheet";
@@ -55,6 +59,37 @@ export function sortMembers(list: readonly CohortMember[]): CohortMember[] {
 function isMemberLike(m: unknown): m is CohortMember {
   const o = m as CohortMember | null;
   return !!o && typeof o === "object" && typeof o.challengeId === "string" && typeof o.title === "string" && Array.isArray(o.stampDays);
+}
+
+/** The longest run of consecutive stamped days (1–30). */
+export function longestStreak(stampDays: readonly number[]): number {
+  const days = [...new Set(stampDays.filter((d) => Number.isInteger(d) && d >= 1 && d <= TOTAL_DAYS))].sort((a, b) => a - b);
+  let best = 0;
+  let run = 0;
+  let prev = -1;
+  for (const d of days) {
+    run = d === prev + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+    prev = d;
+  }
+  return best;
+}
+
+/**
+ * Where a member's 30 days stand today, in words (the detail sheet). `done` can mean the owner closed
+ * early (「ここで区切る」, from day 7) and the public data has no finishedDay, so it never claims 30 days.
+ */
+export function memberStatus(m: Pick<CohortMember, "startDate" | "done" | "verdict">, today: string): string {
+  const day = dayIndex(m.startDate, today);
+  if (m.done) {
+    const verdict = m.verdict && m.verdict in VERDICTS ? VERDICTS[m.verdict].label : null;
+    // day is the viewer's, which can be a day off the owner's (time zones): only say 「途中で」 when it is sure.
+    const ended = day <= TOTAL_DAYS - 2 ? "途中で区切りました" : "振り返りを終えました";
+    return verdict ? `${ended}（「${verdict}」）` : ended;
+  }
+  if (day < 1) return `${jpDate(m.startDate)}から始まります`;
+  if (day > TOTAL_DAYS) return "振り返り待ち";
+  return `${day}日目`;
 }
 
 // ---------- data ----------
@@ -220,6 +255,7 @@ function MonthPanel({ month, current, today }: { month: string; current: boolean
   const toast = useToast();
   const { data: members, error, loading, reload, update } = useRemote(API.cohort(month), parseCohort);
   const [sending, setSending] = useState<ReadonlySet<string>>(() => new Set());
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   async function cheer(m: CohortMember) {
     if (m.isMine || m.cheeredToday || sending.has(m.challengeId)) return;
@@ -248,6 +284,9 @@ function MonthPanel({ month, current, today }: { month: string; current: boolean
     }
   }
 
+  // Read from the list so a cheer in the sheet shows on the card too.
+  const detail = detailId ? members?.find((m) => m.challengeId === detailId) ?? null : null;
+
   if (loading) return <Loading label="みんなの30日を読み込んでいます…" />;
   if (error || !members) return <ErrorState message={error ?? "もう一度お試しください。"} onRetry={reload} />;
   if (members.length === 0) {
@@ -274,14 +313,42 @@ function MonthPanel({ month, current, today }: { month: string; current: boolean
       <p className="note tg-count">{members.length}件のチャレンジ</p>
       <ul className="people tg-people">
         {members.map((m) => (
-          <MemberCard key={m.challengeId} member={m} today={today} busy={sending.has(m.challengeId)} onCheer={() => void cheer(m)} />
+          <MemberCard
+            key={m.challengeId}
+            member={m}
+            today={today}
+            busy={sending.has(m.challengeId)}
+            onCheer={() => void cheer(m)}
+            onOpen={() => setDetailId(m.challengeId)}
+          />
         ))}
       </ul>
+      {detail && (
+        <MemberDetailSheet
+          member={detail}
+          today={today}
+          busy={sending.has(detail.challengeId)}
+          onCheer={() => void cheer(detail)}
+          onClose={() => setDetailId(null)}
+        />
+      )}
     </>
   );
 }
 
-function MemberCard({ member: m, today, busy, onCheer }: { member: CohortMember; today: string; busy: boolean; onCheer: () => void }) {
+function MemberCard({
+  member: m,
+  today,
+  busy,
+  onCheer,
+  onOpen,
+}: {
+  member: CohortMember;
+  today: string;
+  busy: boolean;
+  onCheer: () => void;
+  onOpen: () => void;
+}) {
   const day = dayIndex(m.startDate, today);
   const running = !m.done && day >= 1 && day <= TOTAL_DAYS;
   const stamped = new Set(m.stampDays.filter((d) => Number.isInteger(d) && d >= 1 && d <= TOTAL_DAYS)).size;
@@ -313,7 +380,7 @@ function MemberCard({ member: m, today, busy, onCheer }: { member: CohortMember;
           {!m.done && day > TOTAL_DAYS && <span className="pill">振り返り待ち</span>}
           {verdict && <span className={`badge ${verdict}`}>{VERDICTS[verdict].label}</span>}
         </div>
-        <div className="row between gap tg-actions">
+        <div className="row between gap fw tg-actions">
           <button
             type="button"
             className={m.cheeredToday ? "btn sm tg-cheer done" : "btn sm tg-cheer"}
@@ -327,10 +394,109 @@ function MemberCard({ member: m, today, busy, onCheer }: { member: CohortMember;
             {m.cheeredToday ? "応援済み" : "応援"}
             <span className="tg-cheer-n">{m.cheers}</span>
           </button>
-          {!m.isMine && <ReportButton targetType="member" targetId={m.challengeId} subject={`${nickname}さんの表示`} />}
+          <div className="row gap tg-actions-end">
+            <button type="button" className="btn sm ghost tg-open" onClick={onOpen} data-testid="member-open">
+              詳しく見る<span className="sr-only">（{nickname}さん）</span>
+            </button>
+            {!m.isMine && <ReportButton targetType="member" targetId={m.challengeId} subject={`${nickname}さんの表示`} />}
+          </div>
         </div>
       </div>
     </li>
+  );
+}
+
+/** One member's 30 days in full: the same public data as the card, larger, plus the period and streak. */
+function MemberDetailSheet({
+  member: m,
+  today,
+  busy,
+  onCheer,
+  onClose,
+}: {
+  member: CohortMember;
+  today: string;
+  busy: boolean;
+  onCheer: () => void;
+  onClose: () => void;
+}) {
+  const nickname = m.nickname || "名無し";
+  const day = dayIndex(m.startDate, today);
+  const stamped = new Set(m.stampDays.filter((d) => Number.isInteger(d) && d >= 1 && d <= TOTAL_DAYS));
+  const verdict = m.done && m.verdict && m.verdict in VERDICTS ? m.verdict : null;
+  // A closed challenge may have ended early and the day it ended is not public: days after the last
+  // stamp are drawn as "not yet", never as missed. A stamped day is never drawn as future (the viewer's
+  // day can be one behind the owner's).
+  const lastStamped = Math.max(0, ...stamped);
+  const gridDay = m.done ? lastStamped : Math.min(Math.max(day, lastStamped, 0), TOTAL_DAYS);
+  const locked = m.done || day < 1 || day > TOTAL_DAYS;
+  const disabled = m.isMine || m.cheeredToday || busy;
+  const who = m.isMine ? "あなた" : `${nickname}さん`;
+  return (
+    <Sheet open onClose={onClose} title={`${who}の30日`}>
+      <div className="tg-detail" data-testid="member-detail">
+        <div className="tg-detail-head">
+          <Seal char={m.seal} size="lg" />
+          <div className="tg-member-text">
+            <div className="t tg-detail-title">{m.title}</div>
+            <div className="row gap fw tg-tags">
+              {isFirstOfMonth(m.startDate) ? <span className="tg-first">1日組</span> : <span className="pill">{jpDate(m.startDate)}から</span>}
+              {m.isMine && <span className="tg-you">あなた</span>}
+              {verdict && <span className={`badge ${verdict}`}>{VERDICTS[verdict].label}</span>}
+            </div>
+          </div>
+        </div>
+        <dl className="tg-detail-stats">
+          <div>
+            <dt>期間</dt>
+            <dd>{jpPeriod(m.startDate)}</dd>
+          </div>
+          <div>
+            <dt>いま</dt>
+            <dd>{memberStatus(m, today)}</dd>
+          </div>
+          <div>
+            <dt>押した日</dt>
+            <dd>
+              {stamped.size}
+              <small>/{TOTAL_DAYS}日</small>
+            </dd>
+          </div>
+          <div>
+            <dt>いちばん長い連続</dt>
+            <dd>
+              {longestStreak(m.stampDays)}
+              <small>日</small>
+            </dd>
+          </div>
+        </dl>
+        <Grid30 seal={m.seal} stampedDays={stamped} today={gridDay} locked={locked} label={`${who}の30日のカード`} readOnly />
+        {m.done && gridDay < TOTAL_DAYS && (
+          <p className="note">{lastStamped > 0 ? "最後に押した日より後は、斜線で表示しています。" : "押した日がないので、すべて斜線で表示しています。"}</p>
+        )}
+        <div className="row between gap fw tg-actions">
+          {/* aria-disabled, not disabled: focus stays on the button after cheering (inside the dialog). */}
+          <button
+            type="button"
+            className={m.cheeredToday ? "btn sm tg-cheer done" : "btn sm tg-cheer"}
+            aria-disabled={disabled || undefined}
+            aria-busy={busy || undefined}
+            onClick={disabled ? undefined : onCheer}
+          >
+            <HeartIcon />
+            <span className="sr-only">{m.isMine ? "あなたへの" : `${nickname}さんを`}</span>
+            {m.cheeredToday ? "応援済み" : "応援"}
+            <span className="tg-cheer-n">{m.cheers}</span>
+          </button>
+          {m.isMine && (
+            <Link to={`/c/${m.challengeId}`} className="btn sm ghost tg-open" onClick={onClose}>
+              自分の記録を開く
+            </Link>
+          )}
+        </div>
+        <p className="note">ひとことメモと写真は、本人だけが見られます。</p>
+      </div>
+    </Sheet>
   );
 }
 

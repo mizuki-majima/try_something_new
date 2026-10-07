@@ -13,7 +13,7 @@ Owner: AI QA ／ 対象: SPEC v1.3 ／ 最終更新: 2026-10-07
 | Integration | API の全ルート・DB・リマインドジョブ（DynamoDB は dynalite、S3 / SSM / Web Push はモック） | Vitest + dynalite + aws-sdk-client-mock | `apps/api/test/` | CI（`npm test`） |
 | Integration | インフラ（CDK テンプレートの検証。CloudFront Function のコードも実行して確認。DynamoDB のスループットの上限とスロットルのアラーム、アラームが API の使う DynamoDB の操作をすべて含むこと、TLS のみの通知トピックにこのアカウント・リージョンのアラームだけが Publish できること（#6））と `scripts/setup-secrets.mjs` の入れ替え・確認のロジック（origin-verify の手順 3 がデプロイ済みの CloudFront を確かめること。AWS CLI はモック） | Vitest + aws-cdk-lib/assertions | `infra/test/` | CI（`npm test`） |
 | E2E | CUF-1〜3 と全画面のスモーク。本番ビルドの Web + ローカル API | Playwright（Chromium。`mobile` 390×844 タッチ / `desktop` 1280×800） | `tests/e2e/` | CI（`npm run test:e2e`） |
-| Live smoke | デプロイ後の実環境で CUF・Web Push・OGP | 手動（下のチェックリスト） | 本書 | 初回公開前・インフラ変更後・リリースごと |
+| Live smoke | デプロイ後の実環境で CUF・Web Push・OGP | 手動（下のチェックリスト） | 本書 | 初回公開前・インフラ変更後・リリースごと（PILOT の前は行わず、CEO がリスクを受け入れた: [ADR 0006](decisions/0006-gate6-ceo-risk-acceptance.md)。一般公開の前には行う） |
 
 ### E2E の仕組み
 
@@ -49,7 +49,7 @@ npx playwright show-report               # 前回の HTML レポート
 | 同上 | 画像アップロードが 500 → エラー表示、公開リンクは出ない、「画像を保存」で 1200×630 の PNG が保存でき「Xで共有」も使える | CUF-2 E |
 | `rate-limit-429.spec.ts` | API Gateway のステージのスロットル（`Retry-After` なしの 429）を新しいチャレンジの作成が受けても、作成とその間に押した印が残り、あとで両方送られる（R9） | Error Handling 429, CUF-1 |
 | 同上 | アカウント作成（`POST /api/session`）の 429 の間、理由と再開の目安が帯で見え、チャレンジは残ってあとで同期される（R7・R10） | Error Handling 429 |
-| `cuf3-cohort-cheer.spec.ts` | A が今月開始（公開は既定 ON）→ 別ブラウザの B が「みんな」→ 今月の組に A のニックネーム・印・タイトル・ミニ30マス →「応援」で 0→1・「応援済み」で押せない（再読み込み後も）・API の2回目は 409 → A が設定で「みんなに進捗を表示する」を OFF → B の再読み込みで A が消える | CUF-3 1〜4 |
+| `cuf3-cohort-cheer.spec.ts` | A が今月開始（公開は既定 ON）→ 別ブラウザの B が「みんな」→ 今月の組に A のニックネーム・印・タイトル・ミニ30マス（カードのボタンが1行の高さ）→「詳しく見る」で A の30マス（1日目に印）とメモ非公開の注記、Esc で閉じる →「応援」で 0→1・「応援済み」で押せない（再読み込み後も）・API の2回目は 409 → A が設定で「みんなに進捗を表示する」を OFF → B の再読み込みで A が消える | CUF-3 1〜4 |
 | `smoke.spec.ts` | `/` `/recipes` `/recipes/photo` `/recipes/new` `/gacha` `/together` `/log` `/settings` `/about` `/terms` `/privacy` `/contact` `/admin` と未知のパス（404 画面）が、コンソールエラーなし・横スクロールなしで開く（14 件） | SPEC UI |
 | 同上 | ガチャを1回まわして結果と「これを30日やる」、ひらめき提案で3案と「いまは AI を使わず、ルールで選んでいます」、残り回数 | FR-12, FR-13 |
 | 同上 | `/s/<存在しないID>` がサーバ生成の HTML 404（「カードが見つかりません」） | FR-7 |
@@ -88,6 +88,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 |---|---|---|---|
 | 1 A が今月開始・進捗公開 ON | `apps/web/test/start.test.tsx` | `apps/api/test/challenges.test.ts` "projects into next month's cohort for a reservation, and not at all when progress is private" | `cuf3-cohort-cheer` |
 | 2 B の「みんな」に A（ニックネーム・印・ミニ30マス） | `apps/web/test/together.test.tsx` "lists this month's members with 1日組, counts and cheer states" | `apps/api/test/cohorts.test.ts` "shows A to B without notes or ids, counts one cheer per day, and hides A when A turns sharing off" | `cuf3-cohort-cheer` |
+| 2b B が A の「詳しく見る」（同じ公開情報だけ。#16） | `apps/web/test/together.test.tsx` "TogetherPage member detail"（開閉・追加の通信なし・レシピのリンクなし・応援後もフォーカスがシート内・途中で区切った人）, "member detail helpers" | —（API は変えていない） | `cuf3-cohort-cheer`（シートの30マスと注記、カードのボタンの高さ） |
 | 3 「応援」で +1、同じ日は2回目不可 | `apps/web/test/together.test.tsx` "cheers optimistically…", "409: already cheered today…" | `apps/api/test/cohorts.test.ts`（同上）, "refuses cheering one's own challenge, unknown or hidden ones, and anonymous cheers" | `cuf3-cohort-cheer`（画面 + API 409） |
 | 4 A が公開 OFF → B の一覧から消える | `apps/web/test/settings.test.tsx` "toggles shareProgress and explains what is shown" | `apps/api/test/me.test.ts` "rewrites the nickname on challenges and toggles the cohort projection" | `cuf3-cohort-cheer` |
 | E 一覧の取得に失敗 | `apps/web/test/together.test.tsx` "shows an error with retry, and the empty state" | — | —（Unit で十分） |
@@ -146,7 +147,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] CUF-2: 30日前に始めたチャレンジを用意する（設定 → バックアップの読み込みで、開始日を30日前にしたバックアップ JSON を読み込む。形は `tests/e2e/fixtures.ts` の `pastChallenge`）→ 振り返る → 続ける → カード → リンクを作って共有 → 別のブラウザ（シークレット）で `/s/<id>` を開く
 - [ ] OGP: `/s/<id>` を LINE（自分だけのトーク）と X の投稿画面に貼り、画像つきのカードが出る。`og:image` が `https://<CloudFront ドメイン>/media/share/<id>.png`。トップの URL を貼っても画像が出る
 - [ ] 通報: `/s/<id>` の「このカードを通報する」→ お問い合わせ画面の通報フォーム → 送ると管理画面の通報一覧に出る。管理画面で「非表示」→（キャッシュの5分以内に）`/s/<id>` は 404、`/media/share/<id>.png` は 403（S3 は無いキーに 403 を返す。CloudFront には一覧の権限を与えていないため。404 でもよい）。「復元」で両方戻る。`/s/<id>` の下にフッター（このサービスについて・利用規約・プライバシーポリシー・お問い合わせ）
-- [ ] CUF-3: 端末 A で今月開始、端末 B（別アカウント）の「みんな」に A が出る → 応援 → 応援済み → A が設定で公開 OFF → B の再読み込みで消える
+- [ ] CUF-3: 端末 A で今月開始、端末 B（別アカウント）の「みんな」に A が出る →「詳しく見る」で A の30マスが出る（メモ・写真は出ない）→ 応援 → 応援済み → A が設定で公開 OFF → B の再読み込みで消える
 
 **Web Push（FR-14）**
 

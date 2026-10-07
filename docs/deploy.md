@@ -2,7 +2,7 @@
 
 構成は [SPEC.md](../SPEC.md) の Architecture。IaC は `infra/`（AWS CDK、スタック名 `ThirtyDays`、リージョン `ap-northeast-1`）。生成 AI は使っていないので、Bedrock の設定やモデルの有効化は不要（[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
-> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6 の後（残りは実機の Live smoke [#8](https://github.com/mizuki-majima/try_something_new/issues/8)。通知メールの購読は 2026-10-07 に承認済み）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
+> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、Gate 6 は 2026-10-07 に CEO のリスク受け入れで通過し（[ADR 0006](decisions/0006-gate6-ceo-risk-acceptance.md)。実機の裏付けはない）、招待できる。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
 >
 > 2026-10-07 に `ALERT_EMAIL`（宛先は CEO のメールアドレス。リポジトリには書かない）を付けて再デプロイし、予算 `thirty-days-monthly` とアラーム5つを作った（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。
 >

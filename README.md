@@ -3,8 +3,8 @@
 新しいことを **30日だけ** 試して、30日目に「続ける／やめる／形を変える」を自分で決める Web サービス（PWA）。
 TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰でもすぐ試せる形にしたもの。習慣化アプリではなく「お試し」のためのサービスで、やめることも成果として扱う。
 
-- PILOT 用の環境: https://d1zw3n37kpuo7t.cloudfront.net（友人・同僚 10人前後の1日組。2026-11-01 開始。招待は Gate 6 の後）
-- 現在の Phase: **TEST**（PILOT 開始は CEO 承認済み。次は [Gate 6: TEST → PILOT](https://github.com/mizuki-majima/try_something_new/issues/4)）。何を作り、何を作らないかは [PRODUCT.md](PRODUCT.md)、仕様は [SPEC.md](SPEC.md)
+- PILOT 用の環境: https://d1zw3n37kpuo7t.cloudfront.net（友人・同僚 10人前後の1日組。2026-11-01 開始）
+- 現在の Phase: **PILOT**（次は [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)）。何を作り、何を作らないかは [PRODUCT.md](PRODUCT.md)、仕様は [SPEC.md](SPEC.md)
 
 ## できること
 

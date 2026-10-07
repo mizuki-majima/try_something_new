@@ -342,7 +342,8 @@ main.wrap:focus {
   background-color: var(--surface, #fff);
   background-image: repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 7px);
 }
-.cell.locked {
+.cell.locked,
+.grid30.ro .cell {
   cursor: default;
 }
 .cell.locked.clickable {
@@ -354,17 +355,18 @@ main.wrap:focus {
   background: var(--blue, #6c8cff);
   color: var(--on-accent, #111);
 }
+/* Press effects only on cells that are buttons (a read-only card's cells are not). */
 @media (hover: hover) {
-  .cell:not(:disabled):not(.locked):hover,
-  .cell.clickable:not(:disabled):hover {
+  button.cell:not(:disabled):not(.locked):hover,
+  button.cell.clickable:not(:disabled):hover {
     transform: translate(-1px, -1px);
     box-shadow: 3px 3px 0 var(--ink, #111);
   }
-  .cell.today:not(:disabled):hover {
+  button.cell.today:not(:disabled):hover {
     box-shadow: 4px 4px 0 var(--ink, #111);
   }
 }
-.cell:not(:disabled):active {
+button.cell:not(:disabled):active {
   transform: translate(2px, 2px);
   box-shadow: 0 0 0 var(--ink, #111);
 }
