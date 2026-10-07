@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Current Phase** | REVIEW |
-| Health | 🟡 YELLOW（Gate 5 の独立レビューで Critical・High が見つかり修正、再レビューの費用の Critical（NF-1）は R1〜R10 で修正。最終確認で Critical / High 0件、残った Medium / Low を R11〜R16 で修正。テスト用の環境には修正前のコードが載っている） |
-| Next Gate | [Gate 5: REVIEW → TEST](https://github.com/mizuki-majima/try_something_new/issues/2) |
+| **Current Phase** | TEST |
+| Health | 🔴 RED（CEO 判断待ち: PILOT 開始の承認と [#3](https://github.com/mizuki-majima/try_something_new/issues/3)。技術面は Gate 5 PASS・本番環境の動作確認済み） |
+| Next Gate | [Gate 6: TEST → PILOT](https://github.com/mizuki-majima/try_something_new/issues/4) |
 | Last updated | 2026-10-07 |
 
 > 趣味のサービス。収益を目的にしないため、Gate 1 の収益・価格の項目と Gate 2（支払意思）は CEO 判断で免除（[ADR 0001](docs/decisions/0001-hobby-service-skip-payment-validation.md)）。
