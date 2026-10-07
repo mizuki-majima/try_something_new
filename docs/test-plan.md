@@ -11,7 +11,7 @@ Owner: AI QA ／ 対象: SPEC v1.3 ／ 最終更新: 2026-10-07
 | Unit | 共有ロジック（日付・文字数・スキーマ） | Vitest | `packages/shared/test/` | CI（`npm test`） |
 | Unit | Web のロジックと画面（store・outbox・共有カード・各ページ） | Vitest + jsdom + Testing Library | `apps/web/test/` | CI（`npm test`） |
 | Integration | API の全ルート・DB・リマインドジョブ（DynamoDB は dynalite、S3 / SSM / Web Push はモック） | Vitest + dynalite + aws-sdk-client-mock | `apps/api/test/` | CI（`npm test`） |
-| Integration | インフラ（CDK テンプレートの検証。CloudFront Function のコードも実行して確認。DynamoDB のスループットの上限とスロットルのアラーム、アラームが API の使う DynamoDB の操作をすべて含むこと）と `scripts/setup-secrets.mjs` の入れ替え・確認のロジック（origin-verify の手順 3 がデプロイ済みの CloudFront を確かめること。AWS CLI はモック） | Vitest + aws-cdk-lib/assertions | `infra/test/` | CI（`npm test`） |
+| Integration | インフラ（CDK テンプレートの検証。CloudFront Function のコードも実行して確認。DynamoDB のスループットの上限とスロットルのアラーム、アラームが API の使う DynamoDB の操作をすべて含むこと、TLS のみの通知トピックにこのアカウント・リージョンのアラームだけが Publish できること（#6））と `scripts/setup-secrets.mjs` の入れ替え・確認のロジック（origin-verify の手順 3 がデプロイ済みの CloudFront を確かめること。AWS CLI はモック） | Vitest + aws-cdk-lib/assertions | `infra/test/` | CI（`npm test`） |
 | E2E | CUF-1〜3 と全画面のスモーク。本番ビルドの Web + ローカル API | Playwright（Chromium。`mobile` 390×844 タッチ / `desktop` 1280×800） | `tests/e2e/` | CI（`npm run test:e2e`） |
 | Live smoke | デプロイ後の実環境で CUF・Web Push・OGP | 手動（下のチェックリスト） | 本書 | 初回公開前・インフラ変更後・リリースごと |
 
@@ -96,6 +96,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 
 | ケース | どこで確かめるか |
 |---|---|
+| アラームが TLS のみの SNS トピックに Publish できる（`enforceSSL` が既定のポリシーを置き換えても。#6） | `infra/test/stack.test.ts` "lets this account's CloudWatch alarms publish…"、本番では Live smoke の `set-alarm-state` のテスト |
 | 未来の日は押せない／押し忘れた過去の日は押せる／30日を過ぎたら 30 まで | `apps/web/test/today.test.tsx` "toggles a past day…", `apps/api/test/challenges.test.ts` "stamps" |
 | 端末と API の日付のずれ（今日 +1 日まで受け付ける）・タイムゾーン・DST | `apps/api/test/challenges.test.ts`, `apps/api/test/reminder.test.ts` "…DST…", `packages/shared/test/` |
 | 同時に開けるのは5件、1日10件の作成上限、同じ id の再送は数えない | `apps/api/test/challenges.test.ts` "creation quota…", `apps/web/test/start.test.tsx` "explains the limit when 5 challenges are open" |
@@ -160,7 +161,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] `/admin` に管理トークンで入り、統計（開始した人・7日継続・完走）とお問い合わせが見える。別アカウントで通報した項目が一覧に出る
 - [ ] 設定 →「すべてのデータを削除」で、アカウント・公開カード（`/s/<id>` が 404）・1日組の表示が消える
 - [ ] CloudWatch Logs に 5xx が無い。ログにトークン・ひとこと・投稿本文・Push の宛先・IP が出ていない
-- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム5つ（`Api5xx`・`ApiErrors`・`ReminderErrors`・`DynamoThrottles`・`SessionCeiling`）、api のロググループのメトリクスフィルタ（名前に `SessionCeilingFilter` を含む）がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている
+- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム5つ（`Api5xx`・`ApiErrors`・`ReminderErrors`・`DynamoThrottles`・`SessionCeiling`）、api のロググループのメトリクスフィルタ（名前に `SessionCeilingFilter` を含む）がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている。アラームの SNS のメール購読が ARN（`PendingConfirmation` や `Deleted` ではない）で、`set-alarm-state` のテストのメールが届く（docs/deploy.md）
 - [ ] DynamoDB のテーブルと GSI 3つに最大オンデマンドスループット（読み込み 1000・書き込み 100）が付いている。`DynamoThrottles` と `SessionCeiling` が「OK」（Live smoke の操作で上限に当たらない）
 - [ ] `node scripts/setup-secrets.mjs --check` が「6 個がそろっています」
 

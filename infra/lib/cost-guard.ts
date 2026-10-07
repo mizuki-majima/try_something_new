@@ -1,9 +1,10 @@
-import { Duration } from "aws-cdk-lib";
+import { Duration, Stack } from "aws-cdk-lib";
 import type * as apigw from "aws-cdk-lib/aws-apigatewayv2";
 import * as budgets from "aws-cdk-lib/aws-budgets";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import type * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
 import type * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as sns from "aws-cdk-lib/aws-sns";
@@ -95,6 +96,24 @@ export class CostGuard extends Construct {
     });
 
     const topic = new sns.Topic(this, "AlarmTopic", { displayName: "thirty-days alerts", enforceSSL: true });
+    // enforceSSL gives the topic a policy of its own, which replaces the default one, and the default
+    // is what let this account's CloudWatch alarms publish. Without this statement every alarm action
+    // failed with "CloudWatch Alarms is not authorized to perform: SNS:Publish" (a test notification
+    // on 2026-10-07 found it). The account is shared, so any alarm in this account and region may
+    // publish here, which is still narrower than the default policy it replaces.
+    const { account, partition, region } = Stack.of(this);
+    topic.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: "AllowThisAccountsAlarmsToPublish",
+        principals: [new iam.ServicePrincipal("cloudwatch.amazonaws.com")],
+        actions: ["sns:Publish"],
+        resources: [topic.topicArn],
+        conditions: {
+          StringEquals: { "aws:SourceAccount": account },
+          ArnLike: { "aws:SourceArn": `arn:${partition}:cloudwatch:${region}:${account}:alarm:*` },
+        },
+      }),
+    );
     topic.addSubscription(new subs.EmailSubscription(props.alertEmail));
     const action = new cwActions.SnsAction(topic);
 

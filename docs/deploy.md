@@ -2,13 +2,16 @@
 
 構成は [SPEC.md](../SPEC.md) の Architecture。IaC は `infra/`（AWS CDK、スタック名 `ThirtyDays`、リージョン `ap-northeast-1`）。生成 AI は使っていないので、Bedrock の設定やモデルの有効化は不要（[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
-> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6（実機の Live smoke と、通知メールの購読の承認の後）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
+> **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6 の後（残りは実機の Live smoke [#8](https://github.com/mizuki-majima/try_something_new/issues/8)。通知メールの購読は 2026-10-07 に承認済み）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
 >
 > 2026-10-07 に `ALERT_EMAIL`（宛先は CEO のメールアドレス。リポジトリには書かない）を付けて再デプロイし、予算 `thirty-days-monthly` とアラーム5つを作った（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。
 >
 > - **次からのデプロイでも同じ宛先を付ける。** 外すと予算・SNS トピック・アラームが確認なしで消え、付け直しても購読の承認からやり直しになる。宛先はどこにも新しく書かず、`aws sns list-subscriptions-by-topic --topic-arn <ThirtyDays-CostGuardAlarmTopic… の ARN>` の `Endpoint` で確かめるか CEO に聞く
 > - 予算のメールは宛先に直接届く（承認は要らない）。アラームのメールは SNS 経由なので、AWS からの確認メール（件名「AWS Notification - Subscription Confirmation」）で購読を承認してから届く
 > - 確認メールのリンクには期限がある（数日。過ぎると承認されないまま消える）。期限が過ぎたら、同じコマンドの代わりに `aws sns subscribe --topic-arn <上の ARN> --protocol email --notification-endpoint <宛先>` で確認メールを送り直す（CloudFormation は消えた購読に気づかないので、再デプロイでは送り直されない）
+> - **購読は承認のあとでも消えることがある。** 2026-10-07 は1・2回目とも承認の直後に `Deleted` になった（メールアプリのリンク確認や、承認後のページ・通知メールの下にある unsubscribe リンクが開かれると消える。原因は特定できていない）。3回目で有効。AI PM はセッションのたびに `aws sns list-subscriptions-by-topic --topic-arn <上の ARN> --query "Subscriptions[?starts_with(SubscriptionArn,'arn:')].SubscriptionArn"` が1つ以上返ることを確かめ（`PendingConfirmation` や `Deleted` だけなら消えている）、消えていたら下の手順で承認し直す。送り直した購読は CloudFormation の管理の外になる（スタックの Subscription リソースとはずれる）
+> - **承認は、解除にサインインが要る形で行う**（メールの unsubscribe リンクや自動のリンク確認で消えないように）: 今の購読を `aws sns unsubscribe` で外す → `subscribe` で確認メールを送る → CEO がリンクを**開かずにコピー**して AI に渡す → その中の `Token` で `aws sns confirm-subscription --topic-arn <上の ARN> --token <Token> --authenticate-on-unsubscribe true` を実行する。`get-subscription-attributes` の `ConfirmationWasAuthenticated` が `true` になれば完了
+> - 届くかの確認: `aws cloudwatch set-alarm-state --alarm-name <ThirtyDays-CostGuardApi5xx… の名前> --state-value ALARM --state-reason "TEST"` でテストのメールが1通届く（無料。次の評価で OK に戻る。OK のメールは送らない設定）。アラームの履歴（`aws cloudwatch describe-alarm-history --alarm-name <名前> --history-item-type Action`、無料）に `Successfully executed action` が出れば、トピックのポリシーは Publish を許している（`Failed to execute action` ならポリシーを疑う）。これは SNS が受け取ったことしか示さない（購読が無くても成功と出る）ので、届いたかは購読が ARN であることとメールの到着で確かめる。2026-10-07 の1回目は失敗し（TLS のみの方針でトピックの既定のポリシーが置き換わり、CloudWatch が Publish できなかった）、修正して再デプロイした2回目で成功し、CEO にメールが届いたことを確認した
 
 ## 前提
 
@@ -94,7 +97,7 @@ cd infra && npx cdk deploy -c alertEmail=you@example.com
 3. API Gateway の URL（`https://<apiId>.execute-api.ap-northeast-1.amazonaws.com/api/health`）を直接開くと 403（CloudFront 経由のみ受け付ける）。AWS アカウントは他のプロジェクトと共用なので、コンソールでは API 名 `ThirtyDaysApi`、スタックの説明「30日だけ (try_something_new)」で見分ける
 4. `<SiteUrl>/media/hidden/share/x.png` が 404（公開されるのは `/media/share/<id>.png` だけ。通報や管理で非表示にしたカードの画像は `hidden/share/` に移る）
 5. `curl -s <SiteUrl>/ | grep og:image` が `https://` で始まる URL を返す
-6. （`ALERT_EMAIL` を付けたとき）確認メールの購読を承認した。CloudWatch のアラームが5つ（下）と、ロググループ `ApiLogs…` のメトリクスフィルタ（`CostGuardSessionCeilingFilter…` のような名前）があり、Budgets に `thirty-days-monthly` がある
+6. （`ALERT_EMAIL` を付けたとき）確認メールの購読を承認した（上の「解除にサインインが要る形」）。`set-alarm-state` のテストでアラームの履歴に `Successfully executed action` が出て、メールが届く。CloudWatch のアラームが5つ（下）と、ロググループ `ApiLogs…` のメトリクスフィルタ（`CostGuardSessionCeilingFilter…` のような名前）があり、Budgets に `thirty-days-monthly` がある
 7. DynamoDB のテーブル（コンソールの「追加の設定」→ 読み込み/書き込みキャパシティ）で、テーブルと GSI 3つの最大オンデマンドスループットが読み込み 1000・書き込み 100 になっている
 
 ## アラーム（`ALERT_EMAIL` 指定時）
@@ -163,7 +166,7 @@ CloudFront の反映には数分かかり、Lambda の切り替えは数秒で�
 
 ## ロールバック
 
-- **コード**: 直前の正常なコミットに戻して、同じ手順でデプロイし直す（`git checkout <commit>` → `npm ci` → `npm run deploy`）。Web の古いハッシュ付きファイルは消さない設定なので、開いたままのタブも壊れない。2026-10 のレビュー修正より前の版は CloudFront にも `origin-verify` の値を送らせるので、戻すのは `origin-verify` と `origin-verify-send` が同じ1つの値のとき（入れ替えが終わった状態）だけにする。違うまま戻すと、そのデプロイの数分間 API が 403 になる。2026-10 の再レビュー修正（R1〜R10）より前の版に戻すと、DynamoDB のスループットの上限と `DynamoThrottles` のアラームも外れる。最終確認の修正（R11〜R16）より前に戻すと、アカウント削除でモデレーションの印（`MOD#`）がまた消え、`SessionCeiling` のアラームが外れる
+- **コード**: 直前の正常なコミットに戻して、同じ手順でデプロイし直す（`git checkout <commit>` → `npm ci` → `npm run deploy`）。Web の古いハッシュ付きファイルは消さない設定なので、開いたままのタブも壊れない。2026-10 のレビュー修正より前の版は CloudFront にも `origin-verify` の値を送らせるので、戻すのは `origin-verify` と `origin-verify-send` が同じ1つの値のとき（入れ替えが終わった状態）だけにする。違うまま戻すと、そのデプロイの数分間 API が 403 になる。2026-10 の再レビュー修正（R1〜R10）より前の版に戻すと、DynamoDB のスループットの上限と `DynamoThrottles` のアラームも外れる。最終確認の修正（R11〜R16）より前に戻すと、アカウント削除でモデレーションの印（`MOD#`）がまた消え、`SessionCeiling` のアラームが外れる。`3f22e27` より前に戻すと、アラームのメールが送れなくなる（トピックのポリシーに CloudWatch の Publish の許可が無い。#6）
 - **データ**: DynamoDB はポイントインタイムリカバリ（PITR、35日）が有効。コンソールの DynamoDB → テーブル → バックアップ →「ポイントインタイムに復元」で**別名の新しいテーブル**に復元し、必要な項目を元のテーブルへ書き戻す。スタックのテーブルを差し替えない（CloudFormation の管理から外れる）
 
 ## 片付け（停止するとき）
