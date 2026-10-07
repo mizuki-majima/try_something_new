@@ -3,7 +3,8 @@ import { defineConfig, type Plugin, type ProxyOptions } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 /** Local API (npm run dev). Regex keys: a plain "/s" prefix would also swallow /settings and /src. */
-const API_ORIGIN = "http://localhost:8787";
+// scripts/dev.mjs passes API_ORIGIN; 127.0.0.1 because the local API binds IPv4 only.
+const API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:8787";
 const proxy: Record<string, ProxyOptions> = {
   "^/api/": { target: API_ORIGIN },
   "^/s/": { target: API_ORIGIN },
