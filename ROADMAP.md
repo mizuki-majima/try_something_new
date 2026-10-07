@@ -18,7 +18,7 @@
 
 - [ ] 実機（iPhone / Android）での Live smoke（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)。CEO が操作、AI QA が判定）
 - [x] 障害・費用の通知メール（`ALERT_EMAIL`）を付けて再デプロイ（2026-10-07。予算 `thirty-days-monthly` とアラーム5つ）
-- [ ] AWS からの確認メールで購読を承認（CEO。[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。それまでは AI PM がセッションのたびに Cost Explorer とログを確認する
+- [x] AWS からの確認メールで購読を承認（CEO、2026-10-07。[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）
 - [ ] AI QA が Gate 6 を判定（[#4](https://github.com/mizuki-majima/try_something_new/issues/4)）→ PILOT
 
 PILOT:

@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Current Phase** | TEST（PILOT 開始は 2026-10-07 に CEO が承認: [ADR 0005](docs/decisions/0005-pilot-approval.md)。招待は Gate 6 の後） |
-| Health | 🟡 YELLOW（招待の前に残るもの: 実機での Live smoke [#8](https://github.com/mizuki-majima/try_something_new/issues/8)、通知メールの購読の承認 [#6](https://github.com/mizuki-majima/try_something_new/issues/6)（AWS からの確認メール。2026-10-07 に予算とアラームは作成済み）。どちらも 2026-10-31 まで） |
-| Next Gate | [Gate 6: TEST → PILOT](https://github.com/mizuki-majima/try_something_new/issues/4)（#8 と #6 の後に AI QA が判定）→ [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)（2026-11-30 の後） |
+| Health | 🟡 YELLOW（招待の前に残るもの: 実機での Live smoke [#8](https://github.com/mizuki-majima/try_something_new/issues/8)。2026-10-31 まで。障害・費用の通知 [#6](https://github.com/mizuki-majima/try_something_new/issues/6) は 2026-10-07 に完了） |
+| Next Gate | [Gate 6: TEST → PILOT](https://github.com/mizuki-majima/try_something_new/issues/4)（#8 の後に AI QA が判定）→ [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)（2026-11-30 の後） |
 | Last updated | 2026-10-07 |
 
 > 趣味のサービス。収益を目的にしないため、Gate 1 の収益・価格の項目と Gate 2（支払意思）は CEO 判断で免除（[ADR 0001](docs/decisions/0001-hobby-service-skip-payment-validation.md)）。
@@ -84,14 +84,14 @@ PILOT の **完走率**（30日目または7日目以降の区切りで振り返
 
 ## Current Goal
 
-2026-10-31 までに実機での Live smoke（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）と通知メール（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）を済ませて Gate 6 を通す。そのあと CEO が友人・同僚 10人前後に URL を配り、**2026-11-01 開始の1日組**を1回走らせる（AI は連絡しない）。30日目（2026-11-30）の後に、管理画面の指標と感想で Gate 7 を判定する（基準は [docs/validation-plan.md](docs/validation-plan.md) のまま変えない）。PILOT 中は機能を足さず、バグと運用だけ直す。
+2026-10-31 までに実機での Live smoke（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）を済ませて Gate 6 を通す（通知メール [#6](https://github.com/mizuki-majima/try_something_new/issues/6) は済み）。そのあと CEO が友人・同僚 10人前後に URL を配り、**2026-11-01 開始の1日組**を1回走らせる（AI は連絡しない）。30日目（2026-11-30）の後に、管理画面の指標と感想で Gate 7 を判定する（基準は [docs/validation-plan.md](docs/validation-plan.md) のまま変えない）。PILOT 中は機能を足さず、バグと運用だけ直す。
 
 ## Current Risks
 
 | リスク | 対処 |
 |---|---|
 | 作ったが使われない | PILOT の基準を事前に固定。使われなければ機能を足さず PAUSE / KILL を検討 |
-| AWS 費用が想定を超える | サーバーレス・on-demand・AI なし（100人規模で月約 $0.1）。DynamoDB はテーブルと GSI ごとに最大スループットの上限（1時間あたりの速さの上限。テーブルか GSI 1つにつき、上限まで使われて読み込み 約 $0.51/時・書き込み 約 $0.26/時。月の合計の上限ではない。R16）とスロットルのアラーム、書き込みを増やす操作（プロフィール変更・読み込み）に回数の上限（R1）。Budgets で `Project=thirty-days` の費用が月 $10 を超えそうなら通知（費用配分タグは 2026-10-07 に有効化。DynamoDB 以外の荒らしの費用はこれだけが頼り）。API の 5xx とエラーのアラーム。予算とアラームは 2026-10-07 に `ALERT_EMAIL` を付けて作成した（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。予算のメールはすぐ届くが、数時間遅れる。速く気づけるアラーム（`DynamoThrottles` など）のメールは、CEO が AWS からの確認メールで購読を承認してから届くので、招待は承認の後 |
+| AWS 費用が想定を超える | サーバーレス・on-demand・AI なし（100人規模で月約 $0.1）。DynamoDB はテーブルと GSI ごとに最大スループットの上限（1時間あたりの速さの上限。テーブルか GSI 1つにつき、上限まで使われて読み込み 約 $0.51/時・書き込み 約 $0.26/時。月の合計の上限ではない。R16）とスロットルのアラーム、書き込みを増やす操作（プロフィール変更・読み込み）に回数の上限（R1）。Budgets で `Project=thirty-days` の費用が月 $10 を超えそうなら通知（費用配分タグは 2026-10-07 に有効化。DynamoDB 以外の荒らしの費用はこれだけが頼り）。API の 5xx とエラーのアラーム。予算とアラームは 2026-10-07 に `ALERT_EMAIL` を付けて作成した（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。予算のメールはすぐ届くが、数時間遅れる。速く気づけるアラーム（`DynamoThrottles` など）のメールは SNS 経由で、2026-10-07 に CEO が購読を承認した。購読が消えていないかを AI PM がセッションのたびに確かめる |
 | 匿名の投稿による荒らし | 公開テキストは URL 禁止、レート制限（IP は IPv6 なら /56 単位。アカウント作成はネットワーク（IPv4 /16・IPv6 /48）ごとに1時間60件、全体でも1時間2000件で、全体に当たるとアラーム）、バックアップ読み込みの回数・件数の上限と1人ずつの実行、通報3件で自動非表示（作成24時間以上・チャレンジのあるアカウントで、2つ以上のネットワークからの通報だけ）、止めたものは消して（アカウントごと消しても）読み込み直しても戻らない、管理画面 |
 | PILOT の参加者以外に URL が広まる | URL は README にもある。広まっても困らない作り（匿名・URL 禁止・レート制限・通報）だが、参加者以外の利用が目立ったら CEO に報告する |
 | iPhone（WebKit）だけで起きる不具合 | 自動テストは Chromium だけ。招待の前に実機で Live smoke（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)） |
