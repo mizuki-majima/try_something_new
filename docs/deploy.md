@@ -4,7 +4,7 @@
 
 > **本番公開（URL を人に配ること）は CEO の承認が要る**（[docs/validation-plan.md](validation-plan.md)）。CEO は 2026-10-07 に PILOT（友人・同僚に配る）を承認した（[ADR 0005](decisions/0005-pilot-approval.md)）。`https://d1zw3n37kpuo7t.cloudfront.net` が PILOT 用の環境で、招待は Gate 6（実機の Live smoke と通知メールの後）。一般公開（LIVE）には、改めて CEO の承認が要る（Gate 7）。
 >
-> **2026-10-07 時点の環境は `ALERT_EMAIL` なしでデプロイしてあり、予算 `thirty-days-monthly` とアラームは無い**（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。
+> 2026-10-07 に `ALERT_EMAIL`（宛先は CEO のメールアドレス。リポジトリには書かない）を付けて再デプロイし、予算 `thirty-days-monthly` とアラーム5つを作った。次からのデプロイでも同じ宛先を付ける（外すと消える）。メールは購読の承認後に届く（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。
 
 ## 前提
 
