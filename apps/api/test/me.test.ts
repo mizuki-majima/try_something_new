@@ -1,10 +1,13 @@
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { BatchWriteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 import {
+  LIMITS,
+  QUOTAS,
   newId,
   type ApiError,
   type BackupFile,
   type Challenge,
+  type CohortResponse,
   type ImportResponse,
   type MeResponse,
   type SessionResponse,
@@ -18,13 +21,15 @@ import {
   recipeStatsKey,
   shareAuthorGsi2,
   shareKey,
+  hiddenShareMediaKey,
   shareMediaKey,
   storyAuthorGsi2,
   storyKey,
 } from "../src/db/keys";
+import { computePilotStats } from "../src/db/pilot";
 import { getStats } from "../src/db/stats";
 import type { Item } from "../src/db/util";
-import { json, setupApi } from "./helpers";
+import { ADMIN_TOKEN, json, setupApi } from "./helpers";
 
 const api = setupApi();
 
@@ -163,10 +168,16 @@ describe("DELETE /api/me", () => {
     await put({ ...recipeKey(otherRid), ...recipeAuthorGsi2(other.user.id, otherRid), title: "残るレシピ" });
     await put({ ...recipeStatsKey(otherRid), storyCount: 2 });
     await put({ ...storyKey(otherRid, now, "s2"), ...storyAuthorGsi2(uid, otherRid, "s2"), body: "消える体験談" });
+    // Hidden by moderation: it already left storyCount then, so deletion must not count it off again.
+    await put({ ...storyKey(otherRid, now, "s4"), ...storyAuthorGsi2(uid, otherRid, "s4"), body: "非表示の体験談", status: "hidden" });
     await put({ ...storyKey(otherRid, now, "s3"), ...storyAuthorGsi2(other.user.id, otherRid, "s3"), body: "残る体験談" });
     const sid = newId(16);
     await put({ ...shareKey(sid), ...shareAuthorGsi2(uid, sid), challengeId: ch.id });
     await api.deps.media.put(shareMediaKey(sid), new Uint8Array([1, 2, 3]), "image/png");
+    // A second card, hidden by moderation (its image sits outside the public prefix).
+    const hiddenSid = newId(16);
+    await put({ ...shareKey(hiddenSid), ...shareAuthorGsi2(uid, hiddenSid), challengeId: ch.id, status: "hidden" });
+    await api.deps.media.put(hiddenShareMediaKey(hiddenSid), new Uint8Array([4, 5, 6]), "image/png");
     await seedChallenge(other, challenge());
 
     const usersBefore = (await getStats(api.deps)).users;
@@ -183,6 +194,8 @@ describe("DELETE /api/me", () => {
     expect(remaining).not.toContain(sid);
     expect(remaining).not.toContain("TRANSFER#");
     expect(api.media.objects.has(shareMediaKey(sid))).toBe(false);
+    expect(api.media.objects.has(hiddenShareMediaKey(hiddenSid))).toBe(false);
+    expect(remaining).not.toContain(hiddenSid);
 
     // The other user's things survive; the story count of their recipe drops by one.
     expect(remaining).toContain("残るレシピ");
@@ -191,6 +204,33 @@ describe("DELETE /api/me", () => {
     expect(await listUserChallenges(api.deps, other.user.id)).toHaveLength(1);
     expect((await getItem("RSTATS", otherRid))?.storyCount).toBe(1);
     expect((await getStats(api.deps)).users).toBe(usersBefore - 1);
+  });
+
+  it("fails without deleting anything when a card image cannot be removed, so it can be retried", async () => {
+    const s = await api.createSession("消したい");
+    const ch = challenge();
+    await seedChallenge(s, ch);
+    const sid = newId(16);
+    await put({ ...shareKey(sid), ...shareAuthorGsi2(s.user.id, sid), challengeId: ch.id, status: "published" });
+    await api.deps.media.put(shareMediaKey(sid), new Uint8Array([1, 2, 3]), "image/png");
+
+    const realDelete = api.media.delete.bind(api.media);
+    api.media.delete = async () => {
+      throw new Error("S3 is down");
+    };
+    try {
+      expect((await api.request("/api/me", { method: "DELETE", token: s.token })).status).toBe(500);
+    } finally {
+      api.media.delete = realDelete;
+    }
+    // Nothing is gone: the token still works, the card (and the way to find its image) is still there.
+    expect((await api.request("/api/me", { token: s.token })).status).toBe(200);
+    expect(await getItem(`SHARE#${sid}`, "META")).toBeDefined();
+    expect(api.media.objects.has(shareMediaKey(sid))).toBe(true);
+
+    expect((await api.request("/api/me", { method: "DELETE", token: s.token })).status).toBe(204);
+    expect(await getItem(`SHARE#${sid}`, "META")).toBeUndefined();
+    expect(api.media.objects.has(shareMediaKey(sid))).toBe(false);
   });
 });
 
@@ -218,7 +258,7 @@ describe("export / import", () => {
     const theirs = challenge({ title: "他人のもの" });
     await seedChallenge(someone, theirs);
 
-    const fresh = challenge({ title: "新しく入る", status: "done", verdict: "continue", reflection: "よかった", finishedAt: t, finishedDay: 30 });
+    const fresh = challenge({ title: "新しく入る", startDate: "2026-09-01", status: "done", verdict: "continue", reflection: "よかった", finishedAt: t, finishedDay: 30 });
     const file: BackupFile = {
       format: "thirty-days-backup",
       version: 1,
@@ -273,5 +313,140 @@ describe("export / import", () => {
     const s = await api.createSession();
     const res = await api.request("/api/me/import", { token: s.token, body: { format: "other" } });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("import follows the live rules (FR-16 abuse)", () => {
+  const backup = (challenges: Challenge[]): BackupFile => ({
+    format: "thirty-days-backup",
+    version: 1,
+    exportedAt: api.clock.now().getTime(),
+    user: { nickname: "x", shareProgress: true, reminder: { enabled: false, time: "21:00" } },
+    challenges,
+  });
+  const importFile = (s: SessionResponse, challenges: Challenge[]) => api.request("/api/me/import", { token: s.token, body: backup(challenges) });
+  const cohortIds = async (month: string) =>
+    (await json<CohortResponse>(await api.request(`/api/cohorts/${month}`))).members.map((m) => m.challengeId);
+  const many = (n: number, overrides: Partial<Challenge> = {}) =>
+    Array.from({ length: n }, (_, i) => challenge({ title: `宣伝${i}`, stamps: {}, ...overrides }));
+
+  it(`allows ${QUOTAS.importsPerUserPerDay} imports per JST day`, async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("復元");
+    for (let i = 0; i < QUOTAS.importsPerUserPerDay; i++) expect((await importFile(s, [])).status).toBe(200);
+    const limited = await importFile(s, []);
+    expect(limited.status).toBe(429);
+    expect((await json<ApiError>(limited)).error.code).toBe("rate_limited");
+    api.clock.set("2026-10-06T15:00:00.000Z"); // 00:00 JST on the 7th
+    expect((await importFile(s, [])).status).toBe(200);
+    api.clock.set("2026-10-06T03:00:00.000Z");
+  });
+
+  it("sanitises start dates, stamps, the verdict and the recipe like the live API", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z"); // today 2026-10-06 JST, next 1st 2026-11-01
+    const s = await api.createSession("整える");
+    const stamps = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [String(i + 1), { at: 1 }]));
+    const future = challenge({ title: "未来の印", startDate: "2026-10-04", stamps }); // day 3
+    const early = challenge({ title: "早すぎる完了", startDate: "2026-10-02", status: "done", verdict: "continue", reflection: "早い", finishedAt: 1, finishedDay: 1 });
+    const reserved = challenge({ title: "予約", startDate: "2026-11-01", stamps: { "1": { at: 1 } } });
+    const tooFar = challenge({ title: "遠すぎる", startDate: "2026-11-02" });
+    const done = challenge({ title: "完了", startDate: "2026-09-01", status: "done", verdict: "stop", reflection: "やめる", finishedAt: 1, finishedDay: 2, stamps });
+    const unknownRecipe = challenge({ title: "知らないレシピ", recipeId: "no-such-recipe" });
+    const res = await importFile(s, [future, early, reserved, tooFar, done, unknownRecipe]);
+    expect(await json<ImportResponse>(res)).toEqual({ imported: 5, skipped: 1 });
+
+    const byTitle = new Map((await listUserChallenges(api.deps, s.user.id)).map((c) => [c.title, c]));
+    expect(Object.keys(byTitle.get("未来の印")!.stamps).map(Number).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]); // up to today + 1
+    expect(byTitle.get("早すぎる完了")).toMatchObject({ status: "active", verdict: null, reflection: null, finishedAt: null, finishedDay: null });
+    expect(byTitle.get("予約")).toMatchObject({ status: "active", stamps: {} });
+    expect(byTitle.has("遠すぎる")).toBe(false);
+    expect(byTitle.get("完了")).toMatchObject({ status: "done", verdict: "stop", finishedDay: 7 });
+    expect(Object.keys(byTitle.get("完了")!.stamps)).toHaveLength(30);
+    expect(byTitle.get("知らないレシピ")?.recipeId).toBeNull();
+  });
+
+  it("keeps imported challenges private (no cohort, no PILOT metrics) until the owner stamps one", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("ひっそり");
+    const active = challenge({ title: "復元した記録", stamps: {} });
+    const finished = challenge({ title: "復元した完了", startDate: "2026-09-28", status: "done", verdict: "continue", reflection: null, finishedAt: 1, finishedDay: 7 });
+    expect(await json<ImportResponse>(await importFile(s, [active, finished]))).toEqual({ imported: 2, skipped: 0 });
+
+    const item = await getChallengeItem(api.deps, s.user.id, active.id);
+    expect(item).toMatchObject({ imported: true });
+    expect(item?.gsi1pk).toBeUndefined();
+    expect(await cohortIds("2026-10")).not.toContain(active.id);
+    expect(await cohortIds("2026-09")).not.toContain(finished.id);
+    expect((await api.request(`/api/cheers/${active.id}`, { method: "POST", token: (await api.createSession()).token })).status).toBe(404);
+    const pilot = await computePilotStats(api.deps);
+    const withoutImports = pilot.starters;
+
+    // Changing one's mind on an imported reflection does not publish it either.
+    expect((await api.request(`/api/challenges/${finished.id}/reflect`, { token: s.token, body: { verdict: "stop" } })).status).toBe(200);
+    expect(await cohortIds("2026-09")).not.toContain(finished.id);
+    expect((await getChallengeItem(api.deps, s.user.id, finished.id))?.imported).toBe(true);
+
+    // Using it the normal way (a stamp) makes it an ordinary challenge.
+    expect((await api.request(`/api/challenges/${active.id}/stamps/2`, { method: "PUT", token: s.token, body: {} })).status).toBe(200);
+    expect((await getChallengeItem(api.deps, s.user.id, active.id))?.imported).toBeUndefined();
+    expect(await cohortIds("2026-10")).toContain(active.id);
+    expect((await computePilotStats(api.deps)).starters).toBe(withoutImports + 1);
+  });
+
+  it("cannot flood the cohort: open challenges stay within the live limit and none are listed", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const real = await api.createSession("本物");
+    const created = await api.request("/api/challenges", {
+      token: real.token,
+      body: { id: newId(16), recipeId: "walk", title: "毎日20分歩く", seal: "歩", startDate: "2026-10-06" },
+    });
+    expect(created.status).toBe(201);
+    const realId = (await json<{ challenge: Challenge }>(created)).challenge.id;
+
+    const spammer = await api.createSession("宣伝");
+    expect(await json<ImportResponse>(await importFile(spammer, many(100)))).toEqual({ imported: LIMITS.openChallenges, skipped: 100 - LIMITS.openChallenges });
+    expect(await json<ImportResponse>(await importFile(spammer, many(100)))).toEqual({ imported: 0, skipped: 100 });
+    const theirs = await listUserChallenges(api.deps, spammer.user.id);
+    expect(theirs).toHaveLength(LIMITS.openChallenges);
+    const listed = await cohortIds("2026-10");
+    expect(listed).toContain(realId);
+    for (const c of theirs) expect(listed).not.toContain(c.id);
+  });
+
+  it(`caps an account at ${LIMITS.challengesPerUser} challenges in total`, async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("たくさん");
+    const seeded = Array.from({ length: LIMITS.challengesPerUser - 2 }, () =>
+      toChallengeItem(s.user.id, s.user, challenge({ status: "done", verdict: "stop", startDate: "2026-09-01", finishedAt: 1, finishedDay: 30 })),
+    );
+    for (let i = 0; i < seeded.length; i += 25) {
+      await api.deps.db.send(
+        new BatchWriteCommand({ RequestItems: { [api.deps.tableName]: seeded.slice(i, i + 25).map((Item) => ({ PutRequest: { Item } })) } }),
+      );
+    }
+    const more = many(5, { status: "done", verdict: "continue", startDate: "2026-09-01", finishedAt: 1, finishedDay: 30 });
+    expect(await json<ImportResponse>(await importFile(s, more))).toEqual({ imported: 2, skipped: 3 });
+    expect(await listUserChallenges(api.deps, s.user.id)).toHaveLength(LIMITS.challengesPerUser);
+  });
+
+  it("a member a moderator removed for good stays removed after export, delete and re-import", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("戻りたい");
+    const c = challenge({ title: "不適切なタイトル" });
+    await seedChallenge(s, c);
+    const moderated = await api.request("/api/admin/moderate", {
+      headers: { "x-admin-token": ADMIN_TOKEN },
+      body: { targetType: "member", targetId: c.id, action: "delete" },
+    });
+    expect(moderated.status).toBe(204);
+
+    const file = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
+    expect((await api.request(`/api/challenges/${c.id}`, { method: "DELETE", token: s.token })).status).toBe(204);
+    expect(await json<ImportResponse>(await api.request("/api/me/import", { token: s.token, body: file }))).toEqual({ imported: 1, skipped: 0 });
+    expect(await getChallengeItem(api.deps, s.user.id, c.id)).toMatchObject({ hiddenFromCohort: true, moderated: true });
+
+    // Using it again does not bring it back.
+    expect((await api.request(`/api/challenges/${c.id}/stamps/3`, { method: "PUT", token: s.token, body: {} })).status).toBe(200);
+    expect(await cohortIds("2026-10")).not.toContain(c.id);
   });
 });

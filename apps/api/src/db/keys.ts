@@ -82,6 +82,11 @@ export const shareKey = (sid: string): Key => ({ pk: `SHARE#${sid}`, sk: "META" 
 export const shareAuthorGsi2 = (uid: string, sid: string) => ({ gsi2pk: `AUTHOR#${uid}`, gsi2sk: `SHARE#${sid}` });
 /** Object key of the card image in the media store (served at /media/share/<id>.png). */
 export const shareMediaKey = (sid: string) => `share/${sid}.png`;
+/**
+ * Where a card hidden by moderation keeps its image: outside share/, the only prefix CloudFront
+ * (and local.ts) serve, so it stops being public; "restore" moves it back.
+ */
+export const hiddenShareMediaKey = (sid: string) => `hidden/share/${sid}.png`;
 
 export const authorPk = (uid: string) => `AUTHOR#${uid}`;
 

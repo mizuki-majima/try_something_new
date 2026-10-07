@@ -15,38 +15,55 @@ const api = setupApi();
 const NOW = "2026-10-10T03:00:00.000Z";
 const TODAY = "2026-10-10";
 
-const pc = (userId: string, startDate: string, stampDays: number[] = [], status = "active"): PilotChallenge => ({
+const pc = (userId: string, startDate: string, stampDays: number[] = [], status = "active", shared = false): PilotChallenge => ({
   userId,
   startDate,
   status,
   stampDays,
+  shared,
 });
 
 describe("pilotStats (pure)", () => {
-  it("counts started challenges, distinct starters, reflections and 7-day retention", () => {
+  it("counts PEOPLE (docs/validation-plan.md), not challenges", () => {
     const stats = pilotStats(
       [
-        pc("a", "2026-10-01", [1, 2, 3, 4, 5]), // day 10: eligible, retained
-        pc("a", "2026-10-01", [1, 2, 3, 4, 8, 9, 10]), // eligible, only 4 within days 1..7
-        pc("b", "2026-10-03", [1, 2, 3, 4, 5, 6, 7], "done"), // day 8: eligible, retained, reflected
-        pc("b", "2026-10-04", [1, 2, 3, 4, 5, 6, 7], "done"), // day 7: not eligible yet, reflected early
-        pc("c", "2026-11-01"), // a reservation: not started
-        pc("d", TODAY), // day 1
+        pc("a", "2026-10-01", [1, 2, 3, 4, 5]), // day 10: a is eligible and retained
+        pc("a", "2026-10-01", [1, 2, 3, 4, 8, 9, 10]), // a's second challenge changes nothing
+        pc("b", "2026-10-03", [1, 2, 3, 4, 5, 6, 7], "done", true), // day 8: b eligible, retained, reflected, shared
+        pc("b", "2026-10-04", [1, 2, 3, 4, 5, 6, 7], "done"), // b again
+        pc("c", "2026-11-01"), // only a reservation: not a starter
+        pc("d", TODAY), // day 1: a starter, not eligible yet
+        pc("e", "2026-10-02", [1, 2]), // day 9: eligible, not retained
+        pc("e", "2026-10-09", [1, 2]), // a later challenge does not make e "not eligible"
+        pc("f", "2026-10-05", [1, 2, 3, 4, 5, 6], "done", false), // day 6: reflected early, not eligible
       ],
       TODAY,
     );
-    expect(stats).toEqual<PilotStats>({ starters: 3, eligible7: 3, retained7: 2, started: 5, reflected: 2 });
+    expect(stats).toEqual<PilotStats>({ starters: 5, eligible7: 3, retained7: 2, reflected: 2, sharers: 1 });
+  });
+
+  it("one person with many challenges cannot move a rate (the per-challenge numbers did)", () => {
+    // 8 people each start 2 challenges and keep one going: per person that is 100%.
+    const challenges = Array.from({ length: 8 }, (_, i) => [
+      pc(`p${i}`, "2026-10-01", [1, 2, 3, 4, 5]),
+      pc(`p${i}`, "2026-10-01", []),
+    ]).flat();
+    expect(pilotStats(challenges, TODAY)).toMatchObject({ starters: 8, eligible7: 8, retained7: 8 });
+    // One person who reflects and shares several times is still one sharer.
+    const sharing = [pc("s", "2026-09-01", [], "done", true), pc("s", "2026-09-02", [], "done", true), pc("t", "2026-09-01", [], "done")];
+    expect(pilotStats(sharing, TODAY)).toMatchObject({ reflected: 2, sharers: 1 });
   });
 
   it("is all zeros without challenges", () => {
-    expect(pilotStats([], TODAY)).toEqual({ starters: 0, eligible7: 0, retained7: 0, started: 0, reflected: 0 });
+    expect(pilotStats([], TODAY)).toEqual({ starters: 0, eligible7: 0, retained7: 0, reflected: 0, sharers: 0 });
   });
 
-  it("reads challenge items only", () => {
-    expect(toPilotChallenge({ pk: "USER#u1", sk: "CH#c1", startDate: "2026-10-01", status: "done", stamps: { "1": {}, "7": {}, x: {} } })).toEqual(
-      pc("u1", "2026-10-01", [1, 7], "done"),
+  it("reads challenge items only, and not imported ones", () => {
+    expect(toPilotChallenge({ pk: "USER#u1", sk: "CH#c1", startDate: "2026-10-01", status: "done", stamps: { "1": {}, "7": {}, x: {} }, shareId: "s1" })).toEqual(
+      pc("u1", "2026-10-01", [1, 7], "done", true),
     );
     expect(toPilotChallenge({ pk: "USER#u1", sk: "CH#c2", startDate: "2026-10-01" })).toEqual(pc("u1", "2026-10-01"));
+    expect(toPilotChallenge({ pk: "USER#u1", sk: "CH#c4", startDate: "2026-10-01", imported: true })).toBeUndefined();
     expect(toPilotChallenge({ pk: "USER#u1", sk: "PROFILE" })).toBeUndefined();
     expect(toPilotChallenge({ pk: "CHREF#c1", sk: "REF", userId: "u1" })).toBeUndefined();
     expect(toPilotChallenge({ pk: "USER#u1", sk: "CH#c3", startDate: "2026-13-01" })).toBeUndefined();
@@ -92,12 +109,12 @@ async function stats(): Promise<AdminStats> {
 describe("GET /api/admin/stats → pilot", () => {
   it("scans the challenges that exist now, ignoring every other item", async () => {
     api.clock.set(NOW);
-    expect((await stats()).pilot).toEqual({ starters: 0, eligible7: 0, retained7: 0, started: 0, reflected: 0 });
+    expect((await stats()).pilot).toEqual({ starters: 0, eligible7: 0, retained7: 0, reflected: 0, sharers: 0 });
 
     const a = await api.createSession("A");
     const b = await api.createSession("B");
     const c = await api.createSession("C"); // only a reservation
-    await api.createSession("D"); // no challenge at all
+    const d = await api.createSession("D"); // no challenge of their own (later: only an imported one)
     await seed(a, challenge("2026-10-01", [1, 2, 3, 4, 5]));
     await seed(a, challenge("2026-10-02", [1, 2, 9]));
     await seed(b, challenge("2026-10-03", [1, 2, 3, 4, 5, 6, 7, 8], "done"));
@@ -115,19 +132,28 @@ describe("GET /api/admin/stats → pilot", () => {
     });
 
     const s = await stats();
-    expect(s.pilot).toEqual({ starters: 3, eligible7: 3, retained7: 2, started: 5, reflected: 2 });
+    // a, b (eligible; a and b retained), c (started today), b reflected.
+    expect(s.pilot).toEqual({ starters: 3, eligible7: 2, retained7: 2, reflected: 1, sharers: 0 });
     // Nothing private leaks into the response.
     expect(JSON.stringify(s)).not.toContain("ひみつ");
 
-    // A deleted challenge drops out.
-    const gone = await seed(a, challenge("2026-10-01", [1, 2, 3, 4, 5, 6]));
-    expect((await stats()).pilot).toMatchObject({ started: 6, eligible7: 4, retained7: 3 });
-    expect((await api.request(`/api/challenges/${gone.id}`, { method: "DELETE", token: a.token })).status).toBe(204);
-    expect((await stats()).pilot).toEqual({ starters: 3, eligible7: 3, retained7: 2, started: 5, reflected: 2 });
+    // A new person, then their challenge is deleted: they drop out again.
+    const e = await api.createSession("E");
+    const gone = await seed(e, challenge("2026-10-01", [1, 2, 3, 4, 5, 6]));
+    expect((await stats()).pilot).toMatchObject({ starters: 4, eligible7: 3, retained7: 3 });
+    expect((await api.request(`/api/challenges/${gone.id}`, { method: "DELETE", token: e.token })).status).toBe(204);
+    expect((await stats()).pilot).toEqual({ starters: 3, eligible7: 2, retained7: 2, reflected: 1, sharers: 0 });
 
-    // Time moves on: the 10-04 challenge reaches day 8, the reservation starts.
+    // A current public card on a done challenge makes b a sharer; imported challenges never count.
+    await seed(b, { ...challenge("2026-09-20", [1, 2, 3, 4, 5], "done"), shareId: "share0000000001" });
+    await api.deps.db.send(
+      new PutCommand({ TableName: api.deps.tableName, Item: toChallengeItem(d.user.id, d.user, challenge("2026-09-01", [1, 2, 3, 4, 5], "done"), { imported: true }) }),
+    );
+    expect((await stats()).pilot).toEqual({ starters: 3, eligible7: 2, retained7: 2, reflected: 1, sharers: 1 });
+
+    // Time moves on: c's first challenge reaches day 8 (and c's reservation starts).
     api.clock.set("2026-11-01T03:00:00.000Z");
-    expect((await stats()).pilot).toEqual({ starters: 3, eligible7: 5, retained7: 3, started: 6, reflected: 2 });
+    expect((await stats()).pilot).toEqual({ starters: 3, eligible7: 3, retained7: 2, reflected: 1, sharers: 1 });
   });
 
   it("paginates the scan and stops at the cap", async () => {
@@ -135,7 +161,7 @@ describe("GET /api/admin/stats → pilot", () => {
     const full = await computePilotStats(api.deps);
     expect(await computePilotStats(api.deps, { pageSize: 2 })).toEqual(full);
     const capped = await computePilotStats(api.deps, { pageSize: 2, cap: 2 });
-    expect(capped.started).toBeLessThanOrEqual(2);
-    expect(full.started).toBeGreaterThan(2);
+    expect(capped.starters).toBeLessThanOrEqual(2);
+    expect(full.starters).toBeGreaterThan(2);
   });
 });

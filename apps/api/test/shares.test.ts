@@ -1,14 +1,15 @@
 import { crc32, deflateSync } from "node:zlib";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
-import { LIMITS, QUOTAS, newId, type ApiError, type Challenge, type SessionResponse, type ShareResponse } from "@thirty/shared";
+import { AUTO_HIDE_REPORTS, LIMITS, QUOTAS, newId, type ApiError, type Challenge, type SessionResponse, type ShareResponse } from "@thirty/shared";
 import { getChallengeItem, toChallengeItem } from "../src/db/challenges";
 import { shareKey, statsKey } from "../src/db/keys";
 import { createShare } from "../src/db/shares";
 import { getStats } from "../src/db/stats";
 import { checkPng, decodeBase64Strict, isShareCardPng } from "../src/png";
+import { SHARE_MODERATED } from "../src/routes/shares";
 import { escapeHtml, excerpt, TED_TALK_URL } from "../src/share-page";
-import { json, setupApi } from "./helpers";
+import { ADMIN_TOKEN, json, setupApi } from "./helpers";
 
 const api = setupApi();
 
@@ -229,6 +230,59 @@ describe("POST /api/shares", () => {
     expect((await api.request("/api/shares", { token: s.token, body: { challengeId: "x", imageBase64: PNG_B64 } })).status).toBe(400);
   });
 
+  it("refuses a new card when moderation hid or deleted the card, or removed the member (403)", async () => {
+    const admin = { "x-admin-token": ADMIN_TOKEN };
+    const moderate = (targetType: string, targetId: string, action: string) =>
+      api.request("/api/admin/moderate", { headers: admin, body: { targetType, targetId, action } });
+    const tryShare = (s: SessionResponse, challengeId: string) =>
+      api.request("/api/shares", { token: s.token, body: { challengeId, imageBase64: PNG_B64 } });
+    const refused = async (res: Response) => {
+      expect(res.status).toBe(403);
+      expect(await errorOf(res)).toMatchObject({ code: "forbidden", message: SHARE_MODERATED });
+    };
+
+    // Auto-hidden after reports: publishing it again (the 「リンクを作って共有」 button) is refused.
+    const s = await api.createSession("通報された");
+    const reported = await seedChallenge(s, challenge());
+    const first = await share(s, reported.id);
+    for (let i = 0; i < AUTO_HIDE_REPORTS; i++) {
+      const r = await api.trustedSession();
+      expect((await api.request("/api/reports", { token: r.token, body: { targetType: "share", targetId: first.id } })).status).toBe(204);
+    }
+    expect((await api.request(`/s/${first.id}`)).status).toBe(404);
+    const mediaBefore = api.media.objects.size;
+    await refused(await tryShare(s, reported.id));
+    expect(api.media.objects.size).toBe(mediaBefore);
+    expect((await getChallengeItem(api.deps, s.user.id, reported.id))?.shareId).toBe(first.id);
+
+    // A moderator's restore lifts it.
+    expect((await moderate("share", first.id, "restore")).status).toBe(204);
+    expect((await api.request(`/s/${first.id}`)).status).toBe(200);
+    const again = await tryShare(s, reported.id);
+    expect(again.status).toBe(201);
+
+    // Hidden or deleted by the moderator.
+    const hiddenOne = await seedChallenge(s, challenge());
+    expect((await moderate("share", (await share(s, hiddenOne.id)).id, "hide")).status).toBe(204);
+    await refused(await tryShare(s, hiddenOne.id));
+    const deletedOne = await seedChallenge(s, challenge());
+    expect((await moderate("share", (await share(s, deletedOne.id)).id, "delete")).status).toBe(204);
+    await refused(await tryShare(s, deletedOne.id));
+
+    // The member was removed from the cohort for good (its card hidden).
+    const member = await seedChallenge(s, challenge());
+    await share(s, member.id);
+    expect((await moderate("member", member.id, "delete")).status).toBe(204);
+    await refused(await tryShare(s, member.id));
+
+    // A card hidden before the challenge carried the flag (older data) is caught from the card itself.
+    const legacy = await seedChallenge(s, challenge());
+    const legacyCard = await share(s, legacy.id);
+    const item = await getItem(`SHARE#${legacyCard.id}`, "META");
+    await api.deps.db.send(new PutCommand({ TableName: api.deps.tableName, Item: { ...item, status: "hidden" } }));
+    await refused(await tryShare(s, legacy.id));
+  });
+
   it("allows sharesPerUserPerDay", async () => {
     const s = await api.createSession();
     const c = await seedChallenge(s, challenge());
@@ -383,6 +437,8 @@ describe("GET /s/:id", () => {
     expect(html).toContain("Matt Cutts “Try something new for 30 days”");
     expect(html).toContain("着想：");
     expect(html).toContain("続けてよかった。\n来月も撮る。");
+    // FR-18: the card can be reported (the page has no forms; the app's contact page does it).
+    expect(html).toContain(`<a href="/contact?report=share:${id}" rel="nofollow">このカードを通報する</a>`);
     expect(html).not.toMatch(/<script/i);
     // Nothing private.
     expect(html).not.toContain(s.user.id);
@@ -414,6 +470,7 @@ describe("GET /s/:id", () => {
       expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
       const html = await res.text();
       expect(html).toContain("カードが見つかりません");
+      expect(html).not.toContain("通報する");
       expect(html).toContain(`<html lang="ja">`);
       expect(html).not.toMatch(/<script/i);
     }

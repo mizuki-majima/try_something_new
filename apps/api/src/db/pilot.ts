@@ -1,6 +1,6 @@
 /**
- * PILOT metrics for the admin page (docs/validation-plan.md): computed from the challenge items
- * (USER#<uid> / CH#<chId>) that exist now, with a paginated Scan. A Scan reads the whole table, so
+ * PILOT metrics for the admin page (docs/validation-plan.md), per person: computed from the challenge
+ * items (USER#<uid> / CH#<chId>) that exist now, with a paginated Scan. A Scan reads the whole table, so
  * it is capped; at pilot scale (tens of users) it is a handful of pages.
  */
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
@@ -18,12 +18,14 @@ export const RETENTION_DAYS = 7;
 export const RETENTION_MIN_STAMPS = 5;
 
 /** The fields of a challenge item the metrics need. */
-export type PilotChallenge = { userId: string; startDate: string; status: string; stampDays: number[] };
+export type PilotChallenge = { userId: string; startDate: string; status: string; stampDays: number[]; shared: boolean };
 
+/** undefined for anything that is not a challenge item, and for imported ones (FR-16: not real use). */
 export function toPilotChallenge(item: Item): PilotChallenge | undefined {
   const pk = typeof item.pk === "string" ? item.pk : "";
   const sk = typeof item.sk === "string" ? item.sk : "";
   if (!pk.startsWith(PREFIX.user) || !sk.startsWith(PREFIX.challenge)) return undefined;
+  if (item.imported === true) return undefined;
   const startDate = typeof item.startDate === "string" ? item.startDate : "";
   if (!isValidDate(startDate)) return undefined;
   const stamps = item.stamps && typeof item.stamps === "object" ? (item.stamps as Record<string, unknown>) : {};
@@ -34,34 +36,44 @@ export function toPilotChallenge(item: Item): PilotChallenge | undefined {
     stampDays: Object.keys(stamps)
       .map(Number)
       .filter((d) => Number.isInteger(d) && d >= 1),
+    shared: typeof item.shareId === "string" && item.shareId.length > 0,
   };
 }
 
+type Person = { firstStart: string; retained: boolean; reflected: boolean; shared: boolean };
+
 /**
- * Pure part. `today` is the JST date: the pilot runs in Japan and the challenge item does not carry
- * the owner's time zone (at most one day of difference at the edges).
- *   started    start date has come (a reservation for the next 1st is not counted yet)
- *   starters   distinct users with a started challenge
- *   reflected  started and status done
- *   eligible7  started and today is day 8 or later (day 7 has passed)
- *   retained7  eligible7 with RETENTION_MIN_STAMPS+ stamps on days 1..7
+ * Pure part, counted per PERSON as docs/validation-plan.md defines the metrics. `today` is the JST
+ * date: the pilot runs in Japan and the challenge item does not carry the owner's time zone (at most
+ * one day of difference at the edges). Only challenges whose start date has come count.
+ *   starters   people with a started challenge
+ *   eligible7  starters whose first started challenge is on day 8 or later (day 7 has passed)
+ *   retained7  of eligible7, people with any challenge with RETENTION_MIN_STAMPS+ stamps on days 1..7
+ *   reflected  people with a done challenge
+ *   sharers    people with a done challenge that currently has a public card
  */
 export function pilotStats(challenges: Iterable<PilotChallenge>, today: string): PilotStats {
-  const starters = new Set<string>();
-  const out: PilotStats = { starters: 0, eligible7: 0, retained7: 0, started: 0, reflected: 0 };
+  const people = new Map<string, Person>();
   for (const c of challenges) {
-    const day = dayIndex(c.startDate, today);
-    if (day < 1) continue;
-    out.started++;
-    starters.add(c.userId);
-    if (c.status === "done") out.reflected++;
-    if (day > RETENTION_DAYS) {
-      out.eligible7++;
-      const early = c.stampDays.filter((d) => d <= RETENTION_DAYS).length;
-      if (early >= RETENTION_MIN_STAMPS) out.retained7++;
+    if (dayIndex(c.startDate, today) < 1) continue;
+    const p = people.get(c.userId) ?? { firstStart: c.startDate, retained: false, reflected: false, shared: false };
+    if (c.startDate < p.firstStart) p.firstStart = c.startDate;
+    if (c.stampDays.filter((d) => d <= RETENTION_DAYS).length >= RETENTION_MIN_STAMPS) p.retained = true;
+    if (c.status === "done") {
+      p.reflected = true;
+      if (c.shared) p.shared = true;
     }
+    people.set(c.userId, p);
   }
-  out.starters = starters.size;
+  const out: PilotStats = { starters: people.size, eligible7: 0, retained7: 0, reflected: 0, sharers: 0 };
+  for (const p of people.values()) {
+    if (dayIndex(p.firstStart, today) > RETENTION_DAYS) {
+      out.eligible7++;
+      if (p.retained) out.retained7++;
+    }
+    if (p.reflected) out.reflected++;
+    if (p.shared) out.sharers++;
+  }
   return out;
 }
 
@@ -83,8 +95,16 @@ export async function computePilotStats(deps: DbDeps, opts: PilotScanOptions = {
         TableName: deps.tableName,
         FilterExpression: "begins_with(#pk, :user) AND begins_with(#sk, :ch)",
         // Only what the metrics need (stamps are counted, never returned).
-        ProjectionExpression: "#pk, #sk, #start, #status, #stamps",
-        ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk", "#start": "startDate", "#status": "status", "#stamps": "stamps" },
+        ProjectionExpression: "#pk, #sk, #start, #status, #stamps, #share, #imported",
+        ExpressionAttributeNames: {
+          "#pk": "pk",
+          "#sk": "sk",
+          "#start": "startDate",
+          "#status": "status",
+          "#stamps": "stamps",
+          "#share": "shareId",
+          "#imported": "imported",
+        },
         ExpressionAttributeValues: { ":user": PREFIX.user, ":ch": PREFIX.challenge },
         ExclusiveStartKey: start,
         ...(opts.pageSize ? { Limit: opts.pageSize } : {}),

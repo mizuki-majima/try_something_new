@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import type { ApiError } from "@thirty/shared";
-import { requireAdmin } from "../src/auth";
-import { MAX_BODY_BYTES } from "../src/app";
+import { QUOTAS, type ApiError } from "@thirty/shared";
+import { hashIp, ipKey, requireAdmin, sha256 } from "../src/auth";
+import { MAX_BODY_BYTES, originVerifyValues } from "../src/app";
+import { DEFAULT_IP_HASH_KEY } from "../src/config";
 import { enforceQuota, getQuotaUsage, refundQuota, windowFor } from "../src/db/rate";
 import { onError } from "../src/errors";
 import type { AppEnv } from "../src/types";
@@ -63,6 +64,19 @@ describe("HTTP contract", () => {
 });
 
 describe("origin verify", () => {
+  it("accepts every value of a comma-separated list, so a rotation never refuses old edges", async () => {
+    expect(originVerifyValues(" new-secret , old-secret ,, ")).toEqual(["new-secret", "old-secret"]);
+    expect(originVerifyValues(undefined)).toEqual([]);
+    const app = api.makeApp({ originVerify: "new-secret,old-secret" });
+    for (const value of ["new-secret", "old-secret"]) {
+      expect((await api.request("/api/health", { headers: { "x-origin-verify": value } }, app)).status, value).toBe(200);
+    }
+    for (const value of ["new-secret,old-secret", "new", "other", ""]) {
+      expect((await api.request("/api/health", { headers: { "x-origin-verify": value } }, app)).status, value).toBe(403);
+    }
+    expect((await api.request("/api/health", {}, app)).status).toBe(403);
+  });
+
   it("refuses requests without the CloudFront secret header when configured", async () => {
     const app = api.makeApp({ originVerify: "s3cret-from-cloudfront" });
     const none = await api.request("/api/health", {}, app);
@@ -116,6 +130,43 @@ describe("quotas", () => {
     await refundQuota(api.deps, "refund", "k", "day");
     await refundQuota(api.deps, "refund", "k", "day");
     expect((await getQuotaUsage(api.deps, "refund", "k", 2, "day")).count).toBe(0);
+  });
+});
+
+describe("client IP keys for rate limits", () => {
+  it("counts an IPv6 /64 as one client, and an IPv4-mapped address as its IPv4 address", () => {
+    expect(ipKey("203.0.113.9")).toBe("203.0.113.9");
+    expect(ipKey("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
+    expect(ipKey("2001:0DB8:0001:0002:ffff:eeee:dddd:cccc")).toBe("2001:db8:1:2::/64");
+    expect(ipKey("[2001:db8:1:2::5]")).toBe("2001:db8:1:2::/64");
+    expect(ipKey("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
+    expect(ipKey("::ffff:198.51.100.7")).toBe("198.51.100.7");
+    expect(ipKey("2001:db8::")).toBe("2001:db8:0:0::/64");
+    expect(ipKey("::1")).toBe("0:0:0:0::/64");
+    expect(ipKey("unknown")).toBe("unknown");
+    expect(ipKey("2001:db8:1:3::1")).not.toBe(ipKey("2001:db8:1:2::1"));
+  });
+
+  it("is a keyed hash (HMAC): not the plain SHA-256 of the address, and different per key", () => {
+    const h = hashIp("203.0.113.9", DEFAULT_IP_HASH_KEY);
+    expect(h).toMatch(/^[0-9a-f]{64}$/);
+    expect(h).not.toBe(sha256("203.0.113.9"));
+    expect(hashIp("203.0.113.9", "another-key")).not.toBe(h);
+    expect(hashIp("2001:db8:1:2::1", "k")).toBe(hashIp("2001:db8:1:2:aaaa::9", "k"));
+  });
+
+  it("applies the per-IP session quota to the whole IPv6 /64", async () => {
+    api.clock.set("2026-10-09T05:10:00Z");
+    for (let i = 1; i <= QUOTAS.sessionsPerIpPerHour; i++) {
+      const res = await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: `2001:db8:77:1::${i.toString(16)}` });
+      expect(res.status, String(i)).toBe(201);
+    }
+    // Another address in the same /64 is the same client.
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: "2001:db8:77:1:abcd::99" })).status).toBe(429);
+    // The next /64 is someone else.
+    expect((await api.request("/api/session", { body: { tz: "Asia/Tokyo" }, ip: "2001:db8:77:2::1" })).status).toBe(201);
+    // The stored rate-limit keys never contain the address.
+    expect(JSON.stringify(await api.scanAll())).not.toContain("2001:db8:77");
   });
 });
 

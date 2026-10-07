@@ -1,4 +1,4 @@
-import "./lib/zodJitless"; // first: before anything imports zod (via @thirty/shared)
+// zod's jitless flag is set by /zod-jitless.js (index.html), before any module chunk runs (CSP).
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/components.css";

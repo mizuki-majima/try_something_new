@@ -92,13 +92,18 @@ export function toCohortMember(item: Item, viewerUid: string | undefined, cheere
   };
 }
 
-/** Reservation count for `startDate` and the top recipes among them. */
+/**
+ * Reservation count for `startDate`, how many distinct people made them (one person may reserve
+ * several; the owner ids are only counted here, never returned) and the top recipes among them.
+ */
 export function summariseUpcoming(items: Item[], startDate: string): UpcomingResponse {
   const groups = new Map<string, UpcomingResponse["byRecipe"][number]>();
+  const people = new Set<string>();
   let count = 0;
   for (const item of items) {
     if (item.startDate !== startDate || !isInCohort(item)) continue;
     count++;
+    people.add(typeof item.userId === "string" ? item.userId : String(item.pk));
     const c = toChallenge(item);
     const official = c.recipeId ? findOfficialRecipe(c.recipeId) : undefined;
     // Free-form challenges (no recipe) are grouped by what they look like.
@@ -115,7 +120,7 @@ export function summariseUpcoming(items: Item[], startDate: string): UpcomingRes
   const byRecipe = [...groups.values()]
     .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title, "ja"))
     .slice(0, UPCOMING_TOP);
-  return { startDate, count, byRecipe };
+  return { startDate, count, peopleCount: people.size, byRecipe };
 }
 
 // ---------- cheers ----------

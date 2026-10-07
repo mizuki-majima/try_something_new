@@ -1,8 +1,15 @@
-/** お問い合わせ (SPEC FR-19). Works without an account (the API uses the token only when there is one). */
+/**
+ * お問い合わせ (SPEC FR-19). Works without an account (the API uses the token only when there is one).
+ *
+ * /contact?report=share:<id> is the 「通報」 for a public card (FR-18): /s/:id is script-free server
+ * HTML, so its 「このカードを通報する」 link lands here and this page shows a report form for that
+ * card instead of the contact form.
+ */
 import { useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router";
-import { API, ContactCreateSchema, LIMITS, QUOTAS, type ContactCreate } from "@thirty/shared";
+import { Link, useSearchParams } from "react-router";
+import { API, AUTO_HIDE_REPORTS, ContactCreateSchema, ID_RE, LIMITS, QUOTAS, ReportCreateSchema, type ContactCreate } from "@thirty/shared";
 import { TextAreaField, TextField } from "../components/Field";
+import { reportErrorMessage } from "../components/ReportButton";
 import { Seal } from "../components/Seal";
 import { ApiClientError, errorMessage, request } from "../lib/api";
 import { usePageTitle } from "../lib/hooks";
@@ -11,7 +18,19 @@ import "./InfoPages.css";
 
 type Status = "editing" | "sending" | "sent";
 
+/** The share id from `?report=share:<id>`, or null when the query is absent or malformed. */
+export function reportedShareId(param: string | null): string | null {
+  const m = /^share:(.+)$/.exec(param ?? "");
+  return m && ID_RE.test(m[1]!) ? m[1]! : null;
+}
+
 export default function ContactPage() {
+  const [params] = useSearchParams();
+  const shareId = reportedShareId(params.get("report"));
+  return shareId ? <ShareReport shareId={shareId} /> : <ContactForm />;
+}
+
+function ContactForm() {
   usePageTitle("お問い合わせ");
   const [message, setMessage] = useState("");
   const [replyTo, setReplyTo] = useState("");
@@ -61,7 +80,7 @@ export default function ContactPage() {
             送信しました
           </h1>
           <p>お問い合わせありがとうございます。いただいた内容は、運営者が順に読んでいます。</p>
-          <p className="note">連絡先を書いていただいた場合でも、すべてにお返事できるとは限りません。ご了承ください。</p>
+          <p className="note">返信先を書いていただいた場合でも、すべてにお返事できるとは限りません。ご了承ください。</p>
           <div className="row gap fw contact-done-actions">
             <button type="button" className="btn" onClick={() => setStatus("editing")}>
               もう1件送る
@@ -107,7 +126,7 @@ export default function ContactPage() {
         />
         <TextField
           id="contact-reply"
-          label="連絡先（任意）"
+          label="返信先（任意）"
           value={replyTo}
           onChange={(v) => {
             setReplyTo(v);
@@ -115,8 +134,8 @@ export default function ContactPage() {
           }}
           max={LIMITS.contactReplyTo}
           error={errors.replyTo || undefined}
-          hint="返信が必要な場合だけ。メールアドレス等を書いた場合は返信のためだけに使います"
-          autoComplete="email"
+          hint="返信が必要な場合だけ。書いたものは返信のためだけに使い、180日で削除します"
+          autoComplete="off"
           disabled={sending}
         />
         <div aria-live="polite">
@@ -130,7 +149,116 @@ export default function ContactPage() {
           {sending ? "送っています…" : "送信する"}
         </button>
         <p className="note">
-          お問い合わせの内容は180日で削除します。扱いについては<Link to="/privacy">プライバシーポリシー</Link>をご覧ください。
+          お問い合わせの内容と返信先は180日で削除します。扱いについては<Link to="/privacy">プライバシーポリシー</Link>をご覧ください。
+        </p>
+      </form>
+    </article>
+  );
+}
+
+/** 「通報」 for the public card /s/<shareId> (FR-18). Creates the anonymous account if needed. */
+function ShareReport({ shareId }: { shareId: string }) {
+  usePageTitle("カードを通報する");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>("editing");
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const cardPath = `/s/${shareId}`;
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (status === "sending") return;
+    const trimmed = reason.trim();
+    const parsed = parseWith(ReportCreateSchema, { targetType: "share", targetId: shareId, ...(trimmed ? { reason: trimmed } : {}) });
+    if (!parsed.ok) {
+      setError(parsed.fields.reason ?? parsed.message);
+      return;
+    }
+    setError(null);
+    setStatus("sending");
+    try {
+      await request<void>("POST", API.reports, { body: parsed.data, auth: "required" });
+      setStatus("sent");
+      setReason("");
+      requestAnimationFrame(() => headingRef.current?.focus());
+    } catch (err) {
+      setStatus("editing");
+      setError(reportErrorMessage(err));
+    }
+  }
+
+  // /s/:id is served by the API, not the app: a full page load (the SW never answers it).
+  const back = (
+    <a href={cardPath} className="btn">
+      カードに戻る
+    </a>
+  );
+
+  if (status === "sent") {
+    return (
+      <article className="info-page contact">
+        <div className="contact-done">
+          <Seal char="済" size="xl" />
+          <h1 className="info-title" tabIndex={-1} ref={headingRef}>
+            通報しました
+          </h1>
+          <p>ありがとうございます。運営者が内容を確かめて、必要なら非表示にします。</p>
+          <div className="row gap fw contact-done-actions">
+            {back}
+            <Link to="/" className="btn primary">
+              きょうに戻る
+            </Link>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  const sending = status === "sending";
+  return (
+    <article className="info-page contact">
+      <header className="info-head">
+        <h1 className="info-title">カードを通報する</h1>
+        <div className="info-lead">
+          <p>
+            公開カード <a href={cardPath}>{cardPath}</a> を運営に知らせます。内容を確かめて、必要なら非表示にします。{AUTO_HIDE_REPORTS}
+            人から通報があると、自動で非表示になります。
+          </p>
+        </div>
+      </header>
+
+      <form className="form card contact-form" onSubmit={(e) => void onSubmit(e)} noValidate aria-busy={sending}>
+        <TextAreaField
+          id="report-reason"
+          label="理由（任意）"
+          value={reason}
+          onChange={(v) => {
+            setReason(v);
+            if (error) setError(null);
+          }}
+          max={LIMITS.reportReason}
+          rows={4}
+          placeholder="例：人を傷つける内容です"
+          disabled={sending}
+        />
+        <div aria-live="polite">
+          {error && (
+            <p className="note err" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+        <button type="submit" className="btn primary lg" disabled={sending} aria-busy={sending}>
+          {sending ? "送信中…" : "送信"}
+        </button>
+        <div className="row gap fw">
+          {back}
+          <Link to="/contact" className="btn ghost">
+            お問い合わせフォームへ
+          </Link>
+        </div>
+        <p className="note">
+          通報の扱いは<Link to="/terms#report">利用規約</Link>と<Link to="/privacy">プライバシーポリシー</Link>をご覧ください。
         </p>
       </form>
     </article>

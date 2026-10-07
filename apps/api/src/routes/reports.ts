@@ -3,7 +3,7 @@ import { API, AUTO_HIDE_REPORTS, ContactCreateSchema, QUOTAS, ReportCreateSchema
 import { clientIpHash, optionalUser, requireUser } from "../auth";
 import { createContact } from "../db/contacts";
 import { enforceQuota } from "../db/rate";
-import { addReport, hideTarget, resolveTarget } from "../db/reports";
+import { addReport, hideTarget, isTrustedReporter, resolveTarget } from "../db/reports";
 import { badRequest, notFound } from "../errors";
 import { log } from "../log";
 import type { Deps } from "../ports";
@@ -31,8 +31,10 @@ export function reportsRoutes(deps: Deps) {
     if (!target) throw notFound(TARGET_NOT_FOUND);
     if (target.ownerId === c.var.uid) throw badRequest(OWN_CONTENT);
 
-    const count = await addReport(deps, c.var.uid, target, input.reason || undefined);
-    if (count !== undefined && count >= AUTO_HIDE_REPORTS && target.status === "published") {
+    // Brand-new or empty accounts are recorded but do not count towards auto-hide (see isTrustedReporter).
+    const trusted = await isTrustedReporter(deps, c.var.user);
+    const count = await addReport(deps, c.var.uid, target, input.reason || undefined, trusted);
+    if (trusted && count !== undefined && count >= AUTO_HIDE_REPORTS && target.status === "published") {
       await hideTarget(deps, target);
       log.info("auto-hidden after reports", { targetType: target.type, count });
     }
@@ -42,7 +44,7 @@ export function reportsRoutes(deps: Deps) {
   r.post(API.contact, optionalUser(deps), async (c) => {
     const input = await readJson(c, ContactCreateSchema);
     const user = viewer(c);
-    const key = user ? `user:${user.id}` : `ip:${clientIpHash(c)}`;
+    const key = user ? `user:${user.id}` : `ip:${clientIpHash(deps, c)}`;
     await enforceQuota(deps, "contact", key, QUOTAS.contactPerUserPerDay, "day");
     await createContact(deps, { message: input.message, replyTo: input.replyTo || undefined });
     log.info("contact received", { signedIn: user !== undefined });

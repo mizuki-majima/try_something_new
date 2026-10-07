@@ -3,8 +3,8 @@
 新しいことを **30日だけ** 試して、30日目に「続ける／やめる／形を変える」を自分で決める Web サービス（PWA）。
 TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰でもすぐ試せる形にしたもの。習慣化アプリではなく「お試し」のためのサービスで、やめることも成果として扱う。
 
-- 公開 URL: https://d1zw3n37kpuo7t.cloudfront.net
-- 現在の Phase: **BUILD**（次は Gate 4 → REVIEW）。何を作り、何を作らないかは [PRODUCT.md](PRODUCT.md)、仕様は [SPEC.md](SPEC.md)
+- テスト用の環境: https://d1zw3n37kpuo7t.cloudfront.net（PILOT の前。CEO の承認まで参加者には配らない）
+- 現在の Phase: **REVIEW**（次は [Gate 5: REVIEW → TEST](https://github.com/mizuki-majima/try_something_new/issues/2)）。何を作り、何を作らないかは [PRODUCT.md](PRODUCT.md)、仕様は [SPEC.md](SPEC.md)
 
 ## できること
 
@@ -13,7 +13,7 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 - 同じ月に始めた人の **1日組** が並び、応援できる（メッセージは送れない）
 - 30日目（7日目以降なら途中でも）に振り返り、**振り返りカード**（画像と公開ページ）を作る
 - 次にやることは **ガチャ** か **ひらめき提案（お試し）** で決める。提案は AI を使わず、内蔵の案からルールで選ぶ（[ADR 0003](docs/decisions/0003-no-ai-mock-suggestions.md)）
-- Web Push のリマインド、引き継ぎコード、バックアップ、通報と管理画面
+- Web Push のリマインド、引き継ぎコード、バックアップ、通報（公開カードは `/s/:id` の「このカードを通報する」から）と管理画面
 
 アカウントはメール不要の匿名アカウント。料金・広告はない（趣味のサービス。[ADR 0001](docs/decisions/0001-hobby-service-skip-payment-validation.md)）。
 
@@ -24,11 +24,12 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 | Web | React 19 + React Router、Vite、PWA（vite-plugin-pwa、Service Worker）。デザインはネオ・ブルータリズム（[docs/design.md](docs/design.md)） |
 | API | Hono（TypeScript）を AWS Lambda（Node.js 22 / arm64）で動かす。入力検証は zod（`packages/shared` のスキーマを Web と共用） |
 | データ | DynamoDB 1テーブル（オンデマンド、PITR）。ローカルとテストは dynalite（Java / Docker 不要） |
-| 配信 | CloudFront → S3（Web）／API Gateway HTTP API `ThirtyDaysApi`（`/api/*` `/s/*`）／S3（公開カード画像 `/media/*`） |
+| 配信 | CloudFront → S3（Web）／API Gateway HTTP API `ThirtyDaysApi`（`/api/*` `/s/*`）／S3（公開カード画像 `/media/share/*` だけ） |
 | 通知 | EventBridge（15分ごと）→ Lambda → Web Push（VAPID） |
-| IaC | AWS CDK（`infra/`、スタック `ThirtyDays`、リージョン `ap-northeast-1`） |
+| 秘密情報 | SSM Parameter Store（VAPID 秘密鍵・管理トークン・IP のハッシュ鍵は SecureString。`scripts/setup-secrets.mjs`） |
+| IaC | AWS CDK（`infra/`、スタック `ThirtyDays`、リージョン `ap-northeast-1`）。`ALERT_EMAIL` 指定時は予算（`Project` タグの費用だけ）と API・リマインドのアラーム |
 
-生成 AI・課金される外部 API は使わない。AWS 費用は月 $1 未満が目標（[SPEC.md](SPEC.md) の Non-functional Requirements）。
+生成 AI・課金される外部 API は使わない。AWS 費用は月 $1 未満が目標で、100人規模なら月約 $0.1（[docs/deploy.md](docs/deploy.md) の「費用の目安」）。
 
 ## Setup
 
@@ -44,7 +45,7 @@ npm run test:e2e    # Critical User Flow の E2E（Playwright。tests/e2e/）
 
 ほかに `npm run lint`（ESLint）、`npm run typecheck`（全ワークスペースの tsc）。CI（`.github/workflows/ci.yml`）は lint → typecheck → test → build → audit → E2E → CDK synth の順に実行する。
 
-デプロイ（AWS）は [docs/deploy.md](docs/deploy.md)。初回は CDK bootstrap と `node scripts/setup-secrets.mjs`、以降は `ALERT_EMAIL=you@example.com npm run deploy`。
+デプロイ（AWS）は [docs/deploy.md](docs/deploy.md)。初回は CDK bootstrap、`node scripts/setup-secrets.mjs`、費用配分タグ `Project` の有効化。以降は `PUBLIC_ORIGIN=https://<CloudFront のドメイン> ALERT_EMAIL=you@example.com npm run deploy`（最初に `setup-secrets.mjs --check` が SSM のパラメータを確かめる）。本番公開（URL を人に配ること）は CEO の承認が要る。
 
 ## リポジトリの構成
 
@@ -54,7 +55,7 @@ apps/api/          API（Hono）。src/routes/ がルート、src/db/ が Dynamo
 apps/web/          PWA（React）。src/pages/ が画面、src/lib/ が API クライアント・送信待ち（outbox）・状態
 infra/             AWS CDK のスタック（lib/thirty-days-stack.ts）とテスト
 tests/e2e/         Critical User Flow の E2E（Playwright）
-scripts/           dev.mjs（ローカル起動）、setup-secrets.mjs（SSM の秘密情報）
+scripts/           dev.mjs（ローカル起動）、e2e-server.mjs（E2E 用のローカル API と Web）、setup-secrets.mjs（SSM の秘密情報。作成・確認・入れ替え）
 docs/              設計・デプロイ・検証計画・意思決定の記録
 ```
 
@@ -66,7 +67,7 @@ docs/              設計・デプロイ・検証計画・意思決定の記録
 | [SPEC.md](SPEC.md) | 仕様・Critical User Flow・API・データモデル・完了の定義 |
 | [docs/validation-plan.md](docs/validation-plan.md) | PILOT の計画と合格ライン（実施前に固定） |
 | [docs/design.md](docs/design.md) | デザイン（ネオ・ブルータリズム）のトークンと原則 |
-| [docs/deploy.md](docs/deploy.md) | AWS へのデプロイ・秘密情報・ロールバック・片付け |
+| [docs/deploy.md](docs/deploy.md) | AWS へのデプロイ・秘密情報と入れ替え・アラーム・費用・ロールバック・片付け |
 | [docs/test-plan.md](docs/test-plan.md) | テスト計画 |
 | [docs/decisions/](docs/decisions/) | 意思決定の記録（ADR） |
 | [ROADMAP.md](ROADMAP.md) | Now / Next / Later |

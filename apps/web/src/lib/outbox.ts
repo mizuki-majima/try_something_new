@@ -4,7 +4,9 @@
  * earlier ones (a stamp needs its challenge). The API is idempotent for these routes, so
  * re-sending after a lost response is safe.
  *
- * - 5xx / 429 / network / timeout → keep the item, stop, retry later with backoff
+ * - 5xx / network / timeout / a short 429 → keep the item, stop, retry later with backoff
+ * - 429 that lasts (a create over the daily quota, or Retry-After beyond an hour) → drop it like a
+ *   4xx: waiting at the head of the queue would hold every later write until tomorrow
  * - 401 → keep everything, stop (the session must be restored first)
  * - 404 to a challenge delete → it is already gone: counts as sent (no rollback, no message)
  * - other 4xx → drop the item (it will never succeed); the caller refetches to roll back
@@ -201,13 +203,36 @@ export function opRequest(op: OutboxOp): OpRequest {
 
 export type FailureKind = "retry" | "drop" | "auth";
 
-/** How to treat a failed send. Errors without an HTTP status (bugs) are dropped, never looped. */
-export function classifyError(err: unknown): FailureKind {
-  const status = typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : null;
+/** A 429 whose Retry-After is longer than this is not worth waiting for at the head of the queue. */
+export const LONG_RATE_LIMIT_SECONDS = 60 * 60;
+
+function statusOf(err: unknown): number | null {
+  return typeof (err as { status?: unknown } | null)?.status === "number" ? (err as { status: number }).status : null;
+}
+
+/**
+ * A 429 that will not clear soon. The create quota (QUOTAS.challengesPerUserPerDay) resets at
+ * midnight JST, so a create is never retried; any other write is dropped when the server asks to
+ * wait more than an hour. The SPEC ("Error Handling", 429) wants 「今日はここまで」 for these.
+ */
+export function isLongRateLimit(op: OutboxOp | undefined, err: unknown): boolean {
+  if (statusOf(err) !== 429) return false;
+  if (op?.kind === "challenge.create") return true;
+  const retryAfter = (err as { retryAfter?: unknown }).retryAfter;
+  return typeof retryAfter === "number" && retryAfter > LONG_RATE_LIMIT_SECONDS;
+}
+
+/**
+ * How to treat a failed send of `op`. Errors without an HTTP status (bugs) are dropped, never
+ * looped. A short 429 is retried; a lasting one is dropped (isLongRateLimit).
+ */
+export function classifyError(err: unknown, op?: OutboxOp): FailureKind {
+  const status = statusOf(err);
   if (status === null) return "drop";
   if (status === 0) return (err as { code?: unknown }).code === "aborted" ? "drop" : "retry";
   if (status === 401) return "auth";
-  if (status === 429 || status >= 500) return "retry";
+  if (status === 429) return isLongRateLimit(op, err) ? "drop" : "retry";
+  if (status >= 500) return "retry";
   return "drop";
 }
 
@@ -217,12 +242,21 @@ export function classifyError(err: unknown): FailureKind {
  * — no rollback, no error message.
  */
 export function isAlreadyDone(op: OutboxOp, err: unknown): boolean {
-  return op.kind === "challenge.delete" && (err as { status?: unknown } | null)?.status === 404;
+  return op.kind === "challenge.delete" && statusOf(err) === 404;
 }
 
 /** 2s, 4s, 8s … capped at 5 minutes. */
 export function backoffMs(attempts: number): number {
   return Math.min(5 * 60_000, 2_000 * 2 ** Math.max(0, attempts - 1));
+}
+
+/** When to try again after a retryable failure: the backoff, or longer when a 429 says so (up to an hour). */
+export function retryDelayMs(attempts: number, err: unknown): number {
+  const base = backoffMs(attempts);
+  if (statusOf(err) !== 429) return base;
+  const retryAfter = (err as { retryAfter?: unknown }).retryAfter;
+  if (typeof retryAfter !== "number" || !(retryAfter > 0)) return base;
+  return Math.max(base, Math.min(retryAfter, LONG_RATE_LIMIT_SECONDS) * 1000);
 }
 
 /** Remove a dropped item. If it was a create, later ops for that challenge would only 404, so drop them too. */
@@ -269,7 +303,7 @@ export async function drain(deps: DrainDeps): Promise<DrainResult> {
         deps.onSent?.(item, undefined);
         continue;
       }
-      const kind = classifyError(error);
+      const kind = classifyError(error, item.op);
       const current = deps.load();
       if (kind === "drop") {
         deps.save(dropItem(current, item));

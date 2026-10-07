@@ -9,14 +9,19 @@
  *   apiDistPath      override the api Lambda bundle dir    (default ../apps/api/dist/api)
  *   reminderDistPath override the reminder bundle dir      (default ../apps/api/dist/reminder)
  *
+ * Environment: PUBLIC_ORIGIN (https://<CloudFront domain>) is read by the web build for absolute
+ * og:image URLs; here it is only checked against the built index.html (a warning, so CI and the
+ * very first deploy, before the domain exists, still synthesize).
+ *
  * No context lookups: CI synthesizes with a dummy account and no credentials.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "aws-cdk-lib";
 import { REGION, STACK_DESCRIPTION, STACK_NAME } from "../lib/config";
 import { DEFAULT_ASSET_PATHS, ThirtyDaysStack } from "../lib/thirty-days-stack";
+import { previewImageProblems } from "../lib/web-check";
 
 const infraDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const app = new App();
@@ -42,10 +47,25 @@ if (alertEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(alertEmail)) {
   throw new Error(`alertEmail はメールアドレスで指定してください（"${alertEmail}"）`);
 }
 
+const webDistPath = assetPath("webDistPath");
+const indexHtml = path.join(webDistPath, "index.html");
+if (existsSync(indexHtml)) {
+  const problems = previewImageProblems(readFileSync(indexHtml, "utf8"), process.env.PUBLIC_ORIGIN);
+  if (problems.length > 0) {
+    console.warn(
+      [
+        "警告: Web のビルドの OGP 画像が公開用になっていません（リンクのプレビューに画像が出ません）。",
+        ...problems.map((p) => `  - ${p}`),
+        "  PUBLIC_ORIGIN=https://<CloudFront のドメイン> を付けて npm run deploy してください（docs/deploy.md）。",
+      ].join("\n"),
+    );
+  }
+}
+
 new ThirtyDaysStack(app, STACK_NAME, {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: REGION },
   description: STACK_DESCRIPTION,
-  webDistPath: assetPath("webDistPath"),
+  webDistPath,
   apiDistPath: assetPath("apiDistPath"),
   reminderDistPath: assetPath("reminderDistPath"),
   alertEmail,

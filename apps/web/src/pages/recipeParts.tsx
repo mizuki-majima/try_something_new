@@ -26,7 +26,7 @@ export function CategoryLabel({ category }: { category: Category }) {
   );
 }
 
-/** 体験談あり / みんなの投稿 / あなたの投稿 / N人がはじめた */
+/** 体験談あり / みんなの投稿 / あなたの投稿 / N回はじめられました (startCount counts starts, not people). */
 export function RecipeTags({ recipe }: { recipe: Recipe }) {
   return (
     <>
@@ -36,7 +36,7 @@ export function RecipeTags({ recipe }: { recipe: Recipe }) {
       ) : (
         recipe.source === "community" && <span className="tag rp-community">みんなの投稿</span>
       )}
-      {recipe.startCount > 0 && <span className="tag">{recipe.startCount}人がはじめた</span>}
+      {recipe.startCount > 0 && <span className="tag">{recipe.startCount}回はじめられました</span>}
     </>
   );
 }

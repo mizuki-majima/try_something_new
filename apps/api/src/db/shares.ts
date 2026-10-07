@@ -7,7 +7,7 @@ import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/l
 import { VERDICT_KEYS, newId, type Challenge, type User, type Verdict } from "@thirty/shared";
 import { log } from "../log";
 import type { Deps } from "../ports";
-import { challengeKey, shareAuthorGsi2, shareKey, shareMediaKey, statsKey } from "./keys";
+import { challengeKey, hiddenShareMediaKey, shareAuthorGsi2, shareKey, shareMediaKey, statsKey } from "./keys";
 import type { PublicStatus } from "./recipes";
 import { isConditionFailed, type Item } from "./util";
 
@@ -107,12 +107,15 @@ export async function createShare(deps: Deps, user: User, challenge: Challenge, 
   return id;
 }
 
+/** Both places a card image can be: public (share/) and hidden by moderation (hidden/share/). */
+export const shareMediaKeys = (sid: string) => [shareMediaKey(sid), hiddenShareMediaKey(sid)];
+
 /**
- * Image first (an orphaned public image is worse than an orphaned row), then the item.
+ * Images first (an orphaned public image is worse than an orphaned row), then the item.
  * A failed image delete throws and leaves the item, so the owner can retry.
  */
 export async function removeShare(deps: Pick<Deps, "db" | "tableName" | "media">, sid: string): Promise<void> {
-  await deps.media.delete(shareMediaKey(sid));
+  for (const key of shareMediaKeys(sid)) await deps.media.delete(key);
   await deps.db.send(new DeleteCommand({ TableName: deps.tableName, Key: shareKey(sid) }));
 }
 
@@ -139,8 +142,7 @@ export async function deleteShare(deps: Pick<Deps, "db" | "tableName" | "media">
   }
 }
 
-/** Hide or show a card (moderation). Returns false when it does not exist. */
-export async function setShareStatus(deps: D, sid: string, status: PublicStatus): Promise<boolean> {
+async function updateShareStatus(deps: D, sid: string, status: PublicStatus): Promise<boolean> {
   try {
     await deps.db.send(
       new UpdateCommand({
@@ -156,6 +158,46 @@ export async function setShareStatus(deps: D, sid: string, status: PublicStatus)
   } catch (err) {
     if (isConditionFailed(err)) return false;
     throw err;
+  }
+}
+
+/**
+ * Hide or show a card (moderation). Returns false when it does not exist.
+ * Hiding moves the image out of the public prefix first (a failure throws before the page changes,
+ * so the moderator can retry); showing flips the item first and then moves the image back, so an
+ * image never becomes public for a card that is gone. Both moves are no-ops when already done.
+ */
+export async function setShareStatus(deps: Pick<Deps, "db" | "tableName" | "media">, sid: string, status: PublicStatus): Promise<boolean> {
+  if (status === "hidden") {
+    const moved = await deps.media.move(shareMediaKey(sid), hiddenShareMediaKey(sid));
+    if (await updateShareStatus(deps, sid, "hidden")) return true;
+    if (moved) await deps.media.delete(hiddenShareMediaKey(sid)); // the card was deleted meanwhile
+    return false;
+  }
+  if (!(await updateShareStatus(deps, sid, "published"))) return false;
+  await deps.media.move(hiddenShareMediaKey(sid), shareMediaKey(sid));
+  return true;
+}
+
+/**
+ * Remember on the card's challenge that moderation hid or deleted its card (`moderated`), so the
+ * owner cannot simply publish it again (POST /api/shares answers 403). Cleared when the moderator
+ * restores the card. Nothing happens when the challenge is gone.
+ */
+export async function setChallengeModerated(deps: D, share: Item, moderated: boolean): Promise<void> {
+  if (typeof share.userId !== "string" || typeof share.challengeId !== "string") return;
+  try {
+    await deps.db.send(
+      new UpdateCommand({
+        TableName: deps.tableName,
+        Key: challengeKey(share.userId, share.challengeId),
+        UpdateExpression: moderated ? "SET moderated = :t" : "REMOVE moderated",
+        ConditionExpression: "attribute_exists(pk)",
+        ...(moderated ? { ExpressionAttributeValues: { ":t": true } } : {}),
+      }),
+    );
+  } catch (err) {
+    if (!isConditionFailed(err)) throw err;
   }
 }
 

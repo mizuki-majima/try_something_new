@@ -164,7 +164,9 @@ describe("RecipesPage", () => {
     expect(within(theirs).getByText("みんなの投稿")).toBeTruthy();
     const walk = screen.getByText("毎日20分歩く").closest("a")!;
     expect(within(walk).getByText("体験談あり")).toBeTruthy();
-    expect(within(walk).getByText("3人がはじめた")).toBeTruthy();
+    // startCount counts starts (create/delete included), not people.
+    expect(within(walk).getByText("3回はじめられました")).toBeTruthy();
+    expect(within(walk).queryByText(/人がはじめた/)).toBeNull();
     expect(fetchMock.mock.calls[0]![0]).toBe("/api/recipes");
   });
 
@@ -242,6 +244,9 @@ describe("RecipeDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "体験談を書く" }));
     const dialog = screen.getByRole("dialog", { name: "体験談を書く" });
     expect((within(dialog).getByLabelText("名前") as HTMLInputElement).value).toBe("はな");
+    const consent = dialog.querySelector<HTMLElement>(".consent-note")!;
+    expect(consent.textContent).toBe("投稿すると利用規約とプライバシーポリシーに同意したことになります。");
+    expect(within(consent).getByRole("link", { name: "利用規約" }).getAttribute("href")).toBe("/terms");
     fireEvent.click(within(dialog).getByRole("button", { name: "公開する" }));
     expect(await within(dialog).findByText("体験談を入力してください")).toBeTruthy();
 
@@ -308,6 +313,9 @@ describe("RecipeNewPage", () => {
 
   it("validates with RecipeInputSchema before sending", async () => {
     renderAt("/recipes/new", routes);
+    const consent = document.querySelector<HTMLElement>(".consent-note")!;
+    expect(consent.textContent).toBe("投稿すると利用規約とプライバシーポリシーに同意したことになります。");
+    expect(within(consent).getByRole("link", { name: "プライバシーポリシー" }).getAttribute("href")).toBe("/privacy");
     fireEvent.click(screen.getByRole("button", { name: "レシピを公開する" }));
     expect(await screen.findByText("タイトルを入力してください")).toBeTruthy();
     expect(screen.getByText("何をするかを入力してください")).toBeTruthy();

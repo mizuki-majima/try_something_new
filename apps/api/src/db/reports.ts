@@ -1,17 +1,25 @@
 /**
  * Reports and moderation (FR-18).
- *   REPORT#<type>#<id> / META   count, reasons (last 10), lastAt, deletedAt (moderator deleted it);
- *                                gsi1 REPORTS / <lastAt13>
+ *   REPORT#<type>#<id> / META   count (distinct reporters), trustedCount (those that count towards
+ *                                auto-hide, see isTrustedReporter), reasons (last 10), lastAt,
+ *                                deletedAt (moderator deleted it); gsi1 REPORTS / <lastAt13>
  *   REPORT#<type>#<id> / BY#<uid>  one per reporter (a repeat report is not counted);
  *                                  gsi2 AUTHOR#<uid> so it goes with the reporter's account
  * Targets: recipe = community recipe id, story = "<recipeId>:<storyId>", share = share id,
  * member = challenge id (owner found through CHREF).
  */
 import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { IdSchema, RecipeIdSchema, type AdminReportItem, type ReportTargetType } from "@thirty/shared";
+import {
+  IdSchema,
+  REPORTER_MIN_ACCOUNT_AGE_HOURS,
+  RecipeIdSchema,
+  type AdminReportItem,
+  type ReportTargetType,
+  type User,
+} from "@thirty/shared";
 import type { DbDeps, Deps } from "../ports";
 import { excerpt } from "../share-page";
-import { challengeKey, reportKey, reporterKey, reportListGsi1, authorPk } from "./keys";
+import { challengeKey, reportKey, reporterKey, reportListGsi1, authorPk, userPk } from "./keys";
 import { cohortProjection, getChallengeItem, getChallengeOwner, toChallenge } from "./challenges";
 import {
   deleteRecipeAndStories,
@@ -22,12 +30,14 @@ import {
   setStoryStatus,
   type PublicStatus,
 } from "./recipes";
-import { deleteShare, getShareItem, setShareStatus } from "./shares";
+import { deleteShare, getShareItem, setChallengeModerated, setShareStatus } from "./shares";
 import { GSI1 } from "./table";
 import { getUser } from "./users";
 import { isConditionFailed, type Item } from "./util";
 
 type D = DbDeps;
+/** Moderation also moves or deletes card images. */
+type MD = DbDeps & Pick<Deps, "media">;
 
 /** Reasons kept on the META item. */
 export const MAX_REPORT_REASONS = 10;
@@ -99,10 +109,37 @@ export function targetPreview(t: Target): string {
 // ---------- reporting ----------
 
 /**
- * Record one report. Only the first report of each user counts. Returns the current count
- * (undefined when this reporter had already reported the target).
+ * Whether a report from `user` counts towards auto-hide (security: one person with a handful of
+ * throwaway accounts must not be able to hide anything). The account must be at least
+ * REPORTER_MIN_ACCOUNT_AGE_HOURS old and hold at least one challenge. Other reports are still
+ * recorded (marker, reason, count) for the moderator.
  */
-export async function addReport(deps: Deps, reporterUid: string, target: Target, reason: string | undefined): Promise<number | undefined> {
+export async function isTrustedReporter(deps: D, user: Pick<User, "id" | "createdAt">): Promise<boolean> {
+  if (deps.now().getTime() - user.createdAt < REPORTER_MIN_ACCOUNT_AGE_HOURS * 3_600_000) return false;
+  const res = await deps.db.send(
+    new QueryCommand({
+      TableName: deps.tableName,
+      KeyConditionExpression: "pk = :pk AND begins_with(sk, :ch)",
+      ExpressionAttributeValues: { ":pk": userPk(user.id), ":ch": "CH#" },
+      ProjectionExpression: "pk",
+      Limit: 1,
+    }),
+  );
+  return (res.Items ?? []).length > 0;
+}
+
+/**
+ * Record one report. Only the first report of each user counts. Returns the current number of
+ * trusted reporters (the auto-hide count; undefined when this reporter had already reported the
+ * target). An untrusted report is recorded but leaves that number as it is.
+ */
+export async function addReport(
+  deps: Deps,
+  reporterUid: string,
+  target: Target,
+  reason: string | undefined,
+  trusted: boolean,
+): Promise<number | undefined> {
   const now = deps.now().getTime();
   try {
     await deps.db.send(
@@ -131,6 +168,7 @@ export async function addReport(deps: Deps, reporterUid: string, target: Target,
     ":g1pk": list.gsi1pk,
     ":g1sk": list.gsi1sk,
     ":one": 1,
+    ":trusted": trusted ? 1 : 0,
     ":empty": [],
   };
   let reasons = "reasons = if_not_exists(reasons, :empty)";
@@ -142,16 +180,16 @@ export async function addReport(deps: Deps, reporterUid: string, target: Target,
     new UpdateCommand({
       TableName: deps.tableName,
       Key: reportKey(target.type, target.id),
-      UpdateExpression: `SET targetType = :type, targetId = :id, lastAt = :now, createdAt = if_not_exists(createdAt, :now), gsi1pk = :g1pk, gsi1sk = :g1sk, ${reasons} ADD #count :one`,
-      ExpressionAttributeNames: { "#count": "count" },
+      UpdateExpression: `SET targetType = :type, targetId = :id, lastAt = :now, createdAt = if_not_exists(createdAt, :now), gsi1pk = :g1pk, gsi1sk = :g1sk, ${reasons} ADD #count :one, #trusted :trusted`,
+      ExpressionAttributeNames: { "#count": "count", "#trusted": "trustedCount" },
       ExpressionAttributeValues: values,
       ReturnValues: "ALL_NEW",
     }),
   );
-  const count = Number(res.Attributes?.count ?? 1);
+  const trustedCount = Number(res.Attributes?.trustedCount ?? 0);
   const kept = Array.isArray(res.Attributes?.reasons) ? res.Attributes.reasons.length : 0;
   if (kept > MAX_REPORT_REASONS) await trimReasons(deps, target, kept);
-  return count;
+  return trustedCount;
 }
 
 /** Drop the oldest reasons. Conditional on the length we saw, so a concurrent append is never lost. */
@@ -180,9 +218,9 @@ export async function resetReportCount(deps: D, type: ReportTargetType, id: stri
       new UpdateCommand({
         TableName: deps.tableName,
         Key: reportKey(type, id),
-        UpdateExpression: "SET #count = :zero",
+        UpdateExpression: "SET #count = :zero, #trusted = :zero",
         ConditionExpression: "attribute_exists(pk)",
-        ExpressionAttributeNames: { "#count": "count" },
+        ExpressionAttributeNames: { "#count": "count", "#trusted": "trustedCount" },
         ExpressionAttributeValues: { ":zero": 0 },
       }),
     );
@@ -219,7 +257,7 @@ async function restoreMember(deps: D, ownerId: string, chId: string): Promise<bo
     const item = await getChallengeItem(deps, ownerId, chId);
     if (!item) return false;
     const c = toChallenge(item);
-    const projection = cohortProjection({ ...c, hiddenFromCohort: false }, owner?.shareProgress ?? false);
+    const projection = cohortProjection({ ...c, hiddenFromCohort: false, imported: item.imported === true }, owner?.shareProgress ?? false);
     try {
       await deps.db.send(
         new UpdateCommand({
@@ -248,14 +286,15 @@ async function restoreMember(deps: D, ownerId: string, chId: string): Promise<bo
  * (hiddenFromCohort, gsi1 removed) and its public share card, if any, is hidden. The admin route
  * marks the report deleted, which also refuses a later "restore".
  */
-async function removeMember(deps: D, ownerId: string, chId: string): Promise<void> {
+async function removeMember(deps: MD, ownerId: string, chId: string): Promise<void> {
   let shareId: unknown;
   try {
     const res = await deps.db.send(
       new UpdateCommand({
         TableName: deps.tableName,
         Key: challengeKey(ownerId, chId),
-        UpdateExpression: "SET hiddenFromCohort = :t REMOVE gsi1pk, gsi1sk",
+        // moderated: the owner cannot publish a new card for it either (POST /api/shares → 403).
+        UpdateExpression: "SET hiddenFromCohort = :t, moderated = :t REMOVE gsi1pk, gsi1sk",
         ConditionExpression: "attribute_exists(pk)",
         ExpressionAttributeValues: { ":t": true },
         ReturnValues: "ALL_NEW",
@@ -272,28 +311,35 @@ async function removeMember(deps: D, ownerId: string, chId: string): Promise<voi
   }
 }
 
-/** Hide a target (auto-hide or admin). Returns false when it no longer exists. */
-export async function hideTarget(deps: D, t: Target): Promise<boolean> {
+/**
+ * Hide a target (auto-hide or admin). Returns false when it no longer exists. A hidden card's image
+ * leaves the public prefix, and its challenge is marked so the owner cannot publish it again.
+ */
+export async function hideTarget(deps: MD, t: Target): Promise<boolean> {
   switch (t.type) {
     case "recipe":
       return setRecipeStatus(deps, t.item, "hidden");
     case "story":
       return setStoryStatus(deps, t.item, "hidden");
     case "share":
+      await setChallengeModerated(deps, t.item, true);
       return setShareStatus(deps, t.id, "hidden");
     case "member":
       return hideMember(deps, t.ownerId!, t.id);
   }
 }
 
-export async function restoreTarget(deps: D, t: Target): Promise<boolean> {
+export async function restoreTarget(deps: MD, t: Target): Promise<boolean> {
   switch (t.type) {
     case "recipe":
       return setRecipeStatus(deps, t.item, "published");
     case "story":
       return setStoryStatus(deps, t.item, "published");
-    case "share":
-      return setShareStatus(deps, t.id, "published");
+    case "share": {
+      if (!(await setShareStatus(deps, t.id, "published"))) return false;
+      await setChallengeModerated(deps, t.item, false);
+      return true;
+    }
     case "member":
       return restoreMember(deps, t.ownerId!, t.id);
   }
@@ -307,6 +353,7 @@ export async function deleteTarget(deps: Deps, t: Target): Promise<void> {
     case "story":
       return deleteStoryItem(deps, t.item);
     case "share":
+      await setChallengeModerated(deps, t.item, true);
       return deleteShare(deps, t.item);
     case "member":
       return removeMember(deps, t.ownerId!, t.id);

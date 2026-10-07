@@ -300,6 +300,8 @@ describe("SharePanel", () => {
 
     const img = await screen.findByRole("img", { name: /毎日1枚、写真を撮る/ });
     expect(img.getAttribute("src")).toBe("blob:card-1");
+    // /s/:id shows 「{nickname}の30日」: the notice must say the nickname is public too.
+    expect(screen.getByText(/このカードの画像・ニックネーム・タイトル・印・判定・ひとことを見られます/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "リンクを作って共有" }));
     const alert = await screen.findByRole("alert");

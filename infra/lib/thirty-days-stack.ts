@@ -21,11 +21,13 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
 import {
   CACHE_CONTROL,
+  COST_ALLOCATION_TAG,
   HTTP_API_NAME,
   MONTHLY_BUDGET_USD,
   NO_CACHE_FILES,
   PARAM,
   PROJECT_TAG,
+  REMINDER_MAX_EVENT_AGE_MINUTES,
   STACK_DESCRIPTION,
   TABLE_KEYS,
   VAPID_SUBJECT,
@@ -101,7 +103,10 @@ export class ThirtyDaysStack extends Stack {
 
     // ---- Parameters (values live in SSM; the template only carries the names) ----------------
     const vapidPublicKey = ssm.StringParameter.valueForStringParameter(this, PARAM.vapidPublicKey);
-    const originVerify = ssm.StringParameter.valueForStringParameter(this, PARAM.originVerify);
+    // Two parameters so origin-verify can rotate without downtime (docs/deploy.md): the API accepts a
+    // comma-separated list, CloudFront sends one value. setup-secrets.mjs --check keeps send ∈ accept.
+    const originVerifyAccept = ssm.StringParameter.valueForStringParameter(this, PARAM.originVerify);
+    const originVerifySend = ssm.StringParameter.valueForStringParameter(this, PARAM.originVerifySend);
     const secureParamArn = (name: string) =>
       this.formatArn({ service: "ssm", resource: "parameter", resourceName: name.replace(/^\//, "") });
     const readSecureParams = (names: string[]) => [
@@ -133,17 +138,25 @@ export class ThirtyDaysStack extends Stack {
         VAPID_PRIVATE_KEY_PARAM: PARAM.vapidPrivateKey,
         VAPID_SUBJECT,
         ADMIN_TOKEN_PARAM: PARAM.adminToken,
-        ORIGIN_VERIFY: originVerify,
+        ORIGIN_VERIFY: originVerifyAccept,
+        IP_HASH_KEY_PARAM: PARAM.ipHashKey,
       },
     });
     table.grantReadWriteData(apiFn);
+    // GetObject + PutObject also cover the server-side copy that moves a moderated card's image
+    // between share/ (public) and hidden/share/ (never served).
     apiFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
         resources: [mediaBucket.arnForObjects("*")],
       }),
     );
-    for (const st of readSecureParams([PARAM.vapidPrivateKey, PARAM.adminToken])) apiFn.addToRolePolicy(st);
+    // Without ListBucket, S3 answers a missing key with 403 instead of 404, and the API's move
+    // (apps/api/src/media.ts) could not tell "already moved" from a real permission error.
+    apiFn.addToRolePolicy(new iam.PolicyStatement({ actions: ["s3:ListBucket"], resources: [mediaBucket.bucketArn] }));
+    for (const st of readSecureParams([PARAM.vapidPrivateKey, PARAM.adminToken, PARAM.ipHashKey])) {
+      apiFn.addToRolePolicy(st);
+    }
 
     const reminderFn = new lambda.Function(this, "ReminderFunction", {
       description: "thirty-days reminder (Web Push)",
@@ -155,6 +168,8 @@ export class ThirtyDaysStack extends Stack {
       timeout: Duration.seconds(60),
       // A retried run would push the same reminder twice; the next slot is 15 minutes away anyway.
       retryAttempts: 0,
+      // The job handles the slot of the event's scheduled time; one queued longer than a slot is dropped.
+      maxEventAge: Duration.minutes(REMINDER_MAX_EVENT_AGE_MINUTES),
       logGroup: logGroup("ReminderLogs"),
       environment: {
         TABLE_NAME: table.tableName,
@@ -169,7 +184,8 @@ export class ThirtyDaysStack extends Stack {
     new events.Rule(this, "ReminderSchedule", {
       description: "thirty-days: send reminders every 15 minutes",
       schedule: events.Schedule.expression("cron(0/15 * * * ? *)"),
-      targets: [new targets.LambdaFunction(reminderFn)],
+      // EventBridge's own retries (when it cannot hand the event to Lambda) stop at the same age.
+      targets: [new targets.LambdaFunction(reminderFn, { maxEventAge: Duration.minutes(REMINDER_MAX_EVENT_AGE_MINUTES) })],
     });
 
     // ---- HTTP API --------------------------------------------------------------------------
@@ -179,7 +195,7 @@ export class ThirtyDaysStack extends Stack {
       description: "thirty-days API (CloudFront only, checked with x-origin-verify)",
       createDefaultStage: false,
     });
-    httpApi.addStage("DefaultStage", {
+    const apiStage = httpApi.addStage("DefaultStage", {
       stageName: "$default",
       autoDeploy: true,
       throttle: { rateLimit: 20, burstLimit: 40 },
@@ -227,7 +243,7 @@ export class ThirtyDaysStack extends Stack {
 
     const apiOrigin = new origins.HttpOrigin(`${httpApi.apiId}.execute-api.${this.region}.amazonaws.com`, {
       protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
-      customHeaders: { "x-origin-verify": originVerify },
+      customHeaders: { "x-origin-verify": originVerifySend },
     });
     const forwardHost = viewerRequest("ForwardHostFunction", "forward-host", FORWARD_HOST_CODE);
     const apiBehavior = (responseHeadersPolicy: cloudfront.IResponseHeadersPolicy): cloudfront.BehaviorOptions => ({
@@ -257,6 +273,7 @@ export class ThirtyDaysStack extends Stack {
       additionalBehaviors: {
         "/api/*": apiBehavior(apiHeaders),
         "/s/*": apiBehavior(shareHeaders),
+        // Only share/<id>.png is public; media-path answers 404 for anything else (e.g. hidden/share/).
         "/media/*": {
           origin: origins.S3BucketOrigin.withOriginAccessControl(mediaBucket),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -267,6 +284,9 @@ export class ThirtyDaysStack extends Stack {
         },
       },
     });
+    // The API's accept list changes before the header CloudFront sends: a deploy that does both
+    // (origin-verify rotation steps 1 and 2 at once) never has edges sending a value the API refuses.
+    distribution.node.addDependency(apiFn);
 
     // ---- Web deployment --------------------------------------------------------------------
     // Three syncs of the same asset with disjoint filters, so each prune only touches its own files.
@@ -306,7 +326,10 @@ export class ThirtyDaysStack extends Stack {
       new CostGuard(this, "CostGuard", {
         alertEmail: props.alertEmail,
         monthlyBudgetUsd: MONTHLY_BUDGET_USD,
+        costAllocationTag: COST_ALLOCATION_TAG,
         apiFunction: apiFn,
+        apiStage,
+        reminderFunction: reminderFn,
       });
     }
 

@@ -2,7 +2,7 @@
  * Lambda "reminder" (EventBridge, every 15 minutes): Web Push to users whose reminder slot is now
  * and who still have an unstamped active challenge today (SPEC FR-14).
  *
- * slot = utcSlotOf(now) → gsi3 SLOT#<slot> → group by user → for each user: profile + challenges →
+ * slot = utcSlotOf(scheduled time) → gsi3 SLOT#<slot> → group by user → for each user: profile + challenges →
  * send to that user's subscriptions on the slot; delete the ones the push service reports gone.
  * Only counts are logged (no endpoints, titles or notes). One failing user never stops the run.
  */
@@ -102,10 +102,20 @@ function groupByUser(items: Item[]): Map<string, Item[]> {
   return byUser;
 }
 
+/**
+ * The moment this run is for: the EventBridge event's scheduled `time` when present, so a delayed
+ * or duplicated delivery still handles its own slot (not the one the clock has moved on to).
+ */
+export function scheduledTime(event: unknown, fallback: Date): Date {
+  const time = (event as { time?: unknown } | null | undefined)?.time;
+  const ms = typeof time === "string" ? Date.parse(time) : NaN;
+  return Number.isFinite(ms) ? new Date(ms) : fallback;
+}
+
 /** Build the job with injected deps (tests pass dynalite, a fake sender and a fixed clock). */
 export function makeReminderHandler(deps: ReminderDeps) {
-  return async (_event?: unknown, context?: LambdaContextLike): Promise<ReminderResult> => {
-    const now = deps.now();
+  return async (event?: unknown, context?: LambdaContextLike): Promise<ReminderResult> => {
+    const now = scheduledTime(event, deps.now());
     const slot = utcSlotOf(now, REMINDER_STEP_MINUTES);
     const result: ReminderResult = {
       slot,

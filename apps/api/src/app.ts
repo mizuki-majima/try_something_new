@@ -40,12 +40,28 @@ function requestLog(): MiddlewareHandler<AppEnv> {
   };
 }
 
-/** CloudFront adds a secret header; anything else (e.g. the API Gateway URL called directly) is refused. */
-function originVerify(expected: string | undefined): MiddlewareHandler<AppEnv> {
+/** The accepted origin-verify values: ORIGIN_VERIFY is a comma-separated list ("new,old" while rotating). */
+export function originVerifyValues(configured: string | undefined): string[] {
+  return (configured ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+/**
+ * CloudFront adds a secret header; anything else (e.g. the API Gateway URL called directly) is refused.
+ * Several values are accepted so a rotation never refuses the edges that still send the old one
+ * (CloudFront takes minutes to propagate, the Lambda switches in seconds). Every value is compared
+ * in constant time, without stopping at the first match.
+ */
+function originVerify(configured: string | undefined): MiddlewareHandler<AppEnv> {
+  const expected = originVerifyValues(configured);
   return async (c, next) => {
-    if (expected) {
+    if (expected.length > 0) {
       const given = c.req.header("x-origin-verify");
-      if (!given || !safeEqual(given, expected)) return errorResponse(c, 403, "forbidden", MESSAGES.forbidden);
+      let ok = false;
+      if (given) for (const value of expected) ok = safeEqual(given, value) || ok;
+      if (!ok) return errorResponse(c, 403, "forbidden", MESSAGES.forbidden);
     }
     await next();
   };

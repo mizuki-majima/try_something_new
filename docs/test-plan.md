@@ -11,7 +11,7 @@ Owner: AI QA ／ 対象: SPEC v1 ／ 最終更新: 2026-10-07
 | Unit | 共有ロジック（日付・文字数・スキーマ） | Vitest | `packages/shared/test/` | CI（`npm test`） |
 | Unit | Web のロジックと画面（store・outbox・共有カード・各ページ） | Vitest + jsdom + Testing Library | `apps/web/test/` | CI（`npm test`） |
 | Integration | API の全ルート・DB・リマインドジョブ（DynamoDB は dynalite、S3 / SSM / Web Push はモック） | Vitest + dynalite + aws-sdk-client-mock | `apps/api/test/` | CI（`npm test`） |
-| Integration | インフラ（CDK テンプレートの検証。CloudFront Function のコードも実行して確認） | Vitest + aws-cdk-lib/assertions | `infra/test/` | CI（`npm test`） |
+| Integration | インフラ（CDK テンプレートの検証。CloudFront Function のコードも実行して確認）と `scripts/setup-secrets.mjs` の入れ替え・確認のロジック | Vitest + aws-cdk-lib/assertions | `infra/test/` | CI（`npm test`） |
 | E2E | CUF-1〜3 と全画面のスモーク。本番ビルドの Web + ローカル API | Playwright（Chromium。`mobile` 390×844 タッチ / `desktop` 1280×800） | `tests/e2e/` | CI（`npm run test:e2e`） |
 | Live smoke | デプロイ後の実環境で CUF・Web Push・OGP | 手動（下のチェックリスト） | 本書 | 初回公開前・インフラ変更後・リリースごと |
 
@@ -37,7 +37,7 @@ npx playwright show-report               # 前回の HTML レポート
 
 ブラウザは `npx playwright install chromium`（CI は `--with-deps`）。別の場所に入っている場合は `PLAYWRIGHT_BROWSERS_PATH` を指定する。`:8787` / `:4173` が埋まっているときは `E2E_API_PORT` / `E2E_WEB_PORT` で変えられる（ローカルでは起動済みの `:4173` を再利用する）。
 
-## E2E の一覧（23 件 × 2 プロジェクト = 46）
+## E2E の一覧（mobile / desktop の2プロジェクトで実行）
 
 | ファイル | テスト | SPEC |
 |---|---|---|
@@ -51,6 +51,9 @@ npx playwright show-report               # 前回の HTML レポート
 | `smoke.spec.ts` | `/` `/recipes` `/recipes/photo` `/recipes/new` `/gacha` `/together` `/log` `/settings` `/about` `/terms` `/privacy` `/contact` `/admin` と未知のパス（404 画面）が、コンソールエラーなし・横スクロールなしで開く（14 件） | SPEC UI |
 | 同上 | ガチャを1回まわして結果と「これを30日やる」、ひらめき提案で3案と「いまは AI を使わず、ルールで選んでいます」、残り回数 | FR-12, FR-13 |
 | 同上 | `/s/<存在しないID>` がサーバ生成の HTML 404（「カードが見つかりません」） | FR-7 |
+| `csp.spec.ts` | 本番の CSP（`infra/lib/edge.ts` の `SITE_CSP`）を付けて主要画面を開き、開始と印まで進めても `securitypolicyviolation` が出ない | Architecture |
+| `pwa-recipe-cache.spec.ts` | Service Worker あり: サーバで消したレシピを、SW のキャッシュから出し続けない | FR-18, FR-20 |
+| `tap-targets.spec.ts` | 360px 幅でチップと30マスが 44px 以上 | NFR アクセシビリティ |
 
 ## CUF のトレーサビリティ
 
@@ -117,6 +120,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] `<SiteUrl>/api/health` が `{"ok":true}`。API Gateway の URL を直接開くと 403
 - [ ] `/` のレスポンスヘッダに CSP・HSTS・`X-Content-Type-Options: nosniff`。DevTools のコンソールにエラー（CSP 違反を含む）が無い
 - [ ] `/recipes/photo` を直接開いて表示される（SPA の書き換え）。`/s/<存在しないID>` は 404 の HTML
+- [ ] `/media/hidden/share/x.png` が 404（公開されるのは `/media/share/<id>.png` だけ）。`/` の `og:image` が `https://` で始まる（`PUBLIC_ORIGIN` を付けてデプロイした）
 
 **CUF（iPhone Safari と Android Chrome の両方）**
 
@@ -124,7 +128,8 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] CUF-1 E: 機内モードで押す →「オフライン・あとで同期」と上部の帯 → 機内モード解除で「同期済み」
 - [ ] PWA: ホーム画面に追加 → 機内モードでアイコンから開き、「きょう」と公式レシピが見える
 - [ ] CUF-2: 30日前に始めたチャレンジを用意する（設定 → バックアップの読み込みで、開始日を30日前にしたバックアップ JSON を読み込む。形は `tests/e2e/fixtures.ts` の `pastChallenge`）→ 振り返る → 続ける → カード → リンクを作って共有 → 別のブラウザ（シークレット）で `/s/<id>` を開く
-- [ ] OGP: `/s/<id>` を LINE（自分だけのトーク）と X の投稿画面に貼り、画像つきのカードが出る。`og:image` が `https://<CloudFront ドメイン>/media/share/<id>.png`
+- [ ] OGP: `/s/<id>` を LINE（自分だけのトーク）と X の投稿画面に貼り、画像つきのカードが出る。`og:image` が `https://<CloudFront ドメイン>/media/share/<id>.png`。トップの URL を貼っても画像が出る
+- [ ] 通報: `/s/<id>` の「このカードを通報する」→ お問い合わせ画面の通報フォーム → 送ると管理画面の通報一覧に出る。管理画面で「非表示」→ `/s/<id>` と `/media/share/<id>.png` が（キャッシュの5分以内に）404、「復元」で戻る
 - [ ] CUF-3: 端末 A で今月開始、端末 B（別アカウント）の「みんな」に A が出る → 応援 → 応援済み → A が設定で公開 OFF → B の再読み込みで消える
 
 **Web Push（FR-14）**
@@ -140,7 +145,8 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] `/admin` に管理トークンで入り、統計（開始した人・7日継続・完走）とお問い合わせが見える。別アカウントで通報した項目が一覧に出る
 - [ ] 設定 →「すべてのデータを削除」で、アカウント・公開カード（`/s/<id>` が 404）・1日組の表示が消える
 - [ ] CloudWatch Logs に 5xx が無い。ログにトークン・ひとこと・投稿本文・Push の宛先・IP が出ていない
-- [ ] AWS Budgets（月 $10）とエラーアラームがある（`alertEmail` を付けてデプロイした場合）
+- [ ] AWS Budgets `thirty-days-monthly`（月 $10、`Project=thirty-days` で絞り込み）とアラーム3つ（`Api5xx`・`ApiErrors`・`ReminderErrors`）がある（`alertEmail` を付けてデプロイした場合）。費用配分タグ `Project` が有効になっている
+- [ ] `node scripts/setup-secrets.mjs --check` が「6 個がそろっています」
 
 **品質ルーブリック（判定）**
 

@@ -133,10 +133,33 @@ main.wrap {
   max-width: 720px;
   margin: 0 auto;
   padding-inline: 16px;
-  padding-block: 20px calc(var(--tabbar-h, 68px) + 36px + var(--safe-bottom, 0px));
+  padding-block: 20px 28px;
 }
 main.wrap:focus {
   outline: none;
+}
+
+/* About / legal links under every page. On phones it ends above the fixed tab bar. */
+.site-foot {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px 16px calc(var(--tabbar-h, 68px) + 36px + var(--safe-bottom, 0px));
+}
+.site-foot nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 18px;
+  border-top: var(--border-thin, 2px) dashed var(--ink, #111);
+  padding-top: 8px;
+}
+.site-foot a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .tabbar {
@@ -199,7 +222,10 @@ main.wrap:focus {
     display: none;
   }
   main.wrap {
-    padding-block: 28px 72px;
+    padding-block: 28px 32px;
+  }
+  .site-foot {
+    padding-bottom: 40px;
   }
 }
 
@@ -266,6 +292,12 @@ main.wrap:focus {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 7px;
   max-width: 480px;
+}
+/* Phones around 360px: a tighter gap keeps every cell at least 44px (SPEC: tap targets). */
+@media (max-width: 400px) {
+  .grid30 {
+    gap: 4px;
+  }
 }
 .cell {
   position: relative;
@@ -598,7 +630,7 @@ main.wrap:focus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 4px 14px;
   border: var(--border-thin, 2px) solid var(--ink, #111);
   border-radius: var(--radius-pill, 999px);
@@ -611,12 +643,6 @@ main.wrap:focus {
   transition:
     transform var(--press, 100ms) ease-out,
     box-shadow var(--press, 100ms) ease-out;
-}
-/* Grow the hit area to 44px without making the pills look heavy. */
-.chip::before {
-  content: "";
-  position: absolute;
-  inset: -5px -4px;
 }
 @media (hover: hover) {
   .chip:hover:not(:disabled) {

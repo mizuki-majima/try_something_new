@@ -1,6 +1,6 @@
 import type { GetParameterCommand } from "@aws-sdk/client-ssm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadConfig, loadSecrets, resetSecretsCache } from "../src/config";
+import { DEFAULT_IP_HASH_KEY, loadConfig, loadSecrets, resetSecretsCache } from "../src/config";
 import { log, setLogLevel } from "../src/log";
 
 describe("loadConfig", () => {
@@ -27,26 +27,42 @@ describe("loadSecrets", () => {
       send: vi.fn(async (cmd: GetParameterCommand) => {
         calls.push(cmd.input);
         if (fail) throw new Error("ssm down");
-        return { Parameter: { Value: values[cmd.input.Name ?? ""] } };
+        const value = values[cmd.input.Name ?? ""];
+        if (value === undefined) throw Object.assign(new Error("not found"), { name: "ParameterNotFound" });
+        return { Parameter: { Value: value } };
       }),
     };
   };
 
   it("reads SecureStrings with decryption, once per cold start", async () => {
-    const ssm = fakeSsm({ "/thirty/admin": "adm", "/thirty/vapid": "vap" });
-    const config = loadConfig({ ADMIN_TOKEN_PARAM: "/thirty/admin", VAPID_PRIVATE_KEY_PARAM: "/thirty/vapid" });
-    expect(await loadSecrets(config, ssm as never)).toEqual({ adminToken: "adm", vapidPrivateKey: "vap" });
+    const ssm = fakeSsm({ "/thirty/admin": "adm", "/thirty/vapid": "vap", "/thirty/ip": "ip-secret" });
+    const config = loadConfig({ ADMIN_TOKEN_PARAM: "/thirty/admin", VAPID_PRIVATE_KEY_PARAM: "/thirty/vapid", IP_HASH_KEY_PARAM: "/thirty/ip" });
+    expect(await loadSecrets(config, ssm as never)).toEqual({ adminToken: "adm", vapidPrivateKey: "vap", ipHashKey: "ip-secret" });
     await loadSecrets(config, ssm as never);
-    expect(ssm.calls).toHaveLength(2);
+    expect(ssm.calls).toHaveLength(3);
     expect(ssm.calls.every((c) => c.WithDecryption === true)).toBe(true);
   });
 
   it("prefers values from the environment and does not cache failures", async () => {
-    const config = loadConfig({ ADMIN_TOKEN: "env-admin", VAPID_PRIVATE_KEY_PARAM: "/thirty/vapid" });
+    const config = loadConfig({ ADMIN_TOKEN: "env-admin", VAPID_PRIVATE_KEY_PARAM: "/thirty/vapid", IP_HASH_KEY: "env-ip", IP_HASH_KEY_PARAM: "/thirty/ip" });
     await expect(loadSecrets(config, fakeSsm({}, true) as never)).rejects.toThrow("ssm down");
     const ok = fakeSsm({ "/thirty/vapid": "vap" });
-    expect(await loadSecrets(config, ok as never)).toEqual({ adminToken: "env-admin", vapidPrivateKey: "vap" });
+    expect(await loadSecrets(config, ok as never)).toEqual({ adminToken: "env-admin", vapidPrivateKey: "vap", ipHashKey: "env-ip" });
     expect(ok.calls.map((c) => c.Name)).toEqual(["/thirty/vapid"]);
+  });
+
+  it("falls back to the built-in IP hash key when none is configured or its parameter is missing", async () => {
+    expect(await loadSecrets(loadConfig({}), fakeSsm({}) as never)).toEqual({
+      adminToken: undefined,
+      vapidPrivateKey: undefined,
+      ipHashKey: DEFAULT_IP_HASH_KEY,
+    });
+    resetSecretsCache();
+    // A deploy before scripts/setup-secrets.mjs created the parameter must not take the API down.
+    expect((await loadSecrets(loadConfig({ IP_HASH_KEY_PARAM: "/thirty/ip" }), fakeSsm({}) as never)).ipHashKey).toBe(DEFAULT_IP_HASH_KEY);
+    resetSecretsCache();
+    // Any other SSM failure still fails (and is retried on the next request).
+    await expect(loadSecrets(loadConfig({ IP_HASH_KEY_PARAM: "/thirty/ip" }), fakeSsm({}, true) as never)).rejects.toThrow("ssm down");
   });
 });
 

@@ -18,7 +18,7 @@ import {
 } from "@thirty/shared";
 import { createApp } from "../src/app";
 import { getChallengeItem, toChallengeItem } from "../src/db/challenges";
-import { contactKey, contactListGsi1, shareAuthorGsi2, shareKey, shareMediaKey, statsKey } from "../src/db/keys";
+import { contactKey, contactListGsi1, hiddenShareMediaKey, shareAuthorGsi2, shareKey, shareMediaKey, statsKey } from "../src/db/keys";
 import { suggestionsStatKey } from "../src/routes/admin";
 import { ADMIN_TOKEN, json, setupApi } from "./helpers";
 
@@ -110,7 +110,7 @@ async function reportItems(): Promise<AdminReportItem[]> {
 
 async function reportBy(n: number, targetType: string, targetId: string, reason?: string) {
   for (let i = 0; i < n; i++) {
-    const s = await api.createSession();
+    const s = await api.trustedSession();
     const res = await api.request("/api/reports", { token: s.token, body: { targetType, targetId, ...(reason ? { reason } : {}) } });
     expect(res.status).toBe(204);
   }
@@ -234,19 +234,30 @@ describe("POST /api/admin/moderate", () => {
     expect(await count()).toBe(base - 1);
   });
 
-  it("share: hide / restore / delete (image removed, challenge unlinked)", async () => {
+  it("share: hide / restore / delete (image out of the public prefix while hidden, removed on delete)", async () => {
     const owner = await api.createSession();
     const c = await seedMember(owner, challenge({ status: "done", verdict: "stop" }));
     const sid = await seedShare(owner, c.id);
+    const bytes = api.media.objects.get(shareMediaKey(sid))?.bytes;
 
     expect((await moderate("share", sid, "hide")).status).toBe(204);
     expect((await api.request(`/s/${sid}`)).status).toBe(404);
+    // The image is no longer at /media/share/<id>.png (CloudFront serves only share/).
+    expect(api.media.objects.has(shareMediaKey(sid))).toBe(false);
+    expect(api.media.objects.get(hiddenShareMediaKey(sid))?.bytes).toEqual(bytes);
+    expect((await moderate("share", sid, "hide")).status).toBe(204); // idempotent
+    expect(api.media.objects.has(hiddenShareMediaKey(sid))).toBe(true);
+
     expect((await moderate("share", sid, "restore")).status).toBe(204);
     expect((await api.request(`/s/${sid}`)).status).toBe(200);
+    expect(api.media.objects.get(shareMediaKey(sid))?.bytes).toEqual(bytes);
+    expect(api.media.objects.has(hiddenShareMediaKey(sid))).toBe(false);
 
+    await moderate("share", sid, "hide");
     expect((await moderate("share", sid, "delete")).status).toBe(204);
     expect(await getItem(`SHARE#${sid}`, "META")).toBeUndefined();
     expect(api.media.objects.has(shareMediaKey(sid))).toBe(false);
+    expect(api.media.objects.has(hiddenShareMediaKey(sid))).toBe(false);
     expect((await getChallengeItem(api.deps, owner.user.id, c.id))?.shareId).toBeUndefined();
   });
 
@@ -288,7 +299,9 @@ describe("POST /api/admin/moderate", () => {
     expect(await item()).toMatchObject({ hiddenFromCohort: true, shareId: sid });
     expect((await item())?.gsi1pk).toBeUndefined();
     expect((await getItem(`SHARE#${sid}`, "META"))?.status).toBe("hidden");
-    expect(api.media.objects.has(shareMediaKey(sid))).toBe(true);
+    // Its image leaves the public prefix too (kept, so a moderator could still look at it).
+    expect(api.media.objects.has(shareMediaKey(sid))).toBe(false);
+    expect(api.media.objects.has(hiddenShareMediaKey(sid))).toBe(true);
     expect((await api.request(`/s/${sid}`)).status).toBe(404);
     // The report is marked deleted (preview kept: the record still exists).
     const listedItem = (await reportItems()).find((i) => i.targetId === c.id);
@@ -400,11 +413,11 @@ describe("GET /api/admin/stats", () => {
         "pilot",
       ].sort(),
     );
-    expect(Object.keys(stats.pilot).sort()).toEqual(["eligible7", "reflected", "retained7", "started", "starters"]);
+    expect(Object.keys(stats.pilot).sort()).toEqual(["eligible7", "reflected", "retained7", "sharers", "starters"]);
     // The members seeded above (startDate 2026-10-01, day 7 on 10-07 JST) count as started.
-    expect(stats.pilot.started).toBeGreaterThan(0);
     expect(stats.pilot.starters).toBeGreaterThan(0);
-    expect(stats.pilot.reflected).toBeLessThanOrEqual(stats.pilot.started);
+    expect(stats.pilot.reflected).toBeLessThanOrEqual(stats.pilot.starters);
+    expect(stats.pilot.sharers).toBeLessThanOrEqual(stats.pilot.reflected);
     expect(stats.pilot.retained7).toBeLessThanOrEqual(stats.pilot.eligible7);
     expect(stats.verdicts).toEqual({ continue: 2, stop: 0, modify: 1 });
     expect(stats.suggestionsToday).toBe(4);

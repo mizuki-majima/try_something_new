@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "synth": "cdk synth --quiet --no-notices",
-    "deploy": "cdk deploy --all --require-approval never --no-notices",
+    "deploy": "node ../scripts/setup-secrets.mjs --check && cdk deploy --all --require-approval never --no-notices",
     "diff": "cdk diff --no-notices"
   },
   "devDependencies": {

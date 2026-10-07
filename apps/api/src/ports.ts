@@ -9,7 +9,12 @@ import type { Db } from "./db/client";
 
 export interface MediaStore {
   put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
+  /** Deleting a key that does not exist is not an error. */
   delete(key: string): Promise<void>;
+  /** Copy an object (type and cache headers included). false when `from` does not exist. */
+  copy(from: string, to: string): Promise<boolean>;
+  /** copy, then delete `from`. false (nothing changed) when `from` does not exist. */
+  move(from: string, to: string): Promise<boolean>;
 }
 
 export type SuggestInput = z.output<typeof SuggestRequestSchema>;

@@ -1,7 +1,7 @@
 import { API, type SessionResponse } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { ApiClientError } from "../src/lib/http";
-import { clearSession, ensureSession, getToken, isSessionInvalid, markSessionInvalid, redeemTransfer } from "../src/lib/session";
+import { clearSession, ensureSession, getToken, isSessionInvalid, markSessionInvalid, redeemTransfer, subscribeSessionCreated } from "../src/lib/session";
 import { KEYS, writeString } from "../src/lib/storage";
 
 const user = { id: "u0000000000001", nickname: "みず", tz: "Asia/Tokyo", shareProgress: true, reminder: { enabled: false, time: "21:00" }, createdAt: 1 };
@@ -84,6 +84,34 @@ describe("ensureSession", () => {
     resolve(sessionResponse("late"));
     await p;
     expect(getToken()).toBeNull();
+  });
+});
+
+describe("subscribeSessionCreated", () => {
+  it("tells listeners about an account created by any caller, once, with its user", async () => {
+    const created = vi.fn();
+    const unsubscribe = subscribeSessionCreated(created);
+    fetchMock.mockResolvedValue(sessionResponse("tok-4"));
+    await Promise.all([ensureSession(), ensureSession()]);
+    expect(created).toHaveBeenCalledTimes(1);
+    expect(created).toHaveBeenCalledWith({ token: "tok-4", user });
+
+    await ensureSession(); // the token exists: nothing is created
+    expect(created).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it("is silent for a create that resolves after clearSession", async () => {
+    const created = vi.fn();
+    const unsubscribe = subscribeSessionCreated(created);
+    let resolve!: (r: Response) => void;
+    fetchMock.mockReturnValue(new Promise<Response>((r) => (resolve = r)));
+    const p = ensureSession();
+    clearSession();
+    resolve(sessionResponse("late"));
+    await p;
+    expect(created).not.toHaveBeenCalled();
+    unsubscribe();
   });
 });
 

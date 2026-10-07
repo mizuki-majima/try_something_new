@@ -15,7 +15,7 @@ import { getChallengeItem, toChallenge } from "../db/challenges";
 import { enforceQuota } from "../db/rate";
 import { countShareAction, createShare, deleteShare, getShareItem, toShareView } from "../db/shares";
 import { bumpStats } from "../db/stats";
-import { badRequest, conflict, HttpError, notFound } from "../errors";
+import { badRequest, conflict, forbidden, HttpError, notFound } from "../errors";
 import { log } from "../log";
 import { decodeBase64Strict, isShareCardPng } from "../png";
 import type { Deps } from "../ports";
@@ -31,6 +31,7 @@ const CHALLENGE_NOT_FOUND = "チャレンジが見つかりませんでした";
 const NOT_DONE = "振り返りを終えたチャレンジだけ共有できます";
 const BAD_IMAGE = "カード画像の形式が正しくありません（1200×630 の PNG）";
 const IMAGE_TOO_LARGE = "カード画像が大きすぎます（600KBまで）";
+export const SHARE_MODERATED = "このカードは公開できません";
 
 function htmlResponse(c: AppContext, html: string, status: 200 | 404): Response {
   return c.body(html, status, {
@@ -58,6 +59,13 @@ export function sharesRoutes(deps: Deps) {
     if (!item) throw notFound(CHALLENGE_NOT_FOUND);
     const challenge = toChallenge(item);
     if (challenge.status !== "done") throw conflict(NOT_DONE);
+    // Moderation cannot be undone by publishing again: the challenge was taken out of the cohort,
+    // or its card was hidden / deleted by moderation (the flag, or a current card that is hidden).
+    if (item.hiddenFromCohort === true || item.moderated === true) throw forbidden(SHARE_MODERATED);
+    if (challenge.shareId) {
+      const current = await getShareItem(deps, challenge.shareId);
+      if (current && current.userId === c.var.uid && current.status === "hidden") throw forbidden(SHARE_MODERATED);
+    }
 
     const png = decodeBase64Strict(input.imageBase64);
     if (!png) throw badRequest(BAD_IMAGE, { imageBase64: BAD_IMAGE });
@@ -85,7 +93,7 @@ export function sharesRoutes(deps: Deps) {
 
   r.post(API.shareMetric, async (c) => {
     const { channel } = await readJson(c, ShareMetricSchema);
-    await enforceQuota(deps, "share-metric-ip", clientIpHash(c), SHARE_METRICS_PER_IP_PER_DAY, "day");
+    await enforceQuota(deps, "share-metric-ip", clientIpHash(deps, c), SHARE_METRICS_PER_IP_PER_DAY, "day");
     await countShareAction(deps, channel);
     return c.body(null, 204);
   });

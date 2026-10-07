@@ -5,7 +5,15 @@ import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { TABLE } from "../../apps/api/src/db/table";
-import { CACHE_CONTROL, HTTP_API_NAME, NO_CACHE_FILES, PARAM, STACK_DESCRIPTION, TABLE_KEYS } from "../lib/config";
+import {
+  CACHE_CONTROL,
+  COST_ALLOCATION_TAG,
+  HTTP_API_NAME,
+  NO_CACHE_FILES,
+  PARAM,
+  STACK_DESCRIPTION,
+  TABLE_KEYS,
+} from "../lib/config";
 import { FORWARD_HOST_CODE, MEDIA_PATH_CODE, SHARE_PAGE_CSP, SITE_CSP, SPA_REWRITE_CODE } from "../lib/edge";
 import { ThirtyDaysStack, type ThirtyDaysStackProps } from "../lib/thirty-days-stack";
 
@@ -44,8 +52,25 @@ function envOf(fn: Resource): Record<string, unknown> {
   return (fn.Properties?.Environment as { Variables: Record<string, unknown> }).Variables;
 }
 
+/** The SSM parameter name behind a `{ Ref: SsmParameterValue… }` (a CloudFormation parameter's Default). */
+function ssmNameOf(t: Template, value: unknown): string | undefined {
+  const ref = (value as { Ref?: string } | undefined)?.Ref;
+  const params = t.toJSON().Parameters as Record<string, { Type: string; Default: string }>;
+  const p = ref ? params[ref] : undefined;
+  return p?.Type === "AWS::SSM::Parameter::Value<String>" ? p.Default : undefined;
+}
+
+const logicalIdOf = (t: Template, type: string, match: (r: Resource) => boolean): string | undefined =>
+  Object.entries(t.findResources(type)).find(([, r]) => match(r as Resource))?.[0];
+
+type EdgeResult = {
+  uri?: string;
+  headers?: Record<string, { value: string }>;
+  statusCode?: number;
+};
+
 /** Evaluates a CloudFront Function body (plain ES5) in Node. */
-function edgeHandler(code: string): (event: unknown) => { uri: string; headers: Record<string, { value: string }> } {
+function edgeHandler(code: string): (event: unknown) => EdgeResult {
   return new Function(`${code}\nreturn handler;`)() as ReturnType<typeof edgeHandler>;
 }
 
@@ -143,6 +168,7 @@ describe("Lambdas", () => {
     expect(Object.keys(env).sort()).toEqual(
       [
         "ADMIN_TOKEN_PARAM",
+        "IP_HASH_KEY_PARAM",
         "MEDIA_BUCKET",
         "ORIGIN_VERIFY",
         "TABLE_NAME",
@@ -153,8 +179,11 @@ describe("Lambdas", () => {
     );
     expect(env.VAPID_PRIVATE_KEY_PARAM).toBe(PARAM.vapidPrivateKey);
     expect(env.ADMIN_TOKEN_PARAM).toBe(PARAM.adminToken);
-    expect(env.ORIGIN_VERIFY).toEqual({ Ref: expect.stringMatching(/^SsmParameterValue/) });
-    expect(env.VAPID_PUBLIC_KEY).toEqual({ Ref: expect.stringMatching(/^SsmParameterValue/) });
+    // D6: the HMAC key for client IPs is a SecureString read at cold start, never in the template.
+    expect(env.IP_HASH_KEY_PARAM).toBe(PARAM.ipHashKey);
+    // D8: the API's accept list (comma-separated while rotating), not the value CloudFront sends.
+    expect(ssmNameOf(template, env.ORIGIN_VERIFY)).toBe(PARAM.originVerify);
+    expect(ssmNameOf(template, env.VAPID_PUBLIC_KEY)).toBe(PARAM.vapidPublicKey);
 
     const reminder = appFunctions(template).find((f) => f.Properties?.MemorySize === 256);
     expect(Object.keys(envOf(reminder!)).sort()).toEqual(
@@ -171,6 +200,36 @@ describe("Lambdas", () => {
     expect(policies).not.toContain('"ssm:*"');
   });
 
+  it("only the api may read the IP hash key (ssm:GetParameter + KMS decrypt via SSM)", () => {
+    const policyOf = (fnMemory: number) => {
+      const fn = logicalIdOf(template, "AWS::Lambda::Function", (r) => r.Properties?.MemorySize === fnMemory);
+      const role = (template.findResources("AWS::Lambda::Function")[fn!] as Resource).Properties?.Role as {
+        "Fn::GetAtt": [string, string];
+      };
+      const policy = Object.values(template.findResources("AWS::IAM::Policy")).find((p) =>
+        JSON.stringify((p as Resource).Properties?.Roles).includes(role["Fn::GetAtt"][0]),
+      ) as Resource;
+      return policy.Properties?.PolicyDocument as { Statement: Array<{ Action: string | string[]; Resource: unknown; Condition?: unknown }> };
+    };
+    const api = policyOf(512);
+    const getParam = api.Statement.find((s) => s.Action === "ssm:GetParameter");
+    const resources = JSON.stringify(getParam?.Resource);
+    for (const name of [PARAM.vapidPrivateKey, PARAM.adminToken, PARAM.ipHashKey]) {
+      expect(resources).toContain(`parameter${name}`);
+    }
+    expect(api.Statement.find((s) => s.Action === "kms:Decrypt")?.Condition).toEqual({
+      StringEquals: { "kms:ViaService": "ssm.ap-northeast-1.amazonaws.com" },
+    });
+    expect(JSON.stringify(policyOf(256))).not.toContain("ip-hash-key");
+
+    // D2 moves card images with CopyObject; a missing source must be a 404 (needs ListBucket), not a 403.
+    const s3 = (action: string) => api.Statement.find((s) => ([] as string[]).concat(s.Action).includes(action));
+    expect(s3("s3:ListBucket")?.Resource).toEqual({ "Fn::GetAtt": [expect.stringMatching(/^MediaBucket/), "Arn"] });
+    expect(JSON.stringify(s3("s3:GetObject")?.Resource)).toContain("MediaBucket");
+    for (const action of ["s3:PutObject", "s3:DeleteObject"]) expect(s3(action)).toBe(s3("s3:GetObject"));
+    expect(JSON.stringify(policyOf(256))).not.toContain("s3:");
+  });
+
   it("logs are kept for 14 days", () => {
     const groups = resourcesOf(template, "AWS::Logs::LogGroup");
     expect(groups.length).toBeGreaterThanOrEqual(2);
@@ -181,6 +240,18 @@ describe("Lambdas", () => {
     template.hasResourceProperties("AWS::Events::Rule", {
       ScheduleExpression: "cron(0/15 * * * ? *)",
       State: "ENABLED",
+    });
+  });
+
+  it("drops reminder events older than one slot, without retries (D9)", () => {
+    template.resourceCountIs("AWS::Lambda::EventInvokeConfig", 1);
+    template.hasResourceProperties("AWS::Lambda::EventInvokeConfig", {
+      MaximumRetryAttempts: 0,
+      MaximumEventAgeInSeconds: 900,
+      Qualifier: "$LATEST",
+    });
+    template.hasResourceProperties("AWS::Events::Rule", {
+      Targets: [Match.objectLike({ RetryPolicy: { MaximumEventAgeInSeconds: 900 } })],
     });
   });
 });
@@ -254,16 +325,30 @@ describe("CloudFront", () => {
     expect(dist.CacheBehaviors.find((x) => x.PathPattern === "/media/*")?.CachePolicyId).toBe(CACHING_OPTIMIZED);
   });
 
-  it("sends the origin-verify header to the API origin, from SSM", () => {
+  it("sends the origin-verify header to the API origin, from its own SSM parameter (D8)", () => {
     const apiOrigin = dist.Origins.find((o) => o.OriginCustomHeaders?.some((h) => h.HeaderName === "x-origin-verify"));
     expect(apiOrigin).toBeDefined();
     expect(JSON.stringify(apiOrigin?.DomainName)).toContain(".execute-api.ap-northeast-1.amazonaws.com");
     const header = apiOrigin?.OriginCustomHeaders?.find((h) => h.HeaderName === "x-origin-verify");
-    expect(header?.HeaderValue).toEqual({ Ref: expect.stringMatching(/^SsmParameterValue/) });
+    // CloudFront sends one value; the API accepts a list. Separate parameters make a rotation possible.
+    expect(ssmNameOf(template, header?.HeaderValue)).toBe(PARAM.originVerifySend);
     const params = template.toJSON().Parameters as Record<string, { Type: string; Default: string }>;
     expect(Object.values(params).map((p) => p.Default)).toEqual(
-      expect.arrayContaining([PARAM.originVerify, PARAM.vapidPublicKey]),
+      expect.arrayContaining([PARAM.originVerify, PARAM.originVerifySend, PARAM.vapidPublicKey]),
     );
+    // Nothing secret is resolved into the template: SecureStrings are only named.
+    for (const name of [PARAM.vapidPrivateKey, PARAM.adminToken, PARAM.ipHashKey]) {
+      expect(Object.values(params).map((p) => p.Default)).not.toContain(name);
+    }
+  });
+
+  it("updates the api Lambda before the distribution (a rotation never sends a value the API refuses)", () => {
+    const apiFnId = logicalIdOf(template, "AWS::Lambda::Function", (r) => r.Properties?.MemorySize === 512);
+    const [distribution] = Object.values(template.findResources("AWS::CloudFront::Distribution")) as Array<{
+      DependsOn?: string[];
+    }>;
+    expect(apiFnId).toBeDefined();
+    expect(distribution?.DependsOn).toEqual(expect.arrayContaining([apiFnId]));
   });
 
   it("has the three viewer-request functions", () => {
@@ -326,13 +411,24 @@ describe("CloudFront Function code", () => {
         },
       },
     });
-    expect(req.headers["x-forwarded-host"]).toEqual({ value: "d111.cloudfront.net" });
-    expect(req.headers["x-viewer-ip"]).toEqual({ value: "203.0.113.7" });
+    expect(req.headers?.["x-forwarded-host"]).toEqual({ value: "d111.cloudfront.net" });
+    expect(req.headers?.["x-viewer-ip"]).toEqual({ value: "203.0.113.7" });
   });
 
-  it("media-path strips /media so the bucket key is share/<id>.png", () => {
-    const run = (uri: string) => edgeHandler(MEDIA_PATH_CODE)({ request: { uri, headers: {} } }).uri;
-    expect(run("/media/share/abc.png")).toBe("/share/abc.png");
+  it("media-path serves share/<id>.png only, so hidden/share/ (moderated cards, D2) is never public", () => {
+    const run = (uri: string) => edgeHandler(MEDIA_PATH_CODE)({ request: { uri, headers: {} } });
+    expect(run("/media/share/abc123def456ghi7.png").uri).toBe("/share/abc123def456ghi7.png");
+    for (const uri of [
+      "/media/hidden/share/abc123def456ghi7.png",
+      "/media/share/../hidden/share/abc123def456ghi7.png",
+      "/media/share/%2E%2E/hidden/x.png",
+      "/media/share/abc.jpg",
+      "/media/share/",
+      "/media/other.png",
+      "/media/share/a/b.png",
+    ]) {
+      expect(run(uri), uri).toEqual({ statusCode: 404, statusDescription: "Not Found" });
+    }
   });
 });
 
@@ -343,24 +439,60 @@ describe("cost guard", () => {
     template.resourceCountIs("AWS::CloudWatch::Alarm", 0);
   });
 
-  it("creates a $10 budget, a mail topic and an error alarm with alertEmail", () => {
-    const t = synth({ alertEmail: "owner@example.com" });
-    t.resourceCountIs("AWS::Budgets::Budget", 1);
-    t.hasResourceProperties("AWS::Budgets::Budget", {
-      Budget: { BudgetType: "COST", TimeUnit: "MONTHLY", BudgetLimit: { Amount: 10, Unit: "USD" } },
+  const guarded = synth({ alertEmail: "owner@example.com" });
+  const alarms = () =>
+    Object.values(guarded.findResources("AWS::CloudWatch::Alarm")).map((r) => (r as Resource).Properties ?? {});
+
+  it("creates a $10 budget for this service only (Project cost allocation tag) and a mail topic", () => {
+    expect(COST_ALLOCATION_TAG).toBe("user:Project$thirty-days");
+    guarded.resourceCountIs("AWS::Budgets::Budget", 1);
+    guarded.hasResourceProperties("AWS::Budgets::Budget", {
+      Budget: {
+        BudgetName: "thirty-days-monthly",
+        BudgetType: "COST",
+        TimeUnit: "MONTHLY",
+        BudgetLimit: { Amount: 10, Unit: "USD" },
+        CostFilters: { TagKeyValue: ["user:Project$thirty-days"] },
+      },
       NotificationsWithSubscribers: [
         Match.objectLike({ Notification: Match.objectLike({ NotificationType: "ACTUAL", Threshold: 80 }) }),
         Match.objectLike({ Notification: Match.objectLike({ NotificationType: "FORECASTED", Threshold: 100 }) }),
       ],
     });
-    t.hasResourceProperties("AWS::SNS::Subscription", { Protocol: "email", Endpoint: "owner@example.com" });
-    t.hasResourceProperties("AWS::CloudWatch::Alarm", {
-      MetricName: "Errors",
-      Namespace: "AWS/Lambda",
+    guarded.hasResourceProperties("AWS::SNS::Subscription", { Protocol: "email", Endpoint: "owner@example.com" });
+  });
+
+  it("alarms on API Gateway 5xx, which counts route errors the Lambda answers with 500", () => {
+    const apiId = logicalIdOf(guarded, "AWS::ApiGatewayV2::Api", () => true);
+    const fiveXx = alarms().find((a) => a.MetricName === "5xx");
+    expect(fiveXx).toMatchObject({
+      Namespace: "AWS/ApiGateway",
+      Statistic: "Sum",
       Period: 300,
+      EvaluationPeriods: 1,
       Threshold: 5,
       ComparisonOperator: "GreaterThanOrEqualToThreshold",
+      TreatMissingData: "notBreaching",
     });
+    expect(fiveXx?.Dimensions).toEqual(
+      expect.arrayContaining([
+        { Name: "ApiId", Value: { Ref: apiId } },
+        { Name: "Stage", Value: "$default" },
+      ]),
+    );
+  });
+
+  it("keeps the api Lambda Errors alarm and adds one for the reminder, all mailed", () => {
+    const lambdaAlarms = alarms().filter((a) => a.Namespace === "AWS/Lambda" && a.MetricName === "Errors");
+    expect(lambdaAlarms.map((a) => [a.Period, a.Threshold]).sort()).toEqual([
+      [300, 5],
+      [3600, 2],
+    ]);
+    const topic = logicalIdOf(guarded, "AWS::SNS::Topic", () => true);
+    expect(alarms()).toHaveLength(3);
+    for (const a of alarms()) expect(a.AlarmActions).toEqual([{ Ref: topic }]);
+    // The Lambda alarm kept its logical id (no replacement on deploy).
+    expect(Object.keys(guarded.findResources("AWS::CloudWatch::Alarm")).some((id) => id.startsWith("CostGuardApiErrors"))).toBe(true);
   });
 });
 
@@ -396,8 +528,108 @@ describe("outputs and secrets", () => {
     expect(suspicious).toEqual([]);
   });
 
-  it("scripts/setup-secrets.mjs creates the parameters the stack reads", () => {
-    const script = readFileSync(path.join(here, "../../scripts/setup-secrets.mjs"), "utf8");
-    for (const name of Object.values(PARAM)) expect(script).toContain(name);
+  it("scripts/setup-secrets.mjs creates the parameters the stack reads, with the right types", async () => {
+    const secrets = await setupSecrets();
+    expect(secrets.PARAM).toEqual(PARAM);
+    expect(secrets.PARAM_TYPES).toEqual({
+      [PARAM.vapidPublicKey]: "String",
+      [PARAM.vapidPrivateKey]: "SecureString",
+      [PARAM.adminToken]: "SecureString",
+      [PARAM.originVerify]: "String",
+      [PARAM.originVerifySend]: "String",
+      [PARAM.ipHashKey]: "SecureString",
+    });
+    expect(secrets.ROTATABLE).toEqual(["vapid", "admin-token", "ip-hash-key", "origin-verify"]);
+  });
+});
+
+type SetupSecrets = {
+  PARAM: Record<string, string>;
+  PARAM_TYPES: Record<string, string>;
+  ROTATABLE: string[];
+  acceptList(value: string | undefined): string[];
+  originVerifyState(accept: string | undefined, send: string | undefined): string;
+  nextOriginVerifyStep(accept: string, send: string, newValue: string): { step: number; accept?: string; send?: string };
+  checkParameters(found: Map<string, { type: string; value?: string }>): string[];
+};
+
+/** The script runs main() only when executed; importing it just gives the helpers. */
+async function setupSecrets(): Promise<SetupSecrets> {
+  const file = path.join(here, "../../scripts/setup-secrets.mjs");
+  return (await import(file)) as SetupSecrets;
+}
+
+describe("origin-verify rotation (scripts/setup-secrets.mjs, D8)", () => {
+  it("reads the accept list as comma-separated, trimmed and without duplicates", async () => {
+    const { acceptList } = await setupSecrets();
+    expect(acceptList("a")).toEqual(["a"]);
+    expect(acceptList(" a , b ,")).toEqual(["a", "b"]);
+    expect(acceptList("a,a")).toEqual(["a"]);
+    expect(acceptList(undefined)).toEqual([]);
+  });
+
+  it("walks steady → step 1 → step 2 → step 3 → steady, and CloudFront always sends an accepted value", async () => {
+    const { nextOriginVerifyStep, originVerifyState } = await setupSecrets();
+    let accept = "old";
+    let send = "old";
+    const seen: number[] = [];
+    // After every step (= every deploy) the value CloudFront sends is one the API accepts.
+    const accepted = () => accept.split(",").includes(send);
+    for (let i = 0; i < 3; i++) {
+      const next = nextOriginVerifyStep(accept, send, "new");
+      seen.push(next.step);
+      if (next.accept !== undefined) accept = next.accept;
+      if (next.send !== undefined) send = next.send;
+      expect(accepted()).toBe(true);
+    }
+    expect(seen).toEqual([1, 2, 3]);
+    expect([accept, send]).toEqual(["new", "new"]);
+    expect(originVerifyState(accept, send)).toBe("steady");
+  });
+
+  it("names each state, and refuses to continue from a broken one", async () => {
+    const { nextOriginVerifyStep, originVerifyState } = await setupSecrets();
+    expect(originVerifyState("s", "s")).toBe("steady");
+    expect(originVerifyState("s,n", "s")).toBe("step1");
+    expect(originVerifyState("s,n", "n")).toBe("step2");
+    expect(originVerifyState("s", "n")).toBe("broken");
+    expect(originVerifyState("a,b,c", "a")).toBe("broken");
+    expect(originVerifyState("s", undefined)).toBe("broken");
+    expect(() => nextOriginVerifyStep("s", "n", "x")).toThrow(/想定外/);
+  });
+
+  it("a hand-written list in the other order still never drops the value being sent", async () => {
+    const { nextOriginVerifyStep } = await setupSecrets();
+    // "new,old" while CloudFront still sends old: read as step 2 done → keeps only "old" (safe).
+    expect(nextOriginVerifyStep("new,old", "old", "x")).toEqual({ step: 3, accept: "old" });
+    // "new,old" while CloudFront sends new: read as step 1 done → sends old again (accepted, safe).
+    expect(nextOriginVerifyStep("new,old", "new", "x")).toEqual({ step: 2, send: "old" });
+  });
+
+  it("--check lists missing parameters, wrong types and an origin-verify CloudFront would be refused with", async () => {
+    const { checkParameters, PARAM_TYPES } = await setupSecrets();
+    const all = () =>
+      new Map(
+        Object.entries(PARAM_TYPES).map(([name, type]) => [name, { type, value: type === "String" ? "v" : undefined }]),
+      );
+    expect(checkParameters(all())).toEqual([]);
+
+    const missing = all();
+    missing.delete(PARAM.ipHashKey);
+    missing.delete(PARAM.originVerifySend);
+    expect(checkParameters(missing)).toEqual([`${PARAM.originVerifySend} がありません`, `${PARAM.ipHashKey} がありません`]);
+
+    const wrongType = all();
+    wrongType.set(PARAM.ipHashKey, { type: "String", value: "k" });
+    expect(checkParameters(wrongType)).toEqual([`${PARAM.ipHashKey} は SecureString のはずですが String です`]);
+
+    const refused = all();
+    refused.set(PARAM.originVerify, { type: "String", value: "a,b" });
+    refused.set(PARAM.originVerifySend, { type: "String", value: "c" });
+    expect(checkParameters(refused)).toEqual([expect.stringContaining("403")]);
+
+    const rotating = all();
+    rotating.set(PARAM.originVerify, { type: "String", value: "v,w" });
+    expect(checkParameters(rotating)).toEqual([]);
   });
 });

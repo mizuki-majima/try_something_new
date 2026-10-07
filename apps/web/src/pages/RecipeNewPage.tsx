@@ -19,6 +19,7 @@ import {
   type Suggestion,
 } from "@thirty/shared";
 import { ChipGroup, type ChipOption } from "../components/Chip";
+import { ConsentNote } from "../components/ConsentNote";
 import { Field, TextAreaField, TextField } from "../components/Field";
 import { ChevronLeftIcon, PlusIcon } from "../components/Icons";
 import { Seal } from "../components/Seal";
@@ -410,6 +411,7 @@ export default function RecipeNewPage() {
             {formError}
           </p>
         )}
+        <ConsentNote action="post" />
         <button type="submit" className="btn primary lg" disabled={busy} aria-busy={busy}>
           {busy ? "公開しています…" : "レシピを公開する"}
         </button>

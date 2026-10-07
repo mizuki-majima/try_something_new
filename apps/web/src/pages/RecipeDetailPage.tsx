@@ -8,6 +8,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { LIMITS, StoryInputSchema, TOTAL_DAYS, VERDICTS, VERDICT_KEYS, type Recipe, type Story, type Verdict } from "@thirty/shared";
 import { ChipGroup, type ChipOption } from "../components/Chip";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ConsentNote } from "../components/ConsentNote";
 import { Field, TextAreaField, TextField } from "../components/Field";
 import { ChevronLeftIcon } from "../components/Icons";
 import { RecipeMeta } from "../components/RecipeMeta";
@@ -377,6 +378,7 @@ function StorySheet({ open, recipe, defaultName, onClose, onPosted }: StorySheet
             {formError}
           </p>
         )}
+        <ConsentNote action="post" />
         <button type="submit" className="btn primary lg" disabled={busy} aria-busy={busy}>
           {busy ? "送信中…" : "公開する"}
         </button>

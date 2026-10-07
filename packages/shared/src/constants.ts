@@ -52,6 +52,8 @@ export const LIMITS = {
   shareImageBytes: 600_000,
   /** Items in an imported backup. */
   importChallenges: 100,
+  /** Challenges one account can hold in total (checked by backup import; excess items are skipped). */
+  challengesPerUser: 200,
 } as const;
 
 /** Per-user and global quotas (per JST day unless noted). Enforced server-side. */
@@ -73,10 +75,16 @@ export const QUOTAS = {
   transferCodesPerUserPerHour: 5,
   transferRedeemPerIpPerHour: 10,
   pushTestsPerUserPerDay: 5,
+  /** POST /api/me/import (backup restore). */
+  importsPerUserPerDay: 3,
 } as const;
 
-/** A public item is hidden automatically when this many distinct users report it. */
+/**
+ * A public item is hidden automatically when this many distinct users report it. Only reporters
+ * whose account is REPORTER_MIN_ACCOUNT_AGE_HOURS old and holds a challenge count towards it.
+ */
 export const AUTO_HIDE_REPORTS = 3;
+export const REPORTER_MIN_ACCOUNT_AGE_HOURS = 24;
 
 /** Transfer codes (device hand-over) expire after this many minutes. */
 export const TRANSFER_CODE_TTL_MINUTES = 15;

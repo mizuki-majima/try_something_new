@@ -96,9 +96,26 @@ describe("TodayPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     renderToday([], { online: true });
-    expect(await screen.findByText("3人")).toBeTruthy();
+    // count is reservations (one person may hold several): not shown as people.
+    expect(await screen.findByText("3件")).toBeTruthy();
+    expect(screen.queryByText("3人")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "1日組で予約する" }));
     expect((screen.getAllByRole("radio")[1] as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("shows people for the next 1st when the API counts them (peopleCount)", async () => {
+    const nf = nextFirst(today);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === API.cohortUpcoming
+          ? new Response(JSON.stringify({ startDate: nf, count: 3, peopleCount: 2, byRecipe: [] }), { status: 200, headers: { "Content-Type": "application/json" } })
+          : new Response("{}", { status: 404, headers: { "Content-Type": "application/json" } }),
+      ),
+    );
+    renderToday([], { online: true });
+    expect(await screen.findByText("2人")).toBeTruthy();
+    expect(screen.getByText(/いま予約しているのは/)).toBeTruthy();
   });
 
   it("offers a retry when the cohort count cannot be loaded", async () => {

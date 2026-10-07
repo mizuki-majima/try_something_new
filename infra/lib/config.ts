@@ -7,16 +7,28 @@ export const STACK_DESCRIPTION = "30日だけ (try_something_new)";
 /** API Gateway names are not unique per account; "HttpApi" (the construct id) said nothing. */
 export const HTTP_API_NAME = "ThirtyDaysApi";
 export const PROJECT_TAG = "thirty-days";
+/**
+ * The budget's cost filter: the Project tag as a cost allocation tag. It only matches once the tag
+ * is activated in Billing → Cost allocation tags (docs/deploy.md); until then the budget reads $0.
+ */
+export const COST_ALLOCATION_TAG = `user:Project$${PROJECT_TAG}`;
 
-/** SSM parameters created once by scripts/setup-secrets.mjs (never by CloudFormation). */
+/** SSM parameters created by scripts/setup-secrets.mjs (never by CloudFormation). */
 export const PARAM = {
   vapidPublicKey: "/thirty-days/vapid-public-key",
   /** SecureString; the Lambdas read it at cold start. */
   vapidPrivateKey: "/thirty-days/vapid-private-key",
   /** SecureString; the API reads it at cold start. */
   adminToken: "/thirty-days/admin-token",
-  /** Shared secret header CloudFront adds to API requests (String: CloudFormation resolves it at deploy time). */
+  /**
+   * The x-origin-verify values the API accepts, comma-separated ("old,new" while rotating).
+   * String: CloudFormation resolves it at deploy time into the api Lambda's ORIGIN_VERIFY.
+   */
   originVerify: "/thirty-days/origin-verify",
+  /** The single x-origin-verify value CloudFront sends (String, resolved at deploy time). */
+  originVerifySend: "/thirty-days/origin-verify-send",
+  /** SecureString; HMAC key for client IPs in rate-limit keys. The API reads it at cold start. */
+  ipHashKey: "/thirty-days/ip-hash-key",
 } as const;
 
 export const VAPID_SUBJECT = "https://github.com/mizuki-majima/try_something_new";
@@ -45,3 +57,9 @@ export const CACHE_CONTROL = {
 
 /** AWS Budgets limit in USD when alertEmail is set (ADR 0001: report to the CEO above $10/month). */
 export const MONTHLY_BUDGET_USD = 10;
+
+/**
+ * Stale reminder events are dropped: the next 15-minute slot has its own event, and a reminder
+ * that arrives late is worse than none (FR-14).
+ */
+export const REMINDER_MAX_EVENT_AGE_MINUTES = 15;

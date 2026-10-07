@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Current Phase** | BUILD |
-| Health | 🟢 GREEN |
-| Next Gate | [Gate 4: BUILD → REVIEW](https://github.com/mizuki-majima/try_something_new/issues/1) |
-| Last updated | 2026-10-06 |
+| **Current Phase** | REVIEW |
+| Health | 🟡 YELLOW（Gate 5 の独立レビューで Critical・High が見つかり修正中。テスト用の環境には修正前のコードが載っている） |
+| Next Gate | [Gate 5: REVIEW → TEST](https://github.com/mizuki-majima/try_something_new/issues/2) |
+| Last updated | 2026-10-07 |
 
 > 趣味のサービス。収益を目的にしないため、Gate 1 の収益・価格の項目と Gate 2（支払意思）は CEO 判断で免除（[ADR 0001](docs/decisions/0001-hobby-service-skip-payment-validation.md)）。
 
@@ -84,15 +84,16 @@ PILOT の **完走率**（30日目または7日目以降の区切りで振り返
 
 ## Current Goal
 
-Gate 4 → 5 → 6 を通し、AWS にデプロイして PILOT の準備をする。
+Gate 5 のレビュー指摘（AI PM 決定 D1〜D13。SPEC.md に反映）を直して Gate 5 → 6 を通し、修正版をテスト環境にデプロイする。PILOT（URL を人に配る）は CEO の承認後。
 
 ## Current Risks
 
 | リスク | 対処 |
 |---|---|
 | 作ったが使われない | PILOT の基準を事前に固定。使われなければ機能を足さず PAUSE / KILL を検討 |
-| AWS 費用が想定を超える | サーバーレス・on-demand・AI なし。Budgets で月 $10 超を通知 |
-| 匿名の投稿による荒らし | 公開テキストは URL 禁止、レート制限、通報3件で自動非表示、管理画面 |
+| AWS 費用が想定を超える | サーバーレス・on-demand・AI なし（100人規模で月約 $0.1）。Budgets で `Project=thirty-days` の費用が月 $10 を超えそうなら通知（費用配分タグの有効化が前提。それまではアカウント全体の予算アラート）。API の 5xx とエラーのアラーム |
+| 匿名の投稿による荒らし | 公開テキストは URL 禁止、レート制限（IP は IPv6 なら /64 単位）、バックアップ読み込みの回数・件数の上限、通報3件で自動非表示（作成24時間以上・チャレンジのあるアカウントの通報だけ数える）、管理画面 |
+| テスト用の環境が誰でも開ける | URL は README にあるが、PILOT の参加者には配っていない。修正版をデプロイするまで広めない |
 | iOS で通知が届かない | ホーム画面追加の案内。カレンダー連携を代替に |
 | 端末を失くすとデータが戻らない | 引き継ぎコードとバックアップ書き出しを設定画面で案内 |
 
@@ -100,7 +101,7 @@ Gate 4 → 5 → 6 を通し、AWS にデプロイして PILOT の準備をす�
 
 - 料金・広告・決済
 - 生成 AI の呼び出し（ひらめき提案はルールで代用。ADR 0003）
-- メールアドレス・電話番号の収集、メール／SNS ログイン
+- アカウントのためのメールアドレス・電話番号の収集、メール／SNS ログイン（お問い合わせに任意で書かれた返信先だけは例外: 返信にだけ使い、180日で消す。AI PM 決定 D12、CEO 確認待ち）
 - ユーザー間のメッセージ・コメント（応援数のみ）
 - 写真のサーバ保存
 - ネイティブアプリ

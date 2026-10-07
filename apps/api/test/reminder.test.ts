@@ -7,7 +7,7 @@ import { pushKey, pushSlotGsi3 } from "../src/db/keys";
 import { listSlotSubscriptions, pushHash } from "../src/db/push";
 import { getStats } from "../src/db/stats";
 import type { PushSender, PushTarget } from "../src/ports";
-import { isInReminderWindow, makeReminderHandler, reminderPayload, unstampedToday } from "../src/reminder";
+import { isInReminderWindow, makeReminderHandler, reminderPayload, scheduledTime, unstampedToday } from "../src/reminder";
 import { setupApi } from "./helpers";
 
 class FakeSender implements PushSender {
@@ -120,6 +120,33 @@ describe("reminder helpers", () => {
     expect(isInReminderWindow(user, new Date("2026-10-06T11:59:00Z"))).toBe(false);
     const midnight = { tz: "Asia/Tokyo", reminder: { enabled: true, time: "00:00" } };
     expect(isInReminderWindow(midnight, new Date("2026-10-06T15:05:00Z"))).toBe(true);
+  });
+});
+
+describe("reminder job: the scheduled time", () => {
+  it("reads EventBridge's scheduled time, falling back to the clock", () => {
+    const fallback = new Date("2026-10-07T12:20:00Z");
+    expect(scheduledTime({ time: "2026-10-07T12:00:00Z" }, fallback).toISOString()).toBe("2026-10-07T12:00:00.000Z");
+    for (const event of [undefined, null, {}, { time: "soon" }, { time: 42 }, "x"]) expect(scheduledTime(event, fallback)).toBe(fallback);
+  });
+
+  it("a delayed delivery handles its own slot, not the one the clock has moved on to", async () => {
+    api.clock.set("2026-10-07T03:00:00.000Z");
+    const at2100 = await seedUser({ time: "21:00", challenges: [challenge({ startDate: "2026-10-01" })] });
+    const at2115 = await seedUser({ time: "21:15", challenges: [challenge({ startDate: "2026-10-01" })] });
+
+    // The 12:00 UTC (21:00 JST) event arrives 20 minutes late.
+    api.clock.set("2026-10-07T12:20:00.000Z");
+    const late = await makeReminderHandler({ ...api.deps, push: sender })({ "detail-type": "Scheduled Event", time: "2026-10-07T12:00:00Z" });
+    expect(late.slot).toBe("12:00");
+    expect(sender.to(at2100.endpoints)).toHaveLength(1);
+    expect(sender.to(at2115.endpoints)).toEqual([]);
+
+    // The 12:15 event (on time or late) is still the 21:15 users' run.
+    const next = await makeReminderHandler({ ...api.deps, push: sender })({ time: "2026-10-07T12:15:00Z" });
+    expect(next.slot).toBe("12:15");
+    expect(sender.to(at2115.endpoints)).toHaveLength(1);
+    expect(sender.to(at2100.endpoints)).toHaveLength(1);
   });
 });
 

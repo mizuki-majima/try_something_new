@@ -27,11 +27,17 @@ export const DaySchema = z.coerce.number().int().min(1).max(TOTAL_DAYS);
 
 type TextOpts = { min?: number; max: number; multiline?: boolean; noUrl?: boolean; label: string };
 
-/** Normalised text with a grapheme-based length check. */
+/**
+ * Raw UTF-16 length allowed before normalisation: room for emoji sequences (a few code units per
+ * grapheme) but not for one "grapheme" made of hundreds of combining marks.
+ */
+export const rawTextLimit = (max: number) => max * 4 + 16;
+
+/** Normalised text with a grapheme-based length check (and a UTF-16 cap, see rawTextLimit). */
 export function text({ min = 1, max, multiline = false, noUrl = false, label }: TextOpts) {
   return z
     .string()
-    .max(max * 8 + 64, `${label}が長すぎます`)
+    .max(rawTextLimit(max), `${label}が長すぎます`)
     .transform((s) => (multiline ? cleanText(s) : cleanLine(s)))
     .superRefine((s, ctx) => {
       const n = graphemeLength(s);
@@ -179,7 +185,13 @@ export type CohortMember = {
 export type CohortResponse = { month: string; members: CohortMember[] };
 export type UpcomingResponse = {
   startDate: string;
+  /** Reservations (challenges), not people: one person may reserve several. */
   count: number;
+  /**
+   * Distinct people among those reservations (counted on the server; no ids leave it). Always sent by
+   * this API; optional only so a client tolerates an older API during a deploy.
+   */
+  peopleCount?: number;
   byRecipe: { recipeId: string | null; title: string; seal: string; count: number }[];
 };
 export type CheerResponse = { cheers: number; cheeredToday: true };
@@ -316,7 +328,7 @@ export type ReportCreate = z.input<typeof ReportCreateSchema>;
 
 export const ContactCreateSchema = z.object({
   message: text({ max: LIMITS.contactMessage, multiline: true, label: "お問い合わせ内容" }),
-  replyTo: text({ min: 0, max: LIMITS.contactReplyTo, label: "連絡先" }).optional(),
+  replyTo: text({ min: 0, max: LIMITS.contactReplyTo, label: "返信先" }).optional(),
 });
 export type ContactCreate = z.input<typeof ContactCreateSchema>;
 
@@ -342,20 +354,21 @@ export type AdminReportsResponse = { items: AdminReportItem[] };
 export type AdminContactItem = { id: string; message: string; replyTo: string | null; createdAt: number };
 export type AdminContactsResponse = { items: AdminContactItem[] };
 /**
- * PILOT metrics (docs/validation-plan.md), computed from the challenges that exist now (deleted ones
- * drop out). "Today" is the JST date; a reservation whose start date has not come yet is not counted.
+ * PILOT metrics (docs/validation-plan.md), counted per PERSON from the challenges that exist now
+ * (deleted ones drop out; imported ones do not count). "Today" is the JST date; a reservation whose
+ * start date has not come yet is not counted.
  */
 export type PilotStats = {
-  /** Distinct users with at least one started challenge (開始した人). */
+  /** People with at least one challenge whose start date has come (開始した人; the 完走 denominator). */
   starters: number;
-  /** Started challenges whose day 7 has passed (today is day 8 or later): the 7日継続 denominator. */
+  /** Starters whose first started challenge is on day 8 or later (day 7 has passed): the 7日継続 denominator. */
   eligible7: number;
-  /** Of eligible7, those with 5 or more stamps within days 1–7. */
+  /** Of eligible7, people with any challenge that has 5 or more stamps within days 1–7. */
   retained7: number;
-  /** Started challenges (start date today or earlier): the 完走 denominator. */
-  started: number;
-  /** Reflected challenges (status done): the 完走 numerator. */
+  /** People with at least one reflected (done) challenge: the 完走 numerator and the 共有 denominator. */
   reflected: number;
+  /** People with at least one done challenge that currently has a public card: the 共有 numerator. */
+  sharers: number;
 };
 
 export type AdminStats = {

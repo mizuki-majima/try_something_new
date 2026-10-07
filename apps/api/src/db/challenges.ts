@@ -7,7 +7,7 @@ import { findOfficialRecipe, monthKey, type Challenge, type Stamp } from "@thirt
 import type { DbDeps, Deps } from "../ports";
 import { authorPk, challengeKey, challengeRefKey, cohortGsi1, recipeKey, recipeStatsKey, userPk, type Key } from "./keys";
 import { deleteShare, getShareItem } from "./shares";
-import { isConditionFailed, queryPrefix, type Item } from "./util";
+import { isConditionFailed, queryAll, queryPrefix, type Item } from "./util";
 
 export type ChallengeItem = Key &
   Challenge & {
@@ -17,6 +17,13 @@ export type ChallengeItem = Key &
     nickname: string;
     /** Set by moderation: keeps the challenge out of the cohort list regardless of shareProgress. */
     hiddenFromCohort?: boolean;
+    /** Set by moderation when it hid or deleted this challenge's card: no new card (POST /api/shares 403). */
+    moderated?: boolean;
+    /**
+     * Written by a backup import: private (no cohort projection) and left out of the PILOT metrics
+     * until the owner stamps or edits it the normal way (updateChallenge clears it).
+     */
+    imported?: boolean;
     gsi1pk?: string;
     gsi1sk?: string;
   };
@@ -52,19 +59,21 @@ export function toChallenge(item: Item): Challenge {
 
 /** gsi1 keys that put a challenge in its month's cohort list, or null when it must stay out. */
 export function cohortProjection(
-  c: Pick<Challenge, "id" | "startDate" | "updatedAt"> & { hiddenFromCohort?: boolean },
+  c: Pick<Challenge, "id" | "startDate" | "updatedAt"> & { hiddenFromCohort?: boolean; imported?: boolean },
   shareProgress: boolean,
 ): { gsi1pk: string; gsi1sk: string } | null {
-  if (!shareProgress || c.hiddenFromCohort) return null;
+  if (!shareProgress || c.hiddenFromCohort || c.imported) return null;
   return cohortGsi1(monthKey(c.startDate), c.updatedAt, c.id);
 }
 
-/** Full item for a Put. */
+export type ChallengeFlags = { hiddenFromCohort?: boolean; moderated?: boolean; imported?: boolean };
+
+/** Full item for a Put. Flags are written only when true. */
 export function toChallengeItem(
   uid: string,
   owner: { nickname: string; shareProgress: boolean },
   c: Challenge,
-  extra: { hiddenFromCohort?: boolean } = {},
+  extra: ChallengeFlags = {},
 ): ChallengeItem {
   const projection = cohortProjection({ ...c, ...extra }, owner.shareProgress);
   return {
@@ -74,6 +83,8 @@ export function toChallengeItem(
     nickname: owner.nickname,
     ...c,
     ...(extra.hiddenFromCohort ? { hiddenFromCohort: true } : {}),
+    ...(extra.moderated ? { moderated: true } : {}),
+    ...(extra.imported ? { imported: true } : {}),
     ...(projection ?? {}),
   };
 }
@@ -85,6 +96,16 @@ export async function getChallengeItem(deps: Pick<DbDeps, "db" | "tableName">, u
 
 export function listChallengeItems(deps: Pick<DbDeps, "db" | "tableName">, uid: string): Promise<Item[]> {
   return queryPrefix(deps, userPk(uid), "CH#");
+}
+
+/** The status of each of a user's challenges (only that attribute is read). */
+export function listChallengeStatuses(deps: Pick<DbDeps, "db" | "tableName">, uid: string): Promise<Item[]> {
+  return queryAll(deps, {
+    KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+    ExpressionAttributeValues: { ":pk": userPk(uid), ":sk": "CH#" },
+    ProjectionExpression: "#s",
+    ExpressionAttributeNames: { "#s": "status" },
+  });
 }
 
 /** All of a user's challenges, newest first. */
@@ -136,7 +157,10 @@ export async function syncUserProjection(
   const items = await listChallengeItems(deps, uid);
   const update = async (item: Item) => {
     const c = toChallenge(item);
-    const projection = cohortProjection({ ...c, hiddenFromCohort: item.hiddenFromCohort === true }, owner.shareProgress);
+    const projection = cohortProjection(
+      { ...c, hiddenFromCohort: item.hiddenFromCohort === true, imported: item.imported === true },
+      owner.shareProgress,
+    );
     try {
       await deps.db.send(
         new UpdateCommand({
@@ -219,14 +243,20 @@ export type ChallengeUpdate = {
   set?: Partial<Pick<Challenge, "title" | "seal" | "startDate" | "status" | "verdict" | "reflection" | "finishedAt" | "finishedDay">>;
   /** stamps.<day>: write this stamp, or remove it (null). */
   stamp?: { day: number; value: Stamp | null };
-  /** The write only happens while the stored item still has this status (and start date). */
-  expect: { status: Challenge["status"]; startDate?: string };
+  /** The write only happens while the stored item still has this status (and start date, verdict). */
+  expect: { status: Challenge["status"]; startDate?: string; verdict?: Challenge["verdict"] };
+  /**
+   * Keep a backup import's `imported` flag (and so its privacy). Every other write is the owner
+   * using the challenge the normal way, which clears the flag.
+   */
+  keepImported?: boolean;
 };
 
 /**
  * Conditional partial update of a challenge the caller has just read (`current`). Always bumps
  * updatedAt and re-syncs the cohort projection (gsi1 ordered by latest activity; the month follows
  * startDate). Only the named attributes are written, so concurrent cheers (ADD cheers) are never lost.
+ * Clears a backup import's `imported` flag unless `keepImported`.
  * Returns the updated challenge, or null when a condition failed (re-read and decide again).
  */
 export async function updateChallenge(
@@ -253,6 +283,16 @@ export async function updateChallenge(
     values[":expectStart"] = u.expect.startDate;
     conditions.push("#startDate = :expectStart");
   }
+  if (u.expect.verdict !== undefined) {
+    names["#verdict"] = "verdict";
+    values[":expectVerdict"] = u.expect.verdict;
+    conditions.push("#verdict = :expectVerdict");
+  }
+  const imported = u.keepImported === true && current.imported === true;
+  if (!imported) {
+    names["#imported"] = "imported";
+    removes.push("#imported");
+  }
   if (u.stamp) {
     names["#stamps"] = "stamps";
     const hasMap = typeof current.stamps === "object" && current.stamps !== null;
@@ -273,7 +313,7 @@ export async function updateChallenge(
 
   const startDate = u.set?.startDate ?? String(current.startDate);
   const projection = cohortProjection(
-    { id, startDate, updatedAt: u.now, hiddenFromCohort: current.hiddenFromCohort === true },
+    { id, startDate, updatedAt: u.now, hiddenFromCohort: current.hiddenFromCohort === true, imported },
     u.owner.shareProgress,
   );
   names["#g1pk"] = "gsi1pk";

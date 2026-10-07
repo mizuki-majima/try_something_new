@@ -118,6 +118,9 @@ describe("TogetherPage", () => {
     const cards = await screen.findAllByTestId("member");
     expect(fetchMock.mock.calls[0]![0]).toBe("/api/cohorts/2026-10");
     expect(cards.map((c) => c.querySelector(".who")?.textContent)).toEqual(["わたしあなた", "みず", "たろう"]);
+    // The list holds challenges (one person may have several), so it is not counted as people.
+    expect(screen.getByText("3件のチャレンジ")).toBeTruthy();
+    expect(screen.queryByText("3人")).toBeNull();
 
     const [mine, mizu, taro] = cards as [HTMLElement, HTMLElement, HTMLElement];
     expect(mine.className).toContain("me");
@@ -222,14 +225,27 @@ describe("TogetherPage", () => {
     expect(within(card).getByText("形を変える")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: /次の1日組/ }));
-    expect(await screen.findByText(/3人が待っています/)).toBeTruthy();
+    // Without peopleCount the API's count is reservations, not people.
+    expect(await screen.findByText(/3件の予約があります/)).toBeTruthy();
+    expect(screen.queryByText(/人が待っています/)).toBeNull();
     expect(screen.getByText("11月1日", { selector: "b" })).toBeTruthy();
     expect(screen.getByText("26", { selector: "b" })).toBeTruthy(); // あと26日
     const rows = screen.getAllByTestId("upcoming");
-    expect(within(rows[0]!).getByText("2人")).toBeTruthy();
+    expect(within(rows[0]!).getByText("2件")).toBeTruthy();
 
     fireEvent.click(within(rows[0]!).getByRole("button", { name: "この組で始める：毎日20分歩く" }));
     expect(screen.getByTestId("start-sheet").textContent).toBe("毎日20分歩く|1日組");
+  });
+
+  it("next 1日組: counts people when the API sends peopleCount", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      String(input) === "/api/cohorts/upcoming"
+        ? json(200, { startDate: "2026-11-01", count: 3, peopleCount: 2, byRecipe: [{ recipeId: "walk", title: "毎日20分歩く", seal: "歩", count: 3 }] })
+        : json(200, { month: "2026-10", members: [] }),
+    );
+    renderTogether("/together?tab=next");
+    expect(await screen.findByText(/2人が待っています/)).toBeTruthy();
+    expect(within(screen.getByTestId("upcoming")).getByText("3件")).toBeTruthy();
   });
 
   it("tells you when your own progress is private", async () => {

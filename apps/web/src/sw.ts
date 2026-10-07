@@ -2,8 +2,9 @@
  * Service worker (vite-plugin-pwa, injectManifest).
  * - Precaches the app shell (JS/CSS/HTML/icons; fonts are excluded and cached on first use).
  * - SPA navigations fall back to /index.html, except server routes (/api, /s, /media).
- * - Recipe lists are served stale-while-revalidate; a request with cache "no-cache"/"reload"
- *   (e.g. right after posting) goes to the network first.
+ * - Recipe details are fetched network-first (cache only as the offline fallback); recipe lists
+ *   are served stale-while-revalidate for up to a day; a 404/410 removes the cached copy
+ *   (swRecipes.ts). The page clears these caches when the account changes (lib/swCaches.ts).
  * - Web Push reminders (FR-14).
  * Updates: skipWaiting + clientsClaim ("autoUpdate"). Pending writes live in localStorage, so a
  * new version taking over loses nothing; an old tab that misses a lazy chunk reloads (main.tsx).
@@ -13,7 +14,9 @@ import { clientsClaim } from "workbox-core";
 import { ExpirationPlugin } from "workbox-expiration";
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute, type PrecacheEntry } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from "workbox-strategies";
+import { CacheFirst } from "workbox-strategies";
+import { LEGACY_RECIPE_CACHE } from "./lib/swCaches";
+import { createRecipeStrategies } from "./swRecipes";
 
 declare let self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<PrecacheEntry | string> };
 
@@ -42,22 +45,18 @@ registerRoute(
   }),
 );
 
-const RECIPES_PATH = /^\/api\/recipes(\/[0-9a-z][0-9a-z-]*)?$/;
-const recipePlugins = [
-  new CacheableResponsePlugin({ statuses: [200] }),
-  new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 14 * 24 * 60 * 60 }),
-];
-const recipesStale = new StaleWhileRevalidate({ cacheName: "api-recipes", plugins: recipePlugins });
-const recipesFresh = new NetworkFirst({ cacheName: "api-recipes", networkTimeoutSeconds: 6, plugins: recipePlugins });
-
+// Recipes: detail network-first, list stale-while-revalidate (see swRecipes.ts).
+const recipes = createRecipeStrategies();
 registerRoute(
-  ({ url }) => sameOrigin(url) && RECIPES_PATH.test(url.pathname),
-  (options) => {
-    const mode = options.request.cache;
-    return (mode === "no-cache" || mode === "reload" || mode === "no-store" ? recipesFresh : recipesStale).handle(options);
-  },
+  ({ url, request }) => sameOrigin(url) && recipes.pick(url.pathname, request.cache) !== null,
+  (options) => recipes.pick(options.url.pathname, options.request.cache)!.handle(options),
   "GET",
 );
+
+// Older versions cached list and detail together, 14 days, served stale: drop that cache.
+self.addEventListener("activate", (event) => {
+  event.waitUntil(caches.delete(LEGACY_RECIPE_CACHE).then(() => undefined));
+});
 
 // ---------- push ----------
 

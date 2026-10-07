@@ -75,6 +75,7 @@ export function meRoutes(deps: Deps) {
 
   r.post(API.meImport, auth, async (c) => {
     const file = await readJson(c, BackupFileSchema);
+    await enforceQuota(deps, "import", c.var.uid, QUOTAS.importsPerUserPerDay, "day");
     const res = await importBackup(deps, c.var.user, file);
     log.info("backup imported", { uid: c.var.uid, ...res });
     return c.json<ImportResponse>(res);

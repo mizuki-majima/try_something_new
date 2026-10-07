@@ -287,6 +287,7 @@ describe("GET /api/cohorts/upcoming", () => {
     expect(JSON.parse(raw) as UpcomingResponse).toEqual({
       startDate: "2027-03-01",
       count: 5,
+      peopleCount: 5,
       byRecipe: [
         { recipeId: "photo", title: "毎日1枚、写真を撮る", seal: "写", count: 2 },
         { recipeId: "walk", title: "毎日20分歩く", seal: "歩", count: 2 },
@@ -298,7 +299,7 @@ describe("GET /api/cohorts/upcoming", () => {
     // Feb 28, 16:00 UTC: already March 1 in Tokyo, still Feb 28 in Los Angeles.
     api.clock.set("2027-02-28T16:00:00.000Z");
     const anon = await json<UpcomingResponse>(await api.request("/api/cohorts/upcoming"));
-    expect(anon).toEqual({ startDate: "2027-04-01", count: 0, byRecipe: [] });
+    expect(anon).toEqual({ startDate: "2027-04-01", count: 0, peopleCount: 0, byRecipe: [] });
     const la = await api.createSession("LA", "America/Los_Angeles");
     const forLa = await json<UpcomingResponse>(await api.request("/api/cohorts/upcoming", { token: la.token }));
     expect(forLa).toMatchObject({ startDate: "2027-03-01", count: 5 });
@@ -311,7 +312,9 @@ describe("GET /api/cohorts/upcoming", () => {
     await Promise.all(recipes.map((rid, i) => create(s[i]!, { startDate: "2027-09-01", recipeId: rid })));
     await create(s[0]!, { startDate: "2027-09-01", recipeId: "read" });
     const res = await json<UpcomingResponse>(await api.request("/api/cohorts/upcoming"));
+    // 13 reservations, but r0 made two of them: 12 people (never shown as 13 人).
     expect(res.count).toBe(13);
+    expect(res.peopleCount).toBe(12);
     expect(res.byRecipe).toHaveLength(10);
     expect(res.byRecipe[0]).toMatchObject({ recipeId: "read", title: "毎日10ページ読む", seal: "読", count: 2 });
   });

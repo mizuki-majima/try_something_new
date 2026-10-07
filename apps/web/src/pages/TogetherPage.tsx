@@ -93,15 +93,23 @@ const parseCohort = (raw: unknown): CohortMember[] => {
   return sortMembers(Array.isArray(members) ? members.filter(isMemberLike) : []);
 };
 
+/** count / byRecipe count reservations (one person may have several); peopleCount, when the API sends it, counts people. */
 const parseUpcoming = (raw: unknown): UpcomingResponse | null => {
   const r = raw as UpcomingResponse | null;
   if (!r || typeof r.startDate !== "string") return null;
   return {
     startDate: r.startDate,
     count: typeof r.count === "number" && r.count > 0 ? Math.floor(r.count) : 0,
+    ...(typeof r.peopleCount === "number" && r.peopleCount >= 0 ? { peopleCount: Math.floor(r.peopleCount) } : {}),
     byRecipe: Array.isArray(r.byRecipe) ? r.byRecipe.filter((b) => b && typeof b.title === "string" && typeof b.count === "number") : [],
   };
 };
+
+/** 「N人が待っています」 when the API counted people, else the number of reservations. */
+export function upcomingWaiting(data: UpcomingResponse): string | null {
+  if (data.count <= 0) return null;
+  return data.peopleCount !== undefined && data.peopleCount > 0 ? `${data.peopleCount}人が待っています` : `${data.count}件の予約があります`;
+}
 
 // ---------- page ----------
 
@@ -262,7 +270,8 @@ function MonthPanel({ month, current, today }: { month: string; current: boolean
 
   return (
     <>
-      <p className="note tg-count">{members.length}人</p>
+      {/* One person may have several challenges in a month: count challenges, not people. */}
+      <p className="note tg-count">{members.length}件のチャレンジ</p>
       <ul className="people tg-people">
         {members.map((m) => (
           <MemberCard key={m.challengeId} member={m} today={today} busy={sending.has(m.challengeId)} onCheer={() => void cheer(m)} />
@@ -341,7 +350,7 @@ function UpcomingPanel({ today, onStart }: { today: string; onStart: (t: StartTa
           <b>{jpDate(data.startDate)}</b>スタート
         </p>
         <p className="tg-next-meta">
-          あと<b>{daysLeft}</b>日・{data.count > 0 ? <>{data.count}人が待っています</> : "まだ予約はありません"}
+          あと<b>{daysLeft}</b>日・{upcomingWaiting(data) ?? "まだ予約はありません"}
         </p>
         <button type="button" className="btn primary" onClick={reserve}>
           1日組で予約する
@@ -361,7 +370,7 @@ function UpcomingPanel({ today, onStart }: { today: string; onStart: (t: StartTa
                 <div className="tg-upc-body">
                   <div className="tg-member-text">
                     <div className="t">{b.title}</div>
-                    <div className="who">{b.count}人</div>
+                    <div className="who">{b.count}件</div>
                   </div>
                   <button
                     type="button"

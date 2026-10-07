@@ -83,6 +83,7 @@ h1{margin:2px 0 0;font-size:clamp(22px,5vw,32px);line-height:1.3;overflow-wrap:a
 @media (prefers-reduced-motion:no-preference){.cta{transition:transform .1s,box-shadow .1s}.cta:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--ink)}.cta:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--ink)}}
 .sub{margin:18px 0 0;text-align:center}
 .sub a{display:inline-block;padding:10px 4px;font-weight:700}
+.report{margin-top:4px;font-size:14px}.report a{color:var(--muted);font-weight:400}
 .empty{text-align:center}
 .empty p{margin:12px 0 0}
 footer{max-width:760px;margin:0 auto;padding:8px 16px 32px;color:var(--muted);font-size:13px;text-align:center}
@@ -116,6 +117,14 @@ ${body}
 
 const meta = (property: string, content: string) => `<meta property="${escapeHtml(property)}" content="${escapeHtml(content)}">`;
 const metaName = (name: string, content: string) => `<meta name="${escapeHtml(name)}" content="${escapeHtml(content)}">`;
+
+/**
+ * FR-18: public cards can be reported. This page has no scripts or forms (CSP), so the link opens
+ * the app's contact page, which shows a report form for this card (POST /api/reports, type share).
+ */
+export function reportPath(shareId: string): string {
+  return `/contact?report=share:${encodeURIComponent(shareId)}`;
+}
 
 /** The public card page. `origin` is the public https origin (see publicOrigin). */
 export function renderSharePage(v: ShareView, origin: string): string {
@@ -166,7 +175,8 @@ export function renderSharePage(v: ShareView, origin: string): string {
 ${reflection}
 </article>
 <a class="cta display" href="${escapeHtml(cta)}">自分も30日やってみる</a>
-<p class="sub"><a href="/about">「${escapeHtml(SITE_NAME)}」について</a></p>`;
+<p class="sub"><a href="/about">「${escapeHtml(SITE_NAME)}」について</a></p>
+<p class="sub report"><a href="${escapeHtml(reportPath(v.id))}" rel="nofollow">このカードを通報する</a></p>`;
 
   return layout({ title: `${title} | ${SITE_NAME}`, head, body });
 }

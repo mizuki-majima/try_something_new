@@ -270,9 +270,12 @@ function judgeRate(n: number, d: number, targetPercent: number): Judge {
 }
 
 /** An API from before the pilot metrics (only during a deploy) answers without them. */
-const NO_PILOT: AdminStats["pilot"] = { starters: 0, eligible7: 0, retained7: 0, started: 0, reflected: 0 };
+const NO_PILOT: AdminStats["pilot"] = { starters: 0, eligible7: 0, retained7: 0, reflected: 0, sharers: 0 };
 
-/** The pilot metrics (s.pilot, computed from the challenges) against the fixed targets. */
+/**
+ * The pilot metrics (s.pilot, counted per person from the challenges) against the fixed targets.
+ * Every row is people ÷ people, as docs/validation-plan.md defines them.
+ */
 export function pilotRows(s: AdminStats): { label: string; value: string; target: string; judge: Judge; note?: string }[] {
   const p = s.pilot ?? NO_PILOT;
   return [
@@ -281,28 +284,28 @@ export function pilotRows(s: AdminStats): { label: string; value: string; target
       value: `${p.starters}人`,
       target: `${PILOT_TARGETS.starters}人以上`,
       judge: p.starters >= PILOT_TARGETS.starters ? "pass" : "fail",
-      note: `始まったチャレンジ ${p.started}件`,
+      note: "開始日が来たチャレンジを持つ人",
     },
     {
       label: "7日継続",
       value: fmtPct(pct(p.retained7, p.eligible7)),
       target: `${PILOT_TARGETS.retained7}%以上`,
       judge: judgeRate(p.retained7, p.eligible7, PILOT_TARGETS.retained7),
-      note: `1〜7日目に印5個以上 ${p.retained7} ÷ 7日目を過ぎた ${p.eligible7}`,
+      note: `1〜7日目に印5個以上の人 ${p.retained7} ÷ 7日目を過ぎた人 ${p.eligible7}`,
     },
     {
       label: "完走",
-      value: fmtPct(pct(p.reflected, p.started)),
+      value: fmtPct(pct(p.reflected, p.starters)),
       target: `${PILOT_TARGETS.reflected}%以上`,
-      judge: judgeRate(p.reflected, p.started, PILOT_TARGETS.reflected),
-      note: `振り返り ${p.reflected} ÷ 開始 ${p.started}`,
+      judge: judgeRate(p.reflected, p.starters, PILOT_TARGETS.reflected),
+      note: `振り返った人 ${p.reflected} ÷ 開始した人 ${p.starters}`,
     },
     {
       label: "共有",
-      value: fmtPct(pct(s.shares, s.challengesDone)),
+      value: fmtPct(pct(p.sharers, p.reflected)),
       target: `${PILOT_TARGETS.share}%以上`,
-      judge: judgeRate(s.shares, s.challengesDone, PILOT_TARGETS.share),
-      note: `公開カード ${s.shares} ÷ 振り返り ${s.challengesDone}（画像保存・SNS は下の回数）`,
+      judge: judgeRate(p.sharers, p.reflected, PILOT_TARGETS.share),
+      note: `公開カードがある人 ${p.sharers} ÷ 振り返った人 ${p.reflected}（画像保存・SNS は下の回数）`,
     },
   ];
 }
@@ -330,10 +333,10 @@ function StatsView({ stats: s }: { stats: AdminStats }) {
     { label: "利用者", value: `${s.users}` },
     { label: "始めたチャレンジ（累計）", value: `${s.challengesStarted}` },
     { label: "振り返り（累計）", value: `${s.challengesDone}` },
-    { label: "完走率", value: fmtPct(pct(pilot.reflected, pilot.started)) },
+    { label: "完走率（人）", value: fmtPct(pct(pilot.reflected, pilot.starters)) },
     { label: "みんなのレシピ", value: `${s.communityRecipes}` },
     { label: "体験談", value: `${s.stories}` },
-    { label: "公開カード", value: `${s.shares}` },
+    { label: "公開カードを作った回数", value: `${s.shares}` },
     { label: "今日のひらめき提案", value: `${s.suggestionsToday}` },
     { label: "通知の登録", value: `${s.pushSubscriptions}` },
   ];

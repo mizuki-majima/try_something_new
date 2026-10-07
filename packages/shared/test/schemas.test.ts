@@ -7,6 +7,7 @@ import {
   SealSchema,
   StampPutSchema,
   TransferRedeemSchema,
+  rawTextLimit,
   text,
 } from "../src/schemas";
 
@@ -47,6 +48,18 @@ describe("text()", () => {
 
   it("rejects absurdly long raw input early", () => {
     expect(three.safeParse("a".repeat(3 * 8 + 65)).success).toBe(false);
+  });
+
+  it("caps the raw UTF-16 length so one 'grapheme' of combining marks cannot store kilobytes", () => {
+    // 'a' + 1023 × U+20DD is a single grapheme of 1024 code units (~3 KB of UTF-8).
+    const fat = "a" + String.fromCodePoint(0x20dd).repeat(1023);
+    const note = text({ min: 0, max: LIMITS.note, label: "ひとこと" });
+    expect(note.safeParse(fat).success).toBe(false);
+    expect(messages(note.safeParse(fat))).toEqual(["ひとことが長すぎます"]);
+    expect(rawTextLimit(LIMITS.note)).toBe(LIMITS.note * 4 + 16);
+    // Real text still fits: the maximum in kana, and emoji sequences up to the grapheme limit.
+    expect(note.safeParse("あ".repeat(LIMITS.note)).success).toBe(true);
+    expect(text({ max: 8, label: "x" }).safeParse(FAMILY.repeat(5)).success).toBe(true);
   });
 });
 

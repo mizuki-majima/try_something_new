@@ -10,13 +10,13 @@ import {
   challengeRefKey,
   recipePk,
   recipeStatsKey,
-  shareMediaKey,
   tokenKey,
   transferKey,
   userKey,
   userPk,
   type Key,
 } from "./keys";
+import { shareMediaKeys } from "./shares";
 import { bumpStats } from "./stats";
 import { batchDelete, isConditionFailed, keyOf, queryAll, type Item } from "./util";
 
@@ -41,7 +41,8 @@ export async function deleteAccount(deps: Deps, uid: string): Promise<DeleteAcco
     const sk = String(item.sk);
     if (pk.startsWith("SHARE#") && sk === "META") {
       keys.push(keyOf(item));
-      mediaKeys.push(shareMediaKey(after(pk, "SHARE#")));
+      // Public and hidden-by-moderation image alike.
+      mediaKeys.push(...shareMediaKeys(after(pk, "SHARE#")));
     } else if (pk.startsWith("RECIPE#") && sk === "META") {
       const rid = after(pk, "RECIPE#");
       deletedRecipes.add(rid);
@@ -53,8 +54,11 @@ export async function deleteAccount(deps: Deps, uid: string): Promise<DeleteAcco
       keys.push(...partition.map(keyOf), recipeStatsKey(rid));
     } else if (pk.startsWith("RECIPE#") && sk.startsWith("STORY#")) {
       keys.push(keyOf(item));
-      const rid = after(pk, "RECIPE#");
-      storyDecrements.set(rid, (storyDecrements.get(rid) ?? 0) + 1);
+      // A hidden story already left storyCount when it was hidden (setStoryStatus).
+      if (item.status !== "hidden") {
+        const rid = after(pk, "RECIPE#");
+        storyDecrements.set(rid, (storyDecrements.get(rid) ?? 0) + 1);
+      }
     } else {
       keys.push(keyOf(item));
     }
@@ -83,14 +87,19 @@ export async function deleteAccount(deps: Deps, uid: string): Promise<DeleteAcco
     else if (sk.startsWith("PUSH#")) pushCount++;
   }
 
-  // 3. Media first (an orphaned image is worse than an orphaned row), then rows.
+  // 3. Media first (an orphaned image is worse than an orphaned row), then rows. A failed image
+  //    delete fails the request before any row goes, so the client can retry with the same token
+  //    (once the rows are gone nothing would point at the image any more).
+  let mediaFailures = 0;
   for (const key of mediaKeys) {
     try {
       await deps.media.delete(key);
     } catch (err) {
+      mediaFailures++;
       log.warn("account delete: media delete failed", { uid, key, err });
     }
   }
+  if (mediaFailures > 0) throw new Error(`account delete: ${mediaFailures} media object(s) could not be deleted`);
   await batchDelete(deps, keys);
 
   for (const [rid, n] of storyDecrements) {

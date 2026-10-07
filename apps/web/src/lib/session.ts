@@ -47,6 +47,19 @@ function emit(): void {
   for (const l of [...listeners]) l();
 }
 
+export type CreatedSession = { token: string; user: User };
+const createdListeners = new Set<(s: CreatedSession) => void>();
+
+/**
+ * Called when this device creates the anonymous account, whoever asked for it: the store's queue,
+ * or any `request(..., { auth: "required" })` (a cheer, a report, a post). The store adopts the new
+ * user and sends what waited for the account (e.g. the nickname from the start sheet).
+ */
+export function subscribeSessionCreated(listener: (s: CreatedSession) => void): () => void {
+  createdListeners.add(listener);
+  return () => createdListeners.delete(listener);
+}
+
 function storeToken(token: string): void {
   writeString(KEYS.token, token);
   removeKey(KEYS.sessionInvalid);
@@ -81,7 +94,17 @@ export function ensureSession(nickname?: string): Promise<EnsuredSession> {
     if (nick?.success) body.nickname = nick.data;
     const p = send<SessionResponse>("POST", API.session, { body })
       .then((res): EnsuredSession => {
-        if (gen === generation) storeToken(res.token);
+        if (gen === generation) {
+          storeToken(res.token);
+          for (const l of [...createdListeners]) {
+            try {
+              l({ token: res.token, user: res.user });
+            } catch (err) {
+              // A listener's bug must not fail the caller's request: the account exists either way.
+              console.error("session listener failed", err);
+            }
+          }
+        }
         return { token: res.token, user: res.user, created: true };
       })
       .finally(() => {

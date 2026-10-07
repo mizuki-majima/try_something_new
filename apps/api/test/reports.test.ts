@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 import {
   AUTO_HIDE_REPORTS,
@@ -87,9 +87,10 @@ const getItem = async (pk: string, sk: string) =>
 const report = (s: SessionResponse, targetType: string, targetId: string, reason?: string) =>
   api.request("/api/reports", { token: s.token, body: reason === undefined ? { targetType, targetId } : { targetType, targetId, reason } });
 
+/** Reporters whose reports count towards auto-hide (accounts a day old that hold a challenge). */
 async function reporters(n: number): Promise<SessionResponse[]> {
   const out: SessionResponse[] = [];
-  for (let i = 0; i < n; i++) out.push(await api.createSession(`通報者${i}`));
+  for (let i = 0; i < n; i++) out.push(await api.trustedSession(`通報者${i}`));
   return out;
 }
 
@@ -175,6 +176,43 @@ describe("POST /api/reports", () => {
     expect(await cohortIds("2026-10")).not.toContain(c.id);
     // The owner's own record is intact.
     expect(item?.title).toBe(c.title);
+  });
+
+  it("counts only reporters whose account is a day old and holds a challenge towards auto-hide", async () => {
+    const author = await api.createSession();
+    const recipe = await postRecipe(author);
+    const visible = async () => (await api.request(`/api/recipes/${recipe.id}`)).status === 200;
+
+    // A troll's throwaway accounts: brand new and empty, brand new with a challenge, old but empty.
+    const fresh = await api.createSession("捨て1");
+    const freshWithChallenge = await api.createSession("捨て2");
+    await seedMember(freshWithChallenge);
+    const oldEmpty = await api.createSession("捨て3");
+    await api.deps.db.send(
+      new UpdateCommand({
+        TableName: api.deps.tableName,
+        Key: { pk: `USER#${oldEmpty.user.id}`, sk: "PROFILE" },
+        UpdateExpression: "SET createdAt = :c",
+        ExpressionAttributeValues: { ":c": api.clock.now().getTime() - 2 * 86_400_000 },
+      }),
+    );
+    for (const r of [fresh, freshWithChallenge, oldEmpty]) expect((await report(r, "recipe", recipe.id, "荒らし")).status).toBe(204);
+
+    // Recorded for the moderator, but nothing is hidden.
+    expect(await visible()).toBe(true);
+    const meta = await getItem(`REPORT#recipe#${recipe.id}`, "META");
+    expect(meta).toMatchObject({ count: 3, trustedCount: 0, reasons: ["荒らし", "荒らし", "荒らし"] });
+    expect(await getItem(`REPORT#recipe#${recipe.id}`, `BY#${fresh.user.id}`)).toBeDefined();
+
+    // The same account a day later, once it holds a challenge, counts.
+    const [a, b] = await reporters(2);
+    expect((await report(a!, "recipe", recipe.id)).status).toBe(204);
+    expect((await report(b!, "recipe", recipe.id)).status).toBe(204);
+    expect(await visible()).toBe(true);
+    const [c] = await reporters(1);
+    expect((await report(c!, "recipe", recipe.id)).status).toBe(204);
+    expect(await visible()).toBe(false);
+    expect(await getItem(`REPORT#recipe#${recipe.id}`, "META")).toMatchObject({ count: 6, trustedCount: AUTO_HIDE_REPORTS });
   });
 
   it("keeps only the last 10 reasons", async () => {

@@ -12,7 +12,7 @@ import dynalite from "dynalite";
 import { Hono } from "hono";
 import webpush from "web-push";
 import { createApp } from "./app";
-import { loadConfig } from "./config";
+import { DEFAULT_IP_HASH_KEY, loadConfig } from "./config";
 import { createDocClient, createDynamoClient } from "./db/client";
 import { createTableIfMissing } from "./db/table";
 import { buildDeps } from "./deps";
@@ -59,8 +59,11 @@ function closeServer(server: { close(cb: (err?: Error) => void): unknown }): Pro
 
 const MEDIA_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
 
-/** GET /media/<key> from the local media directory (CloudFront + S3 do this in production). */
-function mediaRoutes(dir: string) {
+/** Only these media keys are public (hidden/share/* holds cards hidden by moderation). */
+const PUBLIC_MEDIA_PREFIX = "share/";
+
+/** GET /media/share/<key> from the local media directory (CloudFront + S3 do this in production). */
+export function mediaRoutes(dir: string) {
   const r = new Hono();
   r.get("/media/*", async (c) => {
     const key = c.req.path.slice("/media/".length);
@@ -69,6 +72,7 @@ function mediaRoutes(dir: string) {
     } catch {
       return c.text("Not Found", 404);
     }
+    if (!key.startsWith(PUBLIC_MEDIA_PREFIX)) return c.text("Not Found", 404);
     try {
       const bytes = await readFile(path.join(dir, ...key.split("/")));
       const type = MEDIA_TYPES[path.extname(key).toLowerCase()] ?? "application/octet-stream";
@@ -118,7 +122,7 @@ export async function startLocal(opts: LocalOptions = {}): Promise<LocalServer> 
   const deps = buildDeps(config, {
     db: createDocClient(raw),
     media: new LocalMediaStore(mediaDir),
-    secrets: { adminToken: config.adminToken, vapidPrivateKey: config.vapidPrivateKey },
+    secrets: { adminToken: config.adminToken, vapidPrivateKey: config.vapidPrivateKey, ipHashKey: config.ipHashKey ?? DEFAULT_IP_HASH_KEY },
   });
   if (opts.seed) await opts.seed(deps);
 

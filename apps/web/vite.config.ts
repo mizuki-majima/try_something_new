@@ -30,9 +30,47 @@ function woff2Only(): Plugin {
   };
 }
 
+/**
+ * Absolute URLs in index.html (OGP): X, LINE and Facebook need an absolute og:image. index.html
+ * writes `%PUBLIC_ORIGIN%/og-default.png`; the build replaces the placeholder with the PUBLIC_ORIGIN
+ * environment variable (e.g. https://d1zw3n37kpuo7t.cloudfront.net, docs/deploy.md). Without it
+ * the URLs stay relative (local dev, E2E).
+ */
+export const PUBLIC_ORIGIN_PLACEHOLDER = "%PUBLIC_ORIGIN%";
+
+/** "https://example.com/" → "https://example.com"; unset or empty → "" (relative URLs). Anything else throws. */
+export function normalizeOrigin(value: string | undefined): string {
+  const raw = value?.trim();
+  if (!raw) return "";
+  let url: URL | null;
+  try {
+    url = new URL(raw);
+  } catch {
+    url = null;
+  }
+  const isOrigin =
+    !!url && (url.protocol === "https:" || url.protocol === "http:") && url.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
+  if (!url || !isOrigin) throw new Error(`PUBLIC_ORIGIN must be an origin such as https://example.com (got "${raw}")`);
+  return url.origin;
+}
+
+export function applyPublicOrigin(html: string, origin: string): string {
+  return html.split(PUBLIC_ORIGIN_PLACEHOLDER).join(origin);
+}
+
+export function publicOrigin(value: string | undefined): Plugin {
+  const origin = normalizeOrigin(value);
+  return {
+    name: "thirty:public-origin",
+    transformIndexHtml: { order: "pre", handler: (html) => applyPublicOrigin(html, origin) },
+  };
+}
+
 export default defineConfig({
   plugins: [
     woff2Only(),
+    // og:image / twitter:image become absolute when PUBLIC_ORIGIN is set at build time (docs/deploy.md).
+    publicOrigin(process.env.PUBLIC_ORIGIN),
     react(),
     VitePWA({
       strategies: "injectManifest",

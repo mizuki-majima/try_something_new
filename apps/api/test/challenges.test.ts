@@ -121,12 +121,14 @@ describe("POST /api/challenges", () => {
     expect((await list(a)).challenges[0]?.title).toBe("毎日1枚、写真を撮る");
   });
 
-  it("accepts today (±1 day of slack) or the next 1st, in the user's time zone", async () => {
+  it("accepts the last 7 days (offline replays), today, tomorrow or the next 1st, in the user's time zone", async () => {
     const s = await api.createSession("日付");
-    for (const startDate of ["2026-10-05", TODAY, "2026-10-07", NEXT_FIRST]) {
-      expect((await postChallenge(s, createBody({ startDate }))).status, startDate).toBe(201);
+    for (const startDate of ["2026-09-29", "2026-10-05", TODAY, "2026-10-07", NEXT_FIRST]) {
+      const res = await postChallenge(s, createBody({ startDate }));
+      expect(res.status, startDate).toBe(201);
+      await remove(s, (await challengeOf(res)).id); // stay under the open limit
     }
-    for (const startDate of ["2026-10-04", "2026-10-08", "2026-10-31", "2026-12-01", "2026-02-30"]) {
+    for (const startDate of ["2026-09-28", "2026-10-08", "2026-10-31", "2026-12-01", "2026-02-30"]) {
       const res = await postChallenge(s, createBody({ startDate }));
       expect(res.status, startDate).toBe(400);
     }
@@ -137,7 +139,21 @@ describe("POST /api/challenges", () => {
     // 03:00 UTC is still Oct 5 in Los Angeles.
     const la = await api.createSession("LA", "America/Los_Angeles");
     expect((await postChallenge(la, createBody({ startDate: "2026-10-07" }))).status).toBe(400);
-    expect((await postChallenge(la, createBody({ startDate: "2026-10-04" }))).status).toBe(201);
+    expect((await postChallenge(la, createBody({ startDate: "2026-09-28" }))).status).toBe(201);
+    expect((await postChallenge(la, createBody({ startDate: "2026-09-27" }))).status).toBe(400);
+  });
+
+  it("keeps a create made offline and replayed days later, with the stamps queued behind it", async () => {
+    const s = await api.createSession("オフライン");
+    // Started 「今日から」 on 10-03 without a connection, stamped days 1 and 2, back online on 10-06.
+    const body = createBody({ startDate: "2026-10-03" });
+    const res = await postChallenge(s, body);
+    expect(res.status).toBe(201);
+    expect((await stamp(s, body.id, 1)).status).toBe(200);
+    expect((await stamp(s, body.id, 2)).status).toBe(200);
+    const [saved] = (await list(s)).challenges;
+    expect(saved).toMatchObject({ id: body.id, startDate: "2026-10-03" });
+    expect(Object.keys(saved!.stamps).sort()).toEqual(["1", "2"]);
   });
 
   it("allows at most 5 open challenges; finished ones do not count", async () => {
@@ -474,7 +490,7 @@ describe("POST /api/challenges/:id/reflect", () => {
     expect(stats.challengesDone).toBe(before.challengesDone + 1);
     expect(stats.verdict_continue).toBe(before.verdict_continue + 1);
 
-    // Changing one's mind later updates verdict / reflection only.
+    // Changing one's mind later updates verdict / reflection only, and moves the verdict counters.
     api.clock.advance(DAY_MS);
     let again = await challengeOf(await reflect(s, c.id, { verdict: "modify" }));
     expect(again).toMatchObject({ verdict: "modify", reflection: "思ったより\n続いた", finishedAt: now, finishedDay: 7 });
@@ -482,8 +498,8 @@ describe("POST /api/challenges/:id/reflect", () => {
     expect(again.reflection).toBeNull();
     stats = await getStats(api.deps);
     expect(stats.challengesDone).toBe(before.challengesDone + 1);
-    expect(stats.verdict_continue).toBe(before.verdict_continue + 1);
-    expect(stats.verdict_modify).toBe(before.verdict_modify);
+    expect(stats.verdict_continue).toBe(before.verdict_continue);
+    expect(stats.verdict_modify).toBe(before.verdict_modify + 1);
   });
 
   it("records day 30 for a challenge reflected after its end, and rejects reservations and bad input", async () => {

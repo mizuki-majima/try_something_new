@@ -4,14 +4,16 @@
  */
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import dynalite from "dynalite";
 import { afterAll, beforeAll } from "vitest";
-import type { SessionResponse } from "@thirty/shared";
+import { REPORTER_MIN_ACCOUNT_AGE_HOURS, newId, type SessionResponse } from "@thirty/shared";
 import { createApp } from "../src/app";
 import { loadConfig, type Config } from "../src/config";
+import { toChallengeItem } from "../src/db/challenges";
 import { createDocClient, createDynamoClient } from "../src/db/client";
+import { userKey } from "../src/db/keys";
 import { createTableIfMissing } from "../src/db/table";
 import type { Item } from "../src/db/util";
 import { setLogLevel } from "../src/log";
@@ -59,6 +61,11 @@ export type TestApi = {
   makeApp(config: Partial<Config>): ReturnType<typeof createApp>;
   request(path: string, opts?: RequestOptions, app?: ReturnType<typeof createApp>): Promise<Response>;
   createSession(nickname?: string, tz?: string): Promise<SessionResponse>;
+  /**
+   * A session whose reports count towards auto-hide: the account is older than
+   * REPORTER_MIN_ACCOUNT_AGE_HOURS and holds a (private) challenge.
+   */
+  trustedSession(nickname?: string): Promise<SessionResponse>;
   scanAll(): Promise<Item[]>;
 };
 
@@ -127,6 +134,38 @@ export function setupApi(opts: SetupOptions = {}): TestApi {
         const res = await api.request("/api/session", { body: nickname === undefined ? { tz } : { tz, nickname } });
         if (res.status !== 201) throw new Error(`createSession failed: ${res.status} ${await res.text()}`);
         return (await res.json()) as SessionResponse;
+      },
+      trustedSession: async (nickname?: string) => {
+        const s = await api.createSession(nickname);
+        const createdAt = clock.now().getTime() - (REPORTER_MIN_ACCOUNT_AGE_HOURS + 1) * 3_600_000;
+        await deps.db.send(
+          new UpdateCommand({
+            TableName: deps.tableName,
+            Key: userKey(s.user.id),
+            UpdateExpression: "SET createdAt = :c",
+            ExpressionAttributeValues: { ":c": createdAt },
+          }),
+        );
+        const now = clock.now().getTime();
+        const item = toChallengeItem(s.user.id, { nickname: s.user.nickname, shareProgress: false }, {
+          id: newId(16),
+          recipeId: null,
+          title: "通報する人の記録",
+          seal: "記",
+          startDate: "2026-09-01",
+          status: "active",
+          stamps: {},
+          verdict: null,
+          reflection: null,
+          finishedAt: null,
+          finishedDay: null,
+          cheers: 0,
+          shareId: null,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await deps.db.send(new PutCommand({ TableName: deps.tableName, Item: item }));
+        return { ...s, user: { ...s.user, createdAt } };
       },
       scanAll: async () => {
         const items: Item[] = [];

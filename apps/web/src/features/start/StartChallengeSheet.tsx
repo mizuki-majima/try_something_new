@@ -6,6 +6,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { LIMITS, diffDays, firstGrapheme, isFirstOfMonth, jpDate, jpPeriod, nextFirst, type Recipe, type Suggestion } from "@thirty/shared";
+import { ConsentNote } from "../../components/ConsentNote";
 import { TextField } from "../../components/Field";
 import { Sheet } from "../../components/Sheet";
 import { useToast } from "../../components/Toast";
@@ -212,6 +213,8 @@ function StartForm({ onClose, recipe, preset, onStarted }: StartChallengeSheetPr
           {formError}
         </p>
       )}
+
+      <ConsentNote action="start" />
 
       <button type="submit" className="btn primary lg st-submit" disabled={full}>
         30日、始める

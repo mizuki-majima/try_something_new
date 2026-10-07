@@ -11,9 +11,9 @@ import {
   ReflectSchema,
   StampPutSchema,
   TOTAL_DAYS,
-  addDays,
   challengePhase,
   dayIndex,
+  diffDays,
   nextFirst,
   todayIn,
   type Challenge,
@@ -60,9 +60,18 @@ const M = CHALLENGE_MESSAGES;
 /** Rate-limit scope of QUOTAS.challengesPerUserPerDay. */
 export const CREATE_QUOTA_SCOPE = "challenge-create";
 
-/** Start dates accepted on create: today (±1 day for clock / time-zone slack) or the next 1st. */
-export function allowedStartDates(today: string): string[] {
-  return [addDays(today, -1), today, addDays(today, 1), nextFirst(today)];
+/** How far back a create's start date may be: an offline create can reach the server days later. */
+export const CREATE_REPLAY_DAYS = 7;
+
+/**
+ * Start dates accepted on create. The client offers "today" or "the next 1st"; the server also
+ * accepts up to CREATE_REPLAY_DAYS days back (a create queued offline and replayed later keeps the
+ * date chosen on the device, and its queued stamps with it) and tomorrow (clock / time-zone slack).
+ */
+export function isAllowedStartDate(startDate: string, today: string): boolean {
+  if (startDate === nextFirst(today)) return true;
+  const offset = diffDays(today, startDate);
+  return offset >= -CREATE_REPLAY_DAYS && offset <= 1;
 }
 
 type Plan = Omit<ChallengeUpdate, "owner" | "now">;
@@ -126,7 +135,7 @@ export function challengesRoutes(deps: Deps) {
 
     const nowDate = deps.now();
     const today = todayIn(user.tz, nowDate);
-    if (!allowedStartDates(today).includes(input.startDate)) throw badRequest(M.startDate, { startDate: M.startDate });
+    if (!isAllowedStartDate(input.startDate, today)) throw badRequest(M.startDate, { startDate: M.startDate });
     if ((await countOpenChallenges(deps, user.id)) >= LIMITS.openChallenges) throw conflict(M.openLimit);
 
     // Counted only for a create that passed every check above (a replay returned earlier); given
@@ -237,10 +246,13 @@ export function challengesRoutes(deps: Deps) {
     const input = await readJson(c, ReflectSchema);
     const { before, after } = await mutate(c.var.user, id, (ch, { today, now }) => {
       if (ch.status === "done") {
-        // Changing one's mind later: verdict / reflection only, the record stays closed.
+        // Changing one's mind later: verdict / reflection only, the record stays closed. Conditioned
+        // on the verdict read, so the verdict counters below move exactly once per change. An
+        // imported record stays private (a re-reflection is not the owner using the challenge).
         return {
           set: { verdict: input.verdict, reflection: input.reflection === undefined ? undefined : input.reflection || null },
-          expect: { status: "done" },
+          expect: { status: "done", ...(ch.verdict ? { verdict: ch.verdict } : {}) },
+          keepImported: true,
         };
       }
       const index = dayIndex(ch.startDate, today);
@@ -260,6 +272,9 @@ export function challengesRoutes(deps: Deps) {
       // The write was conditioned on "active", so this runs once per challenge.
       await bumpStats(deps, { challengesDone: 1, [`verdict_${input.verdict}`]: 1 });
       log.info("challenge reflected", { uid: c.var.uid, verdict: input.verdict, day: after.finishedDay });
+    } else if (before.verdict && after.verdict && before.verdict !== after.verdict) {
+      // A changed verdict moves between the counters (the write was conditioned on before.verdict).
+      await bumpStats(deps, { [`verdict_${before.verdict}`]: -1, [`verdict_${after.verdict}`]: 1 });
     }
     return c.json<ChallengeResponse>({ challenge: after });
   });

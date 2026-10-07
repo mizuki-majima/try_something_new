@@ -30,13 +30,18 @@ export const FORWARD_HOST_CODE = `function handler(event) {
   return request;
 }`;
 
-/** /media/<key> is stored in the media bucket as <key> (apps/api: share/<id>.png). */
+/**
+ * /media/share/<id>.png is stored in the media bucket as share/<id>.png. Nothing else in the bucket
+ * is public: a card hidden by moderation is moved to hidden/share/<id>.png, which must stay
+ * unreachable, so every other path is a 404 here (before S3 is asked).
+ */
 export const MEDIA_PATH_CODE = `function handler(event) {
   var request = event.request;
-  if (request.uri.indexOf("/media/") === 0) {
+  if (/^\\/media\\/share\\/[0-9A-Za-z_-]+\\.png$/.test(request.uri)) {
     request.uri = request.uri.substring("/media".length);
+    return request;
   }
-  return request;
+  return { statusCode: 404, statusDescription: "Not Found" };
 }`;
 
 /** SPEC "Architecture" — the SPA. */

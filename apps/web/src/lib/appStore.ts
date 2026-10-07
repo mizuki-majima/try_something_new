@@ -13,6 +13,7 @@ import {
   LIMITS,
   MePatchSchema,
   NicknameSchema,
+  QUOTAS,
   ReflectSchema,
   StampPutSchema,
   TOTAL_DAYS,
@@ -32,10 +33,11 @@ import { isOpen, viewChallenge } from "./challenge";
 import {
   applyOp,
   applyPending,
-  backoffMs,
   drain,
   enqueue,
+  isLongRateLimit,
   opRequest,
+  retryDelayMs,
   targetOf,
   type DrainResult,
   type LocalState,
@@ -43,9 +45,24 @@ import {
   type OutboxItem,
   type OutboxOp,
 } from "./outbox";
-import { clearSession, deviceTimeZone, ensureSession, getToken, isSessionInvalid, redeemTransfer, subscribeSession } from "./session";
+import { clearAllPhotos } from "./photos";
+import { invalidateRecipes } from "./recipes";
+import {
+  clearSession,
+  deviceTimeZone,
+  ensureSession,
+  getToken,
+  isSessionInvalid,
+  redeemTransfer,
+  subscribeSession,
+  subscribeSessionCreated,
+} from "./session";
 import { KEYS, readJson, writeJson } from "./storage";
+import { clearRecipeCaches } from "./swCaches";
 import { fail, ok, parseWith, type ActionResult, type Failure } from "./validation";
+
+/** SPEC "Error Handling" 429: shown when a queued write is refused until the quota resets. */
+export const RATE_LIMIT_NOTICE = "今日はここまで（あすの0時にリセット）";
 
 export type SyncStatus = "synced" | "pending" | "offline" | "error";
 
@@ -99,7 +116,10 @@ export type AppActions = {
   flush(): Promise<void>;
   /** Restore the account on this device with a transfer code (FR-2). */
   restoreWithCode(code: string): Promise<ActionResult<User>>;
-  /** Forget everything on this device: token, cached state and queued writes (after "delete all data"). */
+  /**
+   * Forget everything on this device: token, cached state, queued writes, day photos and cached
+   * recipe responses (after "delete all data", or 「新しく始める」 after a 401).
+   */
   resetLocal(): void;
   /** Local data as a backup file (works offline and after a 401). */
   localBackup(): BackupFile;
@@ -171,6 +191,10 @@ export function createAppStore(): AppStore {
   let refreshing: Promise<void> | null = null;
   let lastRefreshAt = 0;
   let lastDrain: DrainResult["status"] = "empty";
+  // The last retry was a (short) 429: the device is online, the server asked us to wait.
+  let lastRetryThrottled = false;
+  // Failed attempts to create the account, for its backoff.
+  let sessionAttempts = 0;
   let lastSyncError: string | null = null;
   let lastSyncedAt: number | null = null;
   let lastStamped: AppSnapshot["lastStamped"] = null;
@@ -192,7 +216,7 @@ export function createAppStore(): AppStore {
     if (isSessionInvalid()) return "error";
     if (!online) return "offline";
     if (pending === 0) return "synced";
-    return lastDrain === "retry" ? "offline" : "pending";
+    return lastDrain === "retry" && !lastRetryThrottled ? "offline" : "pending";
   }
 
   function build(): AppSnapshot {
@@ -276,8 +300,14 @@ export function createAppStore(): AppStore {
     return locks.request(LOCK_NAME, { ifAvailable: true }, (lock) => (lock ? fn() : null));
   }
 
+  /**
+   * The anonymous account now exists: take its user and queue what waited for it (the nickname
+   * typed before). Runs for the store's own POST /api/session and for one made by any other
+   * request (session.ts subscribeSessionCreated), so it is safe to call twice.
+   */
   function onSessionCreated(user: User): void {
-    base = { ...base, user };
+    sessionAttempts = 0;
+    base = { ...base, user: base.user?.id === user.id ? { ...base.user, ...user } : user };
     const nick = pendingNickname;
     pendingNickname = null;
     if (nick && user.nickname !== nick) {
@@ -301,7 +331,15 @@ export function createAppStore(): AppStore {
     persist();
   }
 
-  function onDropped(_item: OutboxItem, error: unknown): void {
+  function onDropped(item: OutboxItem, error: unknown): void {
+    if (isLongRateLimit(item.op, error)) {
+      const what =
+        item.op.kind === "challenge.create"
+          ? `新しく始められるのは1日${QUOTAS.challengesPerUserPerDay}件までです。`
+          : "この変更は保存できませんでした。";
+      notice({ kind: "error", message: `${RATE_LIMIT_NOTICE}。${what}` });
+      return;
+    }
     notice({ kind: "error", message: `保存できませんでした。${errorMessage(error)}` });
   }
 
@@ -321,8 +359,11 @@ export function createAppStore(): AppStore {
         if (err instanceof ApiClientError && err.status === 401) {
           lastDrain = "auth";
         } else {
+          // Growing backoff (and the server's Retry-After on a 429: new accounts are limited per hour).
+          sessionAttempts++;
           lastDrain = "retry";
-          scheduleRetry(backoffMs(2));
+          lastRetryThrottled = err instanceof ApiClientError && err.status === 429;
+          scheduleRetry(retryDelayMs(sessionAttempts + 1, err));
         }
         return;
       }
@@ -344,12 +385,13 @@ export function createAppStore(): AppStore {
       return;
     }
     lastDrain = result.status;
+    lastRetryThrottled = result.status === "retry" && result.error instanceof ApiClientError && result.error.status === 429;
     if (result.status === "empty") {
       lastSyncError = null;
       lastSyncedAt = Date.now();
     } else {
       lastSyncError = errorMessage(result.error);
-      if (result.status === "retry") scheduleRetry(backoffMs(result.attempts));
+      if (result.status === "retry") scheduleRetry(retryDelayMs(result.attempts, result.error));
     }
     if (result.dropped > 0) void refresh();
   }
@@ -540,15 +582,21 @@ export function createAppStore(): AppStore {
         const res = await redeemTransfer(code);
         const sameAccount = !base.user || base.user.id === res.user.id;
         if (!sameAccount) {
-          // The queue and cache belonged to another account on this device.
+          // The queue, cache and day photos belonged to another account on this device.
           saveOutbox([]);
           base = { user: res.user, challenges: [] };
+          lastStamped = null;
+          void clearAllPhotos().catch(() => undefined); // best effort, in the background
         } else {
           base = { ...base, user: res.user };
         }
         pendingNickname = null;
+        sessionAttempts = 0;
         persist();
         recompute();
+        // Cached recipe responses carry the previous token's isMine.
+        await clearRecipeCaches();
+        invalidateRecipes();
         await refresh();
         void flush();
         return ok(res.user);
@@ -567,9 +615,15 @@ export function createAppStore(): AppStore {
       lastStamped = null;
       lastSyncError = null;
       lastDrain = "empty";
+      lastRetryThrottled = false;
+      sessionAttempts = 0;
       ready = true;
       persist();
       recompute();
+      // Nothing of the previous account may stay on the device: its day photos (IndexedDB) and the
+      // recipe responses the service worker cached for its token. Best effort, in the background.
+      void clearAllPhotos().catch(() => undefined);
+      void clearRecipeCaches().then(invalidateRecipes);
     },
 
     localBackup() {
@@ -622,6 +676,12 @@ export function createAppStore(): AppStore {
       if (t !== today) emit();
     }, TODAY_TICK_MS);
     const unsubSession = subscribeSession(emit);
+    // The account may be created by any request (a cheer, a report, a post), not only by our
+    // queue: take the user and send what waited for it (the nickname, queued writes).
+    const unsubCreated = subscribeSessionCreated(({ user }) => {
+      onSessionCreated(user);
+      void flush();
+    });
 
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
@@ -636,6 +696,7 @@ export function createAppStore(): AppStore {
       clearTimeout(retryTimer);
       clearTimeout(flushTimer);
       unsubSession();
+      unsubCreated();
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("storage", onStorage);

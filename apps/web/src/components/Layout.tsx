@@ -1,6 +1,7 @@
 /**
  * App shell: sticky header (brand, desktop nav, sync status, settings), bands for offline and a
- * broken session, the page (<Outlet/>), the phone tab bar and the toast live region.
+ * broken session, the page (<Outlet/>), the footer links (about / terms / privacy / contact), the
+ * phone tab bar and the toast live region.
  */
 import { Suspense, useEffect, useRef, type ComponentType, type RefObject } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
@@ -92,6 +93,28 @@ function useServiceWorkerNavigation() {
   }, [navigate]);
 }
 
+/** About and the legal pages, reachable from every screen (the Terms bind from the first use). */
+export const FOOTER_LINKS: readonly { to: string; label: string }[] = [
+  { to: "/about", label: "このサービスについて" },
+  { to: "/terms", label: "利用規約" },
+  { to: "/privacy", label: "プライバシーポリシー" },
+  { to: "/contact", label: "お問い合わせ" },
+];
+
+export function SiteFooter() {
+  return (
+    <footer className="site-foot">
+      <nav aria-label="このサイトについて">
+        {FOOTER_LINKS.map((l) => (
+          <Link key={l.to} to={l.to}>
+            {l.label}
+          </Link>
+        ))}
+      </nav>
+    </footer>
+  );
+}
+
 export function Layout() {
   const { pathname } = useLocation();
   const mainRef = useRef<HTMLElement>(null);
@@ -133,6 +156,7 @@ export function Layout() {
           </Suspense>
         </ErrorBoundary>
       </main>
+      <SiteFooter />
       <nav className="tabbar" aria-label="メニュー">
         {TABS.map(({ to, label, Icon, match }) => (
           <Link key={to} to={to} aria-current={match(pathname) ? "page" : undefined}>

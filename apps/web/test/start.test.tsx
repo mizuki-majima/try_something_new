@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextFirst, type Challenge, type User } from "@thirty/shared";
@@ -73,6 +73,11 @@ describe("StartChallengeSheet", () => {
     const radios = screen.getAllByRole("radio") as HTMLInputElement[];
     expect(radios[0]!.checked).toBe(true);
     expect(screen.getByText(/^今日から/)).toBeTruthy();
+    // The Terms bind on starting (TermsPage), so the sheet says so, with the links.
+    const consent = document.querySelector<HTMLElement>(".consent-note")!;
+    expect(consent.textContent).toBe("始めると利用規約とプライバシーポリシーに同意したことになります。");
+    expect(within(consent).getByRole("link", { name: "利用規約" }).getAttribute("href")).toBe("/terms");
+    expect(within(consent).getByRole("link", { name: "プライバシーポリシー" }).getAttribute("href")).toBe("/privacy");
 
     fireEvent.change(screen.getByLabelText("ニックネーム（任意）"), { target: { value: "ミズキ" } });
     submit();

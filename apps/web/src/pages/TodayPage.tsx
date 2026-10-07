@@ -422,7 +422,9 @@ function CohortTeaser({ today, online, reserved, onReserve }: { today: string; o
   }, [key, online]);
 
   const current = state?.key === key ? state : null;
-  const count = current?.data && current.data.startDate === nf ? current.data.count : null;
+  const data = current?.data && current.data.startDate === nf ? current.data : null;
+  // count is reservations (one person may have several); peopleCount, when sent, is people.
+  const people = data?.peopleCount;
 
   return (
     <section className="td-teaser" aria-labelledby="td-teaser-h">
@@ -435,10 +437,16 @@ function CohortTeaser({ today, online, reserved, onReserve }: { today: string; o
           <span className="td-teaser-left">あと{diffDays(today, nf)}日</span>
         </p>
         <p className="td-teaser-meta" aria-live="polite">
-          {!online ? null : count !== null ? (
-            <>
-              いま予約しているのは<b>{count}人</b>
-            </>
+          {!online ? null : data ? (
+            typeof people === "number" ? (
+              <>
+                いま予約しているのは<b>{people}人</b>
+              </>
+            ) : (
+              <>
+                いまの予約は<b>{data.count}件</b>
+              </>
+            )
           ) : current?.error ? (
             <>
               予約の人数を読み込めませんでした。

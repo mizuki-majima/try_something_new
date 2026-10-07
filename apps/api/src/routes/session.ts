@@ -18,7 +18,7 @@ export function sessionRoutes(deps: Deps) {
   // Anonymous account (FR-1).
   r.post(API.session, async (c) => {
     const input = await readJson(c, SessionCreateSchema);
-    await enforceQuota(deps, "session-ip", clientIpHash(c), QUOTAS.sessionsPerIpPerHour, "hour");
+    await enforceQuota(deps, "session-ip", clientIpHash(deps, c), QUOTAS.sessionsPerIpPerHour, "hour");
     const user = await createUser(deps, input);
     const token = newToken();
     await putToken(deps, user.id, sha256(token));
@@ -31,7 +31,7 @@ export function sessionRoutes(deps: Deps) {
   r.post(API.sessionTransfer, async (c) => {
     const { code } = await readJson(c, TransferRedeemSchema);
     // Counted before the lookup so guessing codes is throttled.
-    await enforceQuota(deps, "transfer-redeem-ip", clientIpHash(c), QUOTAS.transferRedeemPerIpPerHour, "hour");
+    await enforceQuota(deps, "transfer-redeem-ip", clientIpHash(deps, c), QUOTAS.transferRedeemPerIpPerHour, "hour");
     const uid = await redeemTransferCode(deps, code);
     const user = uid ? await getUser(deps, uid) : undefined;
     if (!user) throw badRequest(INVALID_CODE, { code: INVALID_CODE });

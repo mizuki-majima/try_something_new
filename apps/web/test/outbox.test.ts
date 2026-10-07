@@ -8,7 +8,9 @@ import {
   drain,
   enqueue,
   isAlreadyDone,
+  isLongRateLimit,
   opRequest,
+  retryDelayMs,
   type OutboxItem,
   type OutboxOp,
 } from "../src/lib/outbox";
@@ -143,6 +145,36 @@ describe("drain", () => {
     }
   });
 
+  it("a create refused by the daily quota (429) is dropped with its dependent ops; later writes still go out", async () => {
+    const store = memory(queue(create("a"), stamp("a", 1), stamp("b", 3), { kind: "me.patch", body: { nickname: "みず" } }));
+    const sent: string[] = [];
+    const onDropped = vi.fn();
+    const result = await drain({
+      ...store,
+      send: async (item) => {
+        // The server's create quota resets at 0:00 JST: Retry-After is hours away.
+        if (item.op.kind === "challenge.create") throw new ApiClientError(429, "rate_limited", "今日はここまでです。", undefined, 51_365);
+        sent.push(opRequest(item.op).path);
+        return {};
+      },
+      onDropped,
+    });
+    expect(result).toEqual({ status: "empty", sent: 2, dropped: 1 });
+    expect(sent).toEqual(["/api/challenges/b/stamps/3", "/api/me"]);
+    expect(onDropped).toHaveBeenCalledTimes(1);
+    expect(store.items).toEqual([]);
+  });
+
+  it("a 429 on a create is dropped even without Retry-After; a long Retry-After drops any write", async () => {
+    const short = memory(queue(create("a")));
+    expect((await drain({ ...short, send: () => Promise.reject(new ApiClientError(429, "rate_limited")) })).status).toBe("empty");
+    expect(short.items).toEqual([]);
+
+    const long = memory(queue(stamp("a", 1), stamp("a", 2)));
+    const r = await drain({ ...long, send: (item) => (item.op.kind === "stamp.put" && item.op.day === 1 ? Promise.reject(new ApiClientError(429, "rate_limited", undefined, undefined, 7_200)) : Promise.resolve({})) });
+    expect(r).toEqual({ status: "empty", sent: 1, dropped: 1 });
+  });
+
   it("stops on 401 and keeps the queue for after the account is restored", async () => {
     const store = memory(queue(stamp("a", 1), stamp("a", 2)));
     const result = await drain({ ...store, send: () => Promise.reject(new ApiClientError(401, "unauthorized")) });
@@ -226,6 +258,26 @@ describe("drain", () => {
 });
 
 describe("classifyError / backoff", () => {
+  it("429: a create or a Retry-After beyond an hour is dropped, a short one is retried", () => {
+    const limited = (retryAfter?: number) => new ApiClientError(429, "rate_limited", undefined, undefined, retryAfter);
+    expect(classifyError(limited(), create("a"))).toBe("drop");
+    expect(classifyError(limited(30), create("a"))).toBe("drop");
+    expect(classifyError(limited(), stamp("a", 1))).toBe("retry");
+    expect(classifyError(limited(60), stamp("a", 1))).toBe("retry");
+    expect(classifyError(limited(3_600), stamp("a", 1))).toBe("retry");
+    expect(classifyError(limited(3_601), { kind: "me.patch", body: { nickname: "みず" } })).toBe("drop");
+    expect(isLongRateLimit(create("a"), new ApiClientError(503, "internal"))).toBe(false);
+    expect(classifyError(new ApiClientError(503, "internal"), create("a"))).toBe("retry");
+  });
+
+  it("waits at least as long as a short 429's Retry-After (capped at an hour)", () => {
+    expect(retryDelayMs(1, new ApiClientError(503, "internal"))).toBe(2000);
+    expect(retryDelayMs(1, new ApiClientError(429, "rate_limited"))).toBe(2000);
+    expect(retryDelayMs(1, new ApiClientError(429, "rate_limited", undefined, undefined, 90))).toBe(90_000);
+    expect(retryDelayMs(20, new ApiClientError(429, "rate_limited", undefined, undefined, 10))).toBe(300_000);
+    expect(retryDelayMs(1, new ApiClientError(429, "rate_limited", undefined, undefined, 86_400))).toBe(3_600_000);
+  });
+
   it("classifies by status", () => {
     expect(classifyError(new ApiClientError(400, "bad_request"))).toBe("drop");
     expect(classifyError(new ApiClientError(404, "not_found"))).toBe("drop");

@@ -1,7 +1,12 @@
 import { API, LIMITS, type Challenge, type User } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { request } from "../src/lib/api";
 import { createAppStore, type AppStore, type Notice } from "../src/lib/appStore";
-import { clearSession } from "../src/lib/session";
+import { clearSession, getToken } from "../src/lib/session";
+import { RECIPE_CACHES } from "../src/lib/swCaches";
+
+const photos = vi.hoisted(() => ({ clearAllPhotos: vi.fn(async () => {}) }));
+vi.mock("../src/lib/photos", () => photos);
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -10,6 +15,8 @@ const json = (status: number, body: unknown) =>
 function fakeApi() {
   const challenges = new Map<string, Challenge>();
   let user: User = { id: "u0000000000001", nickname: "", tz: "UTC", shareProgress: true, reminder: { enabled: false, time: "21:00" }, createdAt: 1 };
+  /** The account a transfer code belongs to (POST /api/session/transfer). */
+  let transferUser: User = user;
   const calls: string[] = [];
   const bodies: unknown[] = [];
   let failWith: ((method: string, url: string) => Response | Error | null) | null = null;
@@ -27,6 +34,10 @@ function fakeApi() {
     if (url === API.session && method === "POST") {
       user = { ...user, nickname: typeof body?.nickname === "string" ? body.nickname : "" };
       return json(201, { token: "tok", user });
+    }
+    if (url === API.sessionTransfer && method === "POST") {
+      user = transferUser;
+      return json(200, { token: "tok-transfer", user });
     }
     if (url === API.me && method === "GET") return json(200, { user, today: "2026-10-06" });
     if (url === API.me && method === "PATCH") {
@@ -78,6 +89,12 @@ function fakeApi() {
     fail(fn: typeof failWith) {
       failWith = fn;
     },
+    setTransferUser(u: User) {
+      transferUser = u;
+    },
+    get user() {
+      return user;
+    },
   };
 }
 
@@ -85,11 +102,15 @@ let api: ReturnType<typeof fakeApi>;
 let store: AppStore;
 let stop: () => void;
 let notices: Notice[];
+let cacheDelete: ReturnType<typeof vi.fn<(name: string) => Promise<boolean>>>;
 
 beforeEach(() => {
   clearSession();
   api = fakeApi();
   vi.stubGlobal("fetch", api.fetchMock);
+  cacheDelete = vi.fn(async () => true);
+  vi.stubGlobal("caches", { delete: cacheDelete });
+  photos.clearAllPhotos.mockClear();
   store = createAppStore();
   stop = store.start();
   notices = [];
@@ -217,5 +238,110 @@ describe("app store", () => {
     expect(snap.pending).toBe(0);
     expect(snap.syncStatus).toBe("synced");
     expect(notices).toEqual([]);
+  });
+
+  it("a create refused by the daily quota (429) is rolled back with 「今日はここまで」 and does not block later writes", async () => {
+    const kept = start("残すもの");
+    await store.actions.flush();
+
+    api.fail((method, url) =>
+      method === "POST" && url === API.challenges
+        ? new Response(JSON.stringify({ error: { code: "rate_limited", message: "今日はここまでです。日本時間の0時を過ぎると、また使えます" } }), {
+            status: 429,
+            headers: { "Content-Type": "application/json", "Retry-After": "51365" },
+          })
+        : null,
+    );
+    const eleventh = start("11件目");
+    expect(store.actions.stamp(kept.id, 1).ok).toBe(true);
+    expect(store.getSnapshot().challenges.map((c) => c.id)).toContain(eleventh.id);
+
+    await store.actions.flush();
+    const snap = store.getSnapshot();
+    expect(snap.challenges.map((c) => c.id)).not.toContain(eleventh.id); // rolled back
+    expect(snap.pending).toBe(0);
+    expect(snap.syncStatus).toBe("synced");
+    expect(api.challenges.get(kept.id)!.stamps["1"]).toBeTruthy(); // the stamp behind it was sent
+    expect(notices).toEqual([{ kind: "error", message: `今日はここまで（あすの0時にリセット）。新しく始められるのは1日10件までです。` }]);
+    expect(api.calls.filter((c) => c === `POST ${API.challenges}`)).toHaveLength(2); // never retried
+  });
+
+  it("a short 429 is retried later and is not shown as offline", async () => {
+    const ch = start();
+    await store.actions.flush();
+    api.fail((method, url) =>
+      method === "PUT" && url.includes("/stamps/")
+        ? new Response(JSON.stringify({ error: { code: "rate_limited", message: "少し待ってください" } }), {
+            status: 429,
+            headers: { "Content-Type": "application/json", "Retry-After": "30" },
+          })
+        : null,
+    );
+    store.actions.stamp(ch.id, 1);
+    await store.actions.flush();
+    let snap = store.getSnapshot();
+    expect(snap.pending).toBe(1);
+    expect(snap.challenges[0]!.stamps["1"]).toBeTruthy();
+    expect(snap.syncStatus).toBe("pending");
+    expect(notices).toEqual([]);
+
+    api.fail(null);
+    await store.actions.flush();
+    snap = store.getSnapshot();
+    expect(snap.pending).toBe(0);
+    expect(api.challenges.get(ch.id)!.stamps["1"]).toBeTruthy();
+  });
+
+  it("adopts an account created outside its queue (a cheer, a report) at once", async () => {
+    expect(store.getSnapshot().user).toBeNull();
+    await request("GET", API.me, { auth: "required" });
+    expect(getToken()).toBe("tok");
+    const snap = store.getSnapshot();
+    expect(snap.user?.id).toBe("u0000000000001");
+    expect(snap.hasSession).toBe(true);
+  });
+
+  it("sends the start sheet's nickname when another request created the account", async () => {
+    api.fail(() => new TypeError("Failed to fetch"));
+    const ch = start(undefined, "はなこ");
+    await store.actions.flush(); // POST /api/session fails: still no account
+    expect(getToken()).toBeNull();
+    expect(store.getSnapshot().pendingNickname).toBe("はなこ");
+
+    api.fail(null);
+    await request("GET", API.me, { auth: "required" }); // e.g. a cheer: creates the account without the nickname
+    await store.actions.flush();
+    const snap = store.getSnapshot();
+    expect(api.calls).toContain(`PATCH ${API.me}`);
+    expect(api.user.nickname).toBe("はなこ");
+    expect(snap.pendingNickname).toBeNull();
+    expect(snap.user?.nickname).toBe("はなこ");
+    expect(snap.pending).toBe(0);
+    expect(api.challenges.has(ch.id)).toBe(true);
+  });
+
+  it("resetLocal also forgets this device's day photos and the cached recipe responses", async () => {
+    start();
+    await store.actions.flush();
+    store.actions.resetLocal();
+    expect(store.getSnapshot().challenges).toEqual([]);
+    await vi.waitFor(() => expect(photos.clearAllPhotos).toHaveBeenCalledTimes(1));
+    expect(cacheDelete.mock.calls.map(([name]) => name).sort()).toEqual([...RECIPE_CACHES].sort());
+  });
+
+  it("restoring another account clears the previous one's photos; any restore clears the recipe caches", async () => {
+    start();
+    await store.actions.flush();
+
+    api.setTransferUser({ ...api.user }); // same account
+    expect((await store.actions.restoreWithCode("ABCD2345")).ok).toBe(true);
+    expect(photos.clearAllPhotos).not.toHaveBeenCalled();
+    expect(cacheDelete).toHaveBeenCalledTimes(RECIPE_CACHES.length);
+
+    api.setTransferUser({ ...api.user, id: "u0000000000002", nickname: "べつ" });
+    expect((await store.actions.restoreWithCode("ABCD2345")).ok).toBe(true);
+    expect(photos.clearAllPhotos).toHaveBeenCalledTimes(1);
+    expect(cacheDelete).toHaveBeenCalledTimes(RECIPE_CACHES.length * 2);
+    expect(store.getSnapshot().user?.id).toBe("u0000000000002");
   });
 });
