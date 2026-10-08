@@ -1,123 +1,200 @@
 /*
- * Design tokens — NEO-BRUTALISM (docs/design.md).
- * Thick ink lines, hard offset shadows, flat saturated colours, heavy display type.
- * Dark mode follows the OS unless the user picked a theme (data-theme on <html>).
+ * Design tokens — 「白いノート」 (docs/design.md, Issue #20).
+ * A white notebook: paper background, white cards, ink-coloured text, thin lines, no hard shadows,
+ * handwritten headings (Klee One 600), body text in the device's own font. Two soft accents only:
+ * a sage green (buttons, links, selection, today) and the 朱 of the seal.
+ * Dark is 「夜のノート」: dark grey paper (not black), warm off-white ink, no bright fills.
+ * Dark mode follows the OS unless the user picked a theme (data-theme on <html>, lib/theme.ts).
  *
- * Text on a coloured fill (--shu / --yellow / --mint / --blue / --pink / --lilac) always uses
- * --on-accent (#111, also in dark mode). Small coloured TEXT uses the "-ink" variants
- * (--shu-ink, --link, --mint-ink, --amber-ink), which meet WCAG AA on --bg and --surface.
- * Contrast table: docs/design.md "Classes".
+ * Contrast (WCAG 2.x; text 4.5:1, UI borders and graphics 3:1) is listed next to each value.
+ * --line is for the borders of controls (3:1); --rule is decoration only and never the only
+ * boundary of a control. --shu is the seal's ring and character (a graphic): coloured TEXT uses
+ * --shu-ink / --accent-ink / --amber-ink / --slate. Never put --ink text on a --shu fill.
  */
 :root {
-  /* ---- palette (docs/design.md) ---- */
-  --bg: #fff4d6;
-  --surface: #ffffff;
-  --ink: #111111;
-  --muted: #4a4a4a;
-  --shu: #ff4b2b;
-  --yellow: #ffd43b;
-  --mint: #3ddc97;
-  --blue: #6c8cff;
-  --pink: #ff9ec7;
-  --lilac: #b9a2ff;
-  --gray: #e6e1d3;
-  --on-accent: #111111;
+  /* ---- paper and ink ---- */
+  --bg: #faf8f4; /* paper: page and header */
+  --bg-2: #f3f0ea; /* sunken areas, hover */
+  --surface: #ffffff; /* cards, sheets, tab bar */
+  --ink: #34312c; /* text: bg 12.21 / surface 12.95 / bg-2 11.38 / soft fills 10.45–10.92 */
+  --muted: #6b655c; /* secondary text: bg 5.44 / surface 5.77 / bg-2 5.07 / accent-soft 4.86 / shu-soft 4.65 */
+  --line: #8c8579; /* control borders only: surface 3.65 / bg 3.45 / bg-2 3.21 / accent-soft 3.08 */
+  --rule: #e2ddd3; /* decorative lines only (1.28) */
 
-  /* ---- text-safe accents (AA 4.5:1 on --bg and --surface) ---- */
-  --shu-ink: #c42b0e;
-  --link: #2f4fd6;
-  --mint-ink: #0b7343;
-  --amber-ink: #855600;
+  /* ---- accents ---- */
+  --accent: #4a6b4e; /* primary button fill: --on-primary 5.99 */
+  --accent-hover: #3f5e43; /* white text 7.26 */
+  --accent-ink: #3f6b4a; /* green text, links, selection, focus: bg 5.80 / surface 6.15 / bg-2 5.41 / accent-soft 5.19 */
+  --accent-soft: #e6eee3; /* selected, today, notices */
+  --on-primary: #ffffff;
+  --primary-border: var(--accent);
+  --shu: #b9553d; /* seal ring and character (graphic): surface 4.74 / bg 4.47 / shu-soft 3.82 */
+  --shu-ink: #a8452f; /* red text (warnings, delete): bg 5.57 / surface 5.90 / shu-soft 4.76 */
+  --shu-soft: #f6e3dc;
+  --mist: #e3e9f0;
+  --slate: #52637a; /* 「形を変える」: surface 6.13 / mist 5.02 */
+  --sand: #f2ead9;
+  --amber-ink: #7a5a1e; /* bg 5.98 / sand 5.30 / surface 6.35 */
+  --lavender: #ece6f0;
+  --gray-soft: #ece8e1;
+
+  /* ---- overlays ---- */
+  --overlay: rgba(52, 49, 44, 0.45);
+  --shadow-float: 0 12px 32px rgba(28, 27, 25, 0.16); /* floating sheets and toasts only */
+  --toast-bg: var(--ink);
+  --toast-fg: var(--bg); /* 12.21 */
+  --toast-border: transparent;
+  --rule-faint: rgba(52, 49, 44, 0.06); /* ruled-paper lines (hero, empty states) */
 
   /* ---- lines, shadows, shapes ---- */
-  --border: 3px;
-  --border-thin: 2px;
-  --shadow: 5px 5px 0 var(--ink);
-  --shadow-sm: 3px 3px 0 var(--ink);
-  --shadow-lg: 6px 6px 0 var(--ink);
-  --shadow-hover: 7px 7px 0 var(--ink);
-  --shadow-press: 2px 2px 0 var(--ink);
+  --border: 1px;
+  --border-thin: 1px;
+  --border-ctl: 1.5px; /* controls */
+  --border-strong: 2px; /* today, selected */
+  /* No hard offset shadows. "none" is invalid inside a comma-separated list, so use an empty shadow. */
+  --shadow: 0 0 #0000;
+  --shadow-sm: 0 0 #0000;
+  --shadow-lg: 0 0 #0000;
+  --shadow-hover: 0 0 #0000;
+  --shadow-press: 0 0 #0000;
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
   --radius-pill: 999px;
-  /* 方眼 (1px lines every 24px) and the "not yet" hatch. */
-  --grid: rgba(17, 17, 17, 0.08);
-  --hatch: color-mix(in srgb, var(--ink) 22%, transparent);
-  --overlay: rgba(17, 17, 17, 0.6);
+  /* Slightly uneven corners, like a hand-drawn box (cards, sheets, empty states, buttons). */
+  --radius-hand: 14px 18px 13px 17px / 17px 13px 18px 14px;
+  --radius-hand-sm: 9px 11px 8px 12px / 12px 8px 11px 9px;
   /* Keeps the theme's --muted reachable where a coloured fill overrides --muted. */
   --muted-base: var(--muted);
 
   /* ---- type ---- */
-  --font-display: "Dela Gothic One", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
-  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
-  --font-num: var(--font-display);
+  /* Handwriting (Klee One 600, self-hosted, headings / brand / seals / big numbers only). */
+  --font-hand: "Klee One", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic UI", system-ui, sans-serif;
+  /* The device's own fonts: nothing to download. */
+  --font-body: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+  /* Emphasised labels and numbers: the body font at 700. */
+  --font-display: var(--font-body);
+  --font-num: var(--font-body);
 
   /* ---- motion / layout ---- */
-  --press: 100ms;
+  --press: 120ms;
   --tap: 44px;
-  --header-h: 60px;
-  --tabbar-h: 68px;
+  --header-h: 56px;
+  --tabbar-h: 64px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  /* ---- legacy names (foundation) → new values. Prefer the names above in new code. ---- */
-  --paper: var(--bg);
-  --soft: var(--bg);
-  --line: var(--ink);
-  --shu-fill: var(--shu);
-  --on-shu: var(--on-accent);
-  --ai: var(--link);
-  --wakaba: var(--mint-ink);
+  /* ---- older names → the values above (page CSS keeps working). Prefer the names above. ---- */
+  --yellow: var(--accent-soft);
+  --mint: var(--accent-soft);
+  --blue: var(--mist);
+  --pink: var(--shu-soft);
+  --lilac: var(--lavender);
+  --gray: var(--gray-soft);
+  --on-accent: var(--ink);
+  --link: var(--accent-ink);
+  --mint-ink: var(--accent-ink);
+  --ai: var(--accent-ink);
+  --wakaba: var(--accent-ink);
   --amber: var(--amber-ink);
   --danger: var(--shu-ink);
+  --shu-fill: var(--shu-soft);
+  --on-shu: var(--shu-ink);
+  --paper: var(--bg);
+  --soft: var(--bg);
   --r: var(--radius);
+  /* 方眼 and the "not yet" hatch are gone. */
+  --grid: transparent;
+  --hatch: transparent;
 
   color-scheme: light;
 }
 
+/* 「夜のノート」. Keep the two dark blocks identical (OS dark without a manual light choice, and a manual dark choice). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #141414;
-    --surface: #1f1f1f;
-    --ink: #f7f3e8;
-    --muted: #c9c4b8;
-    --shu: #ff5a3c;
-    --yellow: #ffd43b;
-    --mint: #3ddc97;
-    --blue: #7c98ff;
-    --pink: #ff9ec7;
-    --lilac: #b9a2ff;
-    --gray: #3a3a3a;
-    --on-accent: #111111;
-    --shu-ink: #ff6a4f;
-    --link: #8fa6ff;
-    --mint-ink: #3ddc97;
-    --amber-ink: #ffd43b;
-    --grid: rgba(247, 243, 232, 0.08);
-    --overlay: rgba(0, 0, 0, 0.7);
+    --bg: #1c1b19;
+    --bg-2: #211f1d;
+    --surface: #262522;
+    --ink: #e6e1d8; /* 13.22 / 11.77 / 12.61; soft fills 9.01–10.26 */
+    --muted: #a9a398; /* 6.87 / 6.12 / 6.55; accent-soft 4.68 / gray-soft 5.18 / mist 5.10 / shu-soft 5.33 */
+    --line: #827c72; /* surface 3.70 / bg 4.16 / bg-2 3.97 (not on accent-soft: use --accent-ink there) */
+    --rule: #3a3834;
+    --accent: #3e5a44; /* --on-primary 5.86; the fill is close to the surface, so primary buttons get an --accent-ink border */
+    --accent-hover: #46654c; /* text 5.00 */
+    --accent-ink: #9cc3a0; /* 8.79 / 7.83; accent-soft 6.00 */
+    --accent-soft: #2f3b30;
+    --on-primary: #e6e1d8;
+    --primary-border: var(--accent-ink);
+    --shu: #d4866f; /* 6.10 / 5.43; shu-soft 4.73 / accent-soft 4.16 */
+    --shu-ink: #e5a08c; /* 7.98 / 7.11; shu-soft 6.20 */
+    --shu-soft: #3d2b26;
+    --mist: #2b333c;
+    --slate: #a9b8cb; /* surface 7.59 / mist 6.34 */
+    --sand: #3a3427;
+    --amber-ink: #d8b878; /* 9.05 / sand 6.50 / surface 8.06 */
+    --lavender: #35303c;
+    --gray-soft: #33312d;
+    --overlay: rgba(0, 0, 0, 0.6);
+    --shadow-float: 0 0 #0000; /* no shadows in the dark: a 1px --line border instead */
+    --toast-bg: #2e2c29; /* 10.69, with a 1px --line border (3.36) */
+    --toast-fg: var(--ink);
+    --toast-border: var(--line);
+    --rule-faint: rgba(230, 225, 216, 0.05);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #141414;
-  --surface: #1f1f1f;
-  --ink: #f7f3e8;
-  --muted: #c9c4b8;
-  --shu: #ff5a3c;
-  --yellow: #ffd43b;
-  --mint: #3ddc97;
-  --blue: #7c98ff;
-  --pink: #ff9ec7;
-  --lilac: #b9a2ff;
-  --gray: #3a3a3a;
-  --on-accent: #111111;
-  --shu-ink: #ff6a4f;
-  --link: #8fa6ff;
-  --mint-ink: #3ddc97;
-  --amber-ink: #ffd43b;
-  --grid: rgba(247, 243, 232, 0.08);
-  --overlay: rgba(0, 0, 0, 0.7);
+  --bg: #1c1b19;
+  --bg-2: #211f1d;
+  --surface: #262522;
+  --ink: #e6e1d8;
+  --muted: #a9a398;
+  --line: #827c72;
+  --rule: #3a3834;
+  --accent: #3e5a44;
+  --accent-hover: #46654c;
+  --accent-ink: #9cc3a0;
+  --accent-soft: #2f3b30;
+  --on-primary: #e6e1d8;
+  --primary-border: var(--accent-ink);
+  --shu: #d4866f;
+  --shu-ink: #e5a08c;
+  --shu-soft: #3d2b26;
+  --mist: #2b333c;
+  --slate: #a9b8cb;
+  --sand: #3a3427;
+  --amber-ink: #d8b878;
+  --lavender: #35303c;
+  --gray-soft: #33312d;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow-float: 0 0 #0000;
+  --toast-bg: #2e2c29;
+  --toast-fg: var(--ink);
+  --toast-border: var(--line);
+  --rule-faint: rgba(230, 225, 216, 0.05);
   color-scheme: dark;
+}
+
+/*
+ * More contrast (OS setting): control borders in ink, thicker, and darker secondary text.
+ * After the dark blocks, with the same selectors, so it wins in both themes.
+ */
+@media (prefers-contrast: more) {
+  :root {
+    --line: var(--ink);
+    --border-ctl: 2px;
+    --muted: #4f4a43; /* bg 8.27 */
+  }
+  :root[data-theme="dark"] {
+    --line: var(--ink);
+    --muted: #cfc9be; /* bg 10.45 */
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --line: var(--ink);
+    --muted: #cfc9be;
+  }
 }

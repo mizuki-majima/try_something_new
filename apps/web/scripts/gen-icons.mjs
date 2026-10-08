@@ -4,10 +4,10 @@
  *
  *   PLAYWRIGHT_BROWSERS_PATH=<browsers dir> node apps/web/scripts/gen-icons.mjs
  *
- * NEO-BRUTALISM (docs/design.md): the brand seal 「卅」 is a 朱 disc with an ink ring, a hard
- * offset shadow and the kanji in ink, tilted -6deg. The kanji is drawn from the real Dela Gothic One
- * glyph outline (read from the @fontsource WOFF file), so favicon.svg needs no web font. PNGs and the
- * OG image are rendered with Playwright's Chromium (the OG page loads the @fontsource font files).
+ * The brand seal 「卅」. The kanji is drawn from the real Klee One 600 glyph outline (read from the
+ * @fontsource WOFF file, which has TrueType glyf outlines), so favicon.svg needs no web font. PNGs and
+ * the OG image are rendered with Playwright's Chromium (the OG page embeds the @fontsource font files).
+ * (Colours and shapes: docs/design.md; the 「白いノート」 re-draw is Issue #20.)
  * Re-run only when the brand changes; the outputs are committed.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -236,9 +236,9 @@ function contoursToPath(contours) {
 }
 
 async function loadGlyph(char) {
-  const tables = await loadWoff(fontFile("dela-gothic-one", "dela-gothic-one-japanese-400-normal.woff"));
+  const tables = await loadWoff(fontFile("klee-one", "klee-one-japanese-600-normal.woff"));
   const index = glyphIndex(tables.cmap, char.codePointAt(0));
-  if (!index) throw new Error(`Dela Gothic One has no glyph for ${char}`);
+  if (!index) throw new Error(`Klee One has no glyph for ${char}`);
   const [start] = glyphOffset(tables, index);
   const g = tables.glyf;
   return {
@@ -314,10 +314,9 @@ async function fontFace(family, weight, pkg, file, range) {
 
 async function ogHtml(glyph) {
   const faces = [
-    await fontFace("Dela Gothic One", 400, "dela-gothic-one", "dela-gothic-one-japanese-400-normal.woff2"),
-    await fontFace("Dela Gothic One", 400, "dela-gothic-one", "dela-gothic-one-latin-400-normal.woff2", "U+0000-00FF"),
-    await fontFace("Zen Kaku Gothic New", 700, "zen-kaku-gothic-new", "zen-kaku-gothic-new-japanese-700-normal.woff2"),
-    await fontFace("Zen Kaku Gothic New", 700, "zen-kaku-gothic-new", "zen-kaku-gothic-new-latin-700-normal.woff2", "U+0000-00FF"),
+    // The OG image is a PNG, so the whole page can use the embedded handwriting font (no CJK system font needed).
+    await fontFace("Klee One", 600, "klee-one", "klee-one-japanese-600-normal.woff2"),
+    await fontFace("Klee One", 600, "klee-one", "klee-one-latin-600-normal.woff2", "U+0000-00FF"),
   ].join("");
   const stamped = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13]);
   const today = 14;
@@ -331,27 +330,27 @@ async function ogHtml(glyph) {
 ${faces}
 *{box-sizing:border-box;margin:0}
 html,body{width:1200px;height:630px}
-body{font-family:"Zen Kaku Gothic New",sans-serif;font-weight:700;color:${INK};background:${BG};
+body{font-family:"Klee One",sans-serif;font-weight:600;color:${INK};background:${BG};
  background-image:linear-gradient(${GRID} 1px,transparent 1px),linear-gradient(90deg,${GRID} 1px,transparent 1px);background-size:30px 30px;
  padding:52px 64px 64px 52px;font-synthesis:none}
 .card{position:relative;display:flex;align-items:center;gap:52px;height:100%;padding:0 52px 0 56px;background:${SURFACE};
  border:6px solid ${INK};border-radius:28px;box-shadow:12px 12px 0 ${INK}}
 .left{flex:1;min-width:0}
 .brand{display:flex;align-items:center;gap:18px;margin-bottom:34px}
-.brand b{font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:64px;letter-spacing:.02em;line-height:1}
-.tag{font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:46px;line-height:1.45;white-space:nowrap}
+.brand b{font-family:"Klee One",sans-serif;font-weight:600;font-size:64px;letter-spacing:.02em;line-height:1}
+.tag{font-family:"Klee One",sans-serif;font-weight:600;font-size:46px;line-height:1.45;white-space:nowrap}
 .hl{background:${YELLOW};padding:0 .12em;border-radius:6px}
 .sub{margin-top:26px;font-size:23px;color:${MUTED};line-height:1.6;white-space:nowrap}
 .sticker{position:absolute;top:-28px;right:44px;padding:6px 20px;border:4px solid ${INK};border-radius:14px;background:${MINT};
- box-shadow:5px 5px 0 ${INK};font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:26px;transform:rotate(4deg)}
+ box-shadow:5px 5px 0 ${INK};font-family:"Klee One",sans-serif;font-weight:600;font-size:26px;transform:rotate(4deg)}
 .grid{display:grid;grid-template-columns:repeat(6,54px);gap:8px;padding:18px;border:4px solid ${INK};border-radius:18px;background:${PINK};
  box-shadow:6px 6px 0 ${INK};transform:rotate(-2deg)}
 .cell{position:relative;width:54px;height:54px;border:3px solid ${INK};border-radius:9px;background:${SURFACE}}
-.cell .n{position:absolute;top:2px;left:5px;font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:11px;color:${MUTED}}
+.cell .n{position:absolute;top:2px;left:5px;font-family:"Klee One",sans-serif;font-weight:600;font-size:11px;color:${MUTED}}
 .cell.today{border-width:4px;background:${YELLOW};box-shadow:3px 3px 0 ${INK}}.cell.today .n{color:${INK}}
 .cell.future{background-image:repeating-linear-gradient(135deg,${HATCH} 0 2px,transparent 2px 7px)}
 .st{position:absolute;inset:10%;border-radius:50%;border:3px solid ${INK};background:${SHU};color:${INK};display:flex;align-items:center;justify-content:center;
- font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:22px;line-height:1;transform:rotate(-8deg)}
+ font-family:"Klee One",sans-serif;font-weight:600;font-size:22px;line-height:1;transform:rotate(-8deg)}
 </style></head><body>
 <div class="card">
   <div class="left">
@@ -401,8 +400,8 @@ async function main() {
     await page.setContent(await ogHtml(glyph), { waitUntil: "load" });
     await page.evaluate(async () => {
       await Promise.all([
-        document.fonts.load('400 64px "Dela Gothic One"', "30日だけどうせ過ぎるなら、ひとつ試してみる。試1タップ0123456789"),
-        document.fonts.load('700 23px "Zen Kaku Gothic New"', "毎日1タップで印を押して、30日目に「続ける・やめる・形を変える」を決める。"),
+        document.fonts.load('600 64px "Klee One"', "30日だけどうせ過ぎるなら、ひとつ試してみる。試1タップ0123456789"),
+        document.fonts.load('600 23px "Klee One"', "毎日1タップで印を押して、30日目に「続ける・やめる・形を変える」を決める。"),
       ]);
       await document.fonts.ready;
     });

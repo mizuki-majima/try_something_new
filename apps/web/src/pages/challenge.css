@@ -18,9 +18,9 @@
   min-width: 0;
 }
 .cp-h1 {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: clamp(20px, 5.6vw, 28px);
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.3;
 }
 .cp-meta {
@@ -61,7 +61,8 @@
 }
 .cp-count {
   flex: none;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -135,9 +136,9 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: 20px;
-  font-weight: 400;
+  font-weight: 600;
 }
 .cp-day-h span {
   color: var(--muted, #4a4a4a);
@@ -216,9 +217,9 @@
   gap: 10px;
 }
 .cp-h2 {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: 18px;
-  font-weight: 400;
+  font-weight: 600;
 }
 .cp-reflection {
   display: grid;
@@ -265,8 +266,8 @@
 .cp-note b {
   flex: none;
   width: 4em;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-weight: 400;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .cp-note span:not(.cp-tag) {

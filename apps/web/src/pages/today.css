@@ -1,6 +1,6 @@
 /*
- * きょう (TodayPage). Neo-brutalism per docs/design.md: 3px ink borders, hard offset shadows, flat
- * colours, Dela Gothic One for display type, slightly tilted stickers. Tokens have fallbacks.
+ * きょう (TodayPage). 「白いノート」 per docs/design.md: handwritten headings and seals (--font-hand),
+ * labels and buttons in the device's font (--font-display, 700).
  */
 
 .td-page {
@@ -12,9 +12,9 @@
   display: flex;
   align-items: baseline;
   gap: 12px;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: 26px;
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.2;
 }
 .td-date span {
@@ -42,6 +42,7 @@
   background: var(--surface, #fff);
   box-shadow: 6px 6px 0 var(--ink, #111);
 }
+/* The 卅 seal: a 朱 ring over the hero's corner (paper inside, so the card's edge does not show through). */
 .td-hero-seal {
   position: absolute;
   top: -16px;
@@ -50,15 +51,15 @@
   place-items: center;
   width: 70px;
   height: 70px;
-  border: var(--border, 3px) solid var(--ink, #111);
+  border: 1.75px solid var(--shu);
   border-radius: 50%;
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  box-shadow: 4px 4px 0 var(--ink, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: 34px;
+  background: var(--surface);
+  color: var(--shu);
+  font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: 35px;
   line-height: 1;
-  transform: rotate(10deg);
+  transform: rotate(-4deg);
 }
 .td-hero-kicker {
   display: inline-block;
@@ -74,9 +75,9 @@
 }
 .td-hero-h {
   margin: 16px 0 14px;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: clamp(29px, 8.2vw, 50px);
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.32;
   letter-spacing: 0.01em;
 }
@@ -106,9 +107,9 @@
   margin-top: 22px;
 }
 .td-cta {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 17px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .td-cta-yellow {
   background: var(--yellow, #ffd43b);
@@ -141,9 +142,9 @@
   background: var(--surface, #fff);
 }
 .td-step b {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .td-step small {
   color: var(--muted, #4a4a4a);
@@ -161,7 +162,8 @@
   border-radius: 8px;
   background: var(--mint, #3ddc97);
   color: var(--on-accent, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 20px;
   line-height: 1;
   transform: rotate(-5deg);
@@ -213,9 +215,9 @@
   min-width: 0;
 }
 .td-title {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: 18px;
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.35;
 }
 .td-meta {
@@ -250,7 +252,8 @@
 }
 .td-count {
   flex: none;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -308,15 +311,15 @@
   place-items: center;
   width: 52px;
   height: 52px;
-  border: var(--border, 3px) solid var(--ink, #111);
+  border: 1.75px solid var(--shu);
   border-radius: 50%;
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  box-shadow: 3px 3px 0 var(--ink, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  background: transparent;
+  color: var(--shu);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 26px;
   line-height: 1;
-  transform: rotate(-8deg);
+  transform: rotate(-4deg);
 }
 .td-done-msg {
   display: flex;
@@ -328,7 +331,8 @@
   min-width: 0;
 }
 .td-done-text {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 18px;
   line-height: 1.35;
 }
@@ -412,9 +416,9 @@
   gap: 2px;
 }
 .td-wait b {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 17px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .td-wait span {
   color: var(--muted, #4a4a4a);
@@ -430,7 +434,8 @@
   color: var(--on-accent, #111);
 }
 .td-end-h {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 20px;
 }
 
@@ -463,9 +468,9 @@
   border-radius: var(--radius, 12px);
 }
 .td-more-h {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .td-more-btns {
   display: flex;
@@ -494,11 +499,11 @@
   padding: 1px 10px;
   border: 2px solid var(--on-accent, #111);
   border-radius: 6px;
-  background: #fff;
-  color: #111;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-hand);
   font-size: 15px;
-  font-weight: 400;
+  font-weight: 600;
   transform: rotate(-3deg);
 }
 .td-teaser-text {
@@ -514,9 +519,9 @@
   font-weight: 700;
 }
 .td-teaser-date b {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 26px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1.2;
 }
 .td-teaser-left {
@@ -532,14 +537,14 @@
 }
 .td-teaser-meta b {
   margin: 0 2px;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .td-teaser-meta .td-tag-first {
-  background: #fff;
-  color: #111;
-  border-color: #111;
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--ink);
 }
 .td-teaser-note {
   font-size: 13px;

@@ -17,9 +17,9 @@
   color: var(--ink, #111);
 }
 .mn-day {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .mn-text {

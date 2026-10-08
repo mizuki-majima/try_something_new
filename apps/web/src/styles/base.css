@@ -8,7 +8,7 @@ html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   scroll-padding-top: calc(var(--header-h, 60px) + var(--safe-top, 0px) + 8px);
-  /* Dela Gothic One ships one weight: never fake-bold it (or any other face). */
+  /* Klee One is loaded in one weight (600): never fake-bold it (or any other face). */
   font-synthesis: style;
 }
 
@@ -17,16 +17,13 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   font-family: var(--font-body);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 400;
-  line-height: 1.7;
-  color: var(--ink, #111);
-  background-color: var(--bg, #fff4d6);
-  /* 方眼: the whole app sits on grid paper (ink 8%, 24px). */
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 24px 24px;
+  line-height: 1.75;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  /* Plain paper: no grid image (ruled lines only on the hero and empty states). */
+  background-color: var(--bg);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   overflow-wrap: anywhere;
@@ -36,19 +33,47 @@ body.is-locked {
   overflow: hidden;
 }
 
-/* Headings are Dela Gothic One (one weight; 900 only makes the fallback fonts heavy). */
+/* Headings h1–h3 are handwritten (Klee One 600, the only weight loaded); h4 is the body font. */
 h1,
 h2,
 h3,
 h4 {
   margin: 0;
-  font-family: var(--font-display);
-  font-weight: 900;
-  line-height: 1.3;
-  letter-spacing: 0.01em;
+  line-height: 1.35;
   text-wrap: balance;
   /* Break Japanese headings between phrases, not inside a word (Chromium; others ignore it). */
   word-break: auto-phrase;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--font-hand);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+h1 {
+  font-size: 26px;
+}
+h2 {
+  font-size: 20px;
+}
+h3 {
+  font-size: 17px;
+}
+h4 {
+  font-family: var(--font-body);
+  font-weight: 700;
+}
+@media (min-width: 760px) {
+  h1 {
+    font-size: 30px;
+  }
+  h2 {
+    font-size: 22px;
+  }
+  h3 {
+    font-size: 18px;
+  }
 }
 
 p,
@@ -102,7 +127,7 @@ a:hover {
 }
 
 small {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 hr {

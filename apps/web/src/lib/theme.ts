@@ -7,8 +7,11 @@ import { KEYS, readString, writeString } from "./storage";
 
 export type ThemePref = "system" | "light" | "dark";
 
-/** Browser chrome color = the header (--surface in tokens.css); must match index.html. */
-export const THEME_COLORS = { light: "#ffffff", dark: "#1f1f1f" } as const;
+/**
+ * Browser chrome color = the header (--bg in tokens.css, light and 「夜のノート」 dark). Keep in step
+ * with index.html (theme-color metas) and vite.config.ts (manifest).
+ */
+export const THEME_COLORS = { light: "#faf8f4", dark: "#1c1b19" } as const;
 
 const listeners = new Set<() => void>();
 

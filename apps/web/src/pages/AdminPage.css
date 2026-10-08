@@ -15,9 +15,9 @@
 
 .adm-title {
   margin: 0;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
   font-size: clamp(24px, 6vw, 32px);
-  font-weight: 400;
+  font-weight: 700;
 }
 
 .adm-login {
@@ -72,9 +72,9 @@
 
 .adm-h {
   margin: 0;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 400;
+  font-weight: 700;
 }
 
 .adm-sub {
@@ -118,7 +118,8 @@
   box-shadow: 3px 3px 0 var(--ink, #111111);
 }
 .adm-tile-n {
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: 26px;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
@@ -169,7 +170,8 @@
   background: var(--mint, #3ddc97);
 }
 .adm-judge.fail {
-  background: var(--shu, #ff4b2b);
+  background: var(--shu-soft);
+  color: var(--shu-ink);
 }
 .adm-judge.na {
   background: var(--gray, var(--soft, #e6e1d3));
@@ -204,7 +206,8 @@
 }
 .adm-kv dd {
   margin: 0;
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-num);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -253,7 +256,8 @@
 }
 .adm-count {
   margin-left: auto;
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: 14px;
 }
 .adm-preview,

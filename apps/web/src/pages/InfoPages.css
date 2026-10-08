@@ -18,9 +18,9 @@
 
 .info-title {
   margin: 0;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
   font-size: clamp(26px, 7vw, 36px);
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.25;
 }
 .info-title:focus {
@@ -55,9 +55,9 @@
 }
 .info-notice-h {
   margin: 0;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .info-notice p {
   margin: 0;
@@ -85,9 +85,9 @@
 }
 .info-toc-title {
   margin: 0 0 6px;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .info-toc ol {
   display: grid;
@@ -122,9 +122,9 @@
   align-items: center;
   gap: 10px;
   margin: 0;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
   font-size: 19px;
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.4;
 }
 .info-num {
@@ -137,7 +137,8 @@
   border-radius: 8px;
   background: var(--blue, #6c8cff);
   color: var(--on-accent, #111111);
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: 15px;
   transform: rotate(-4deg);
   box-shadow: 2px 2px 0 var(--ink, #111111);
@@ -188,8 +189,8 @@
   border-bottom: 0;
 }
 .info-table thead th {
-  background: var(--ink, #111111);
-  color: var(--surface, #ffffff);
+  background: var(--bg-2);
+  color: var(--ink);
   font-size: 13px;
 }
 .info-table tbody th {
@@ -300,8 +301,8 @@
   color: var(--on-accent, #111111);
 }
 .about-step b {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
-  font-weight: 400;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 17px;
 }
 .about-step p {
@@ -321,7 +322,8 @@
   border-radius: 50%;
   background: var(--surface, #ffffff);
   color: var(--ink, #111111);
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 14px;
 }
 
@@ -368,13 +370,15 @@
   border-radius: 6px;
   background: var(--yellow, #ffd43b);
   color: var(--on-accent, #111111);
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: 14px;
 }
 .about-qa summary::after {
   content: "+";
   margin-left: auto;
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: 20px;
   line-height: 1;
 }

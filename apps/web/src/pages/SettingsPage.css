@@ -12,7 +12,8 @@
 
 .set-title {
   margin: 0;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: clamp(26px, 7vw, 34px);
   line-height: 1.2;
 }
@@ -49,31 +50,11 @@
   }
 }
 
-/* Section cards with a colored sticker heading. */
+/* Section cards. (No per-section colours: data-accent is ignored, and --accent stays the global green.) */
 .set-sec {
-  --accent: var(--surface, #ffffff);
   display: grid;
   gap: 14px;
   scroll-margin-top: calc(var(--header-h, 56px) + 16px);
-}
-.set-sec[data-accent="pink"] {
-  --accent: var(--pink, #ff9ec7);
-}
-.set-sec[data-accent="yellow"] {
-  --accent: var(--yellow, #ffd43b);
-}
-.set-sec[data-accent="blue"] {
-  --accent: var(--blue, #6c8cff);
-}
-.set-sec[data-accent="mint"] {
-  --accent: var(--mint, #3ddc97);
-}
-.set-sec[data-accent="lilac"] {
-  --accent: var(--lilac, #b9a2ff);
-}
-.set-sec[data-accent="shu"] {
-  --accent: var(--shu, #ff4b2b);
-  border-color: var(--shu, #ff4b2b);
 }
 
 .set-h {
@@ -82,11 +63,11 @@
   padding: 4px 12px;
   border: var(--border, 3px) solid var(--ink, #111111);
   border-radius: 8px;
-  background: var(--accent);
-  color: var(--on-accent, #111111);
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-hand);
   font-size: 18px;
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.4;
   transform: rotate(-2deg);
   box-shadow: 3px 3px 0 var(--ink, #111111);
@@ -308,7 +289,8 @@
   border-radius: 10px;
   background: var(--yellow, #ffd43b);
   color: var(--on-accent, #111111);
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: clamp(24px, 7vw, 44px);
   line-height: 1.2;
   letter-spacing: 0.06em;
@@ -325,13 +307,14 @@
   font-size: 14px;
 }
 .set-countdown b {
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
-  font-weight: 400;
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
 .set-codefield input {
-  font-family: var(--font-num, "Dela Gothic One", sans-serif);
+  font-family: var(--font-num);
+  font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }

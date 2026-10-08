@@ -140,9 +140,9 @@
 }
 .rp-title,
 .recipe .rp-title {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1.35;
 }
 .rp-card .meta {
@@ -174,9 +174,9 @@
 }
 .rd-title {
   margin: 2px 0 6px;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
   font-size: clamp(22px, 6vw, 30px);
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.25;
 }
 .rd-author {
@@ -190,14 +190,15 @@
   gap: 6px;
 }
 .rp-section > .h3 {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
   font-size: 15px;
-  font-weight: 400;
+  font-weight: 600;
   color: var(--ink, #111);
   letter-spacing: 0.02em;
 }
 .rp-how li::marker {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
+  font-weight: 700;
 }
 .rd-ctas {
   display: grid;
@@ -215,9 +216,9 @@
   justify-content: flex-end;
 }
 .rd-stories > .h3 {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
   font-size: 18px;
-  font-weight: 400;
+  font-weight: 600;
   color: var(--ink, #111);
 }
 .rd-storylist {
@@ -261,7 +262,8 @@
 .rn-seal-input {
   max-width: 96px;
   text-align: center;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 22px !important;
 }
 .rn-seal-preview {

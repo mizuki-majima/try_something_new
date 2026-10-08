@@ -13,8 +13,9 @@
   top: 0;
   z-index: 20;
   padding-top: var(--safe-top, 0px);
-  background: var(--surface, #fff);
-  border-bottom: var(--border, 3px) solid var(--ink, #111);
+  /* The paper colour: matches theme-color (index.html, lib/theme.ts, the manifest). */
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
 }
 .top-in {
   max-width: 720px;
@@ -32,9 +33,9 @@
   align-items: center;
   gap: 10px;
   min-height: var(--tap, 44px);
-  font-family: var(--font-display);
+  font-family: var(--font-hand);
   font-size: 19px;
-  font-weight: 900;
+  font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1;
   color: var(--ink, #111);
@@ -121,12 +122,12 @@
   background: var(--gray, #e6e1d3);
 }
 .sync.error {
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  background: var(--shu-soft);
+  color: var(--shu-ink);
 }
 .sync.error::before {
-  border-color: var(--on-accent, #111);
-  background: var(--on-accent, #111);
+  border-color: var(--shu-ink);
+  background: var(--shu-ink);
 }
 
 /* The page column. (Plain .wrap is the flex-wrap utility below.) */
@@ -244,7 +245,10 @@ main.wrap:focus {
   color: inherit;
 }
 .band.warn {
-  background: var(--shu, #ff4b2b);
+  background: var(--shu-soft);
+}
+.band.warn a {
+  color: var(--shu-ink);
 }
 
 /* ---------- notice band (お知らせ: dismissible, in the page flow, never over the page) ---------- */
@@ -292,9 +296,10 @@ main.wrap:focus {
 }
 
 /* ---------- seals + stamp card ---------- */
+/* The seal (印): a 朱 ring and a handwritten 朱 character, no fill, tilted a little like a real stamp. */
 .seal {
   --s: 40px;
-  --seal-bw: var(--border, 3px);
+  --seal-bw: 1.75px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -302,34 +307,29 @@ main.wrap:focus {
   width: var(--s);
   height: var(--s);
   border-radius: 50%;
-  border: var(--seal-bw) solid var(--ink, #111);
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: calc(var(--s) * 0.48);
+  border: var(--seal-bw) solid var(--shu);
+  background: transparent;
+  color: var(--shu);
+  font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: calc(var(--s) * 0.5);
   line-height: 1;
-  transform: rotate(-6deg);
+  transform: rotate(-4deg);
 }
 .seal.sm {
   --s: 26px;
-  --seal-bw: var(--border-thin, 2px);
-  box-shadow: 2px 2px 0 var(--ink, #111);
+  --seal-bw: 1.5px;
 }
 .seal.lg {
   --s: 52px;
 }
 .seal.xl {
   --s: 64px;
-  box-shadow: 4px 4px 0 var(--ink, #111);
 }
-/* On the 朱 primary button: a yellow seal with an on-accent ring. */
+/* On the green primary button: ring and character in the button's text colour. */
 .seal.inv {
-  border-color: var(--on-accent, #111);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: 2px 2px 0 var(--on-accent, #111);
+  border-color: var(--on-primary);
+  color: var(--on-primary);
 }
 
 .grid30 {
@@ -358,13 +358,17 @@ main.wrap:focus {
     transform var(--press, 100ms) ease-out,
     box-shadow var(--press, 100ms) ease-out;
 }
+/* A stamped day: the soft 朱 behind the ring. */
+.cell:has(> .st) {
+  background: var(--shu-soft);
+}
 .cell .n {
   position: absolute;
   top: 3px;
   left: 5px;
   font-family: var(--font-num);
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.2;
   color: var(--muted, #4a4a4a);
   font-variant-numeric: tabular-nums;
@@ -414,22 +418,22 @@ button.cell:not(:disabled):active {
   transform: translate(2px, 2px);
   box-shadow: 0 0 0 var(--ink, #111);
 }
-/* The stamp: a 朱 disc with an ink ring, the seal kanji in ink, tilted like a real stamp. */
+/* The stamp: a 朱 ring with the handwritten seal character in 朱, tilted like a real stamp. */
 .cell .st {
   position: absolute;
-  inset: 11%;
+  inset: 12%;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 2.5px solid var(--ink, #111);
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  font-family: var(--font-display);
-  font-weight: 900;
+  border: 1.75px solid var(--shu);
+  background: transparent;
+  color: var(--shu);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: min(26px, 5.2vw);
   line-height: 1;
-  transform: rotate(-8deg);
+  transform: rotate(-4deg);
 }
 /* "ドン": lands big, squashes, settles. The cell takes the hit. */
 .cell .st.new {
@@ -445,14 +449,14 @@ button.cell:not(:disabled):active {
     opacity: 0;
   }
   40% {
-    transform: scale(0.8) rotate(-8deg);
+    transform: scale(0.8) rotate(-4deg);
     opacity: 1;
   }
   70% {
-    transform: scale(1.08) rotate(-8deg);
+    transform: scale(1.08) rotate(-4deg);
   }
   100% {
-    transform: scale(1) rotate(-8deg);
+    transform: scale(1) rotate(-4deg);
     opacity: 1;
   }
 }
@@ -525,9 +529,15 @@ button.cell:not(:disabled):active {
   box-shadow: 2px 2px 0 var(--btn-sh);
 }
 .btn.primary {
-  --muted: var(--on-accent, #111);
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  --muted: var(--on-primary);
+  border-color: var(--primary-border);
+  background: var(--accent);
+  color: var(--on-primary);
+}
+@media (hover: hover) {
+  .btn.primary:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--accent-hover);
+  }
 }
 .btn.ghost {
   background: transparent;
@@ -578,10 +588,9 @@ button.cell:not(:disabled):active {
   color: var(--danger, #c42b0e);
 }
 .btn.danger.solid {
-  --btn-sh: var(--ink, #111);
-  border-color: var(--ink, #111);
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  border-color: var(--shu-ink);
+  background: var(--shu-soft);
+  color: var(--shu-ink);
 }
 /* Doubled class: wins over every variant (.btn.danger.solid included). */
 .btn.btn:disabled,
@@ -605,7 +614,7 @@ button.cell:not(:disabled):active {
   min-height: 64px;
   font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.04em;
   box-shadow: 6px 6px 0 var(--btn-sh, #111);
 }
@@ -913,7 +922,7 @@ legend {
   text-align: center;
   font-family: var(--font-display);
   font-size: 24px;
-  font-weight: 900;
+  font-weight: 700;
 }
 .two {
   display: grid;
@@ -998,11 +1007,11 @@ legend {
 }
 .display {
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .num {
   font-family: var(--font-num);
-  font-weight: 900;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 /* Short display texts: break Japanese between phrases (Chromium; others ignore it). */
@@ -1021,39 +1030,38 @@ legend {
 }
 .h1 {
   margin: 4px 0 14px;
-  font-family: var(--font-display);
+  font-family: var(--font-hand);
   font-size: clamp(26px, 7vw, 38px);
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
 }
 .h2 {
   margin: 4px 0 12px;
-  font-family: var(--font-display);
+  font-family: var(--font-hand);
   font-size: 22px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.3;
 }
-/* Section label: heavy body type with a small 朱 block. */
+/* Section label: handwritten, with a short green line in front. */
 .h3 {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 6px 0 4px;
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
+  font-family: var(--font-hand);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   line-height: 1.4;
-  color: var(--ink, #111);
+  color: var(--ink);
 }
 .h3::before {
   content: "";
   flex: none;
-  width: 10px;
-  height: 10px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
+  width: 12px;
+  height: 3px;
   border-radius: 2px;
-  background: var(--shu, #ff4b2b);
+  background: var(--accent-ink);
 }
 .pagehead {
   display: flex;
@@ -1114,7 +1122,7 @@ legend {
   background: var(--lilac, #b9a2ff);
 }
 .fill-shu {
-  background: var(--shu, #ff4b2b);
+  background: var(--shu-soft);
 }
 .fill-cat {
   background: var(--cat, var(--yellow, #ffd43b));
@@ -1220,13 +1228,13 @@ legend {
   min-width: 0;
   font-family: var(--font-display);
   font-size: 19px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.3;
 }
 .daynum {
   font-family: var(--font-num);
   font-size: 34px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1290,7 +1298,7 @@ legend {
 .teaser b {
   display: block;
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .teaser .muted {
   font-size: 13px;
@@ -1349,7 +1357,7 @@ legend {
 .step b {
   display: block;
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .step small {
   color: var(--muted, #4a4a4a);
@@ -1413,7 +1421,7 @@ legend {
 .recipe .t {
   font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.35;
 }
 .recipe .s {
@@ -1446,7 +1454,7 @@ legend {
 }
 .how li::marker {
   font-family: var(--font-num);
-  font-weight: 900;
+  font-weight: 700;
 }
 /* The story quote. (.tag.story is the small "体験談あり" tag and must not pick these up.) */
 .story:not(.tag) {
@@ -1486,7 +1494,7 @@ legend {
   box-shadow: var(--shadow-lg, 6px 6px 0 #111);
   font-family: var(--font-display);
   font-size: clamp(20px, 6vw, 28px);
-  font-weight: 900;
+  font-weight: 700;
   text-align: center;
 }
 .slot.spin {
@@ -1537,12 +1545,12 @@ legend {
 }
 .person .t {
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .person .cnt {
   font-family: var(--font-num);
   font-size: 22px;
-  font-weight: 900;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .person .cnt small {
@@ -1580,8 +1588,8 @@ legend {
   color: var(--on-accent, #111);
 }
 .pill.first {
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  background: var(--shu-soft);
+  color: var(--shu-ink);
 }
 
 /* ---------- reflection / badges / log ---------- */
@@ -1623,7 +1631,7 @@ legend {
 .verdict b {
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 900;
+  font-weight: 700;
 }
 .verdict small {
   color: var(--muted, #4a4a4a);
@@ -1697,7 +1705,7 @@ legend {
 .quote {
   padding: 6px 0 0;
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .stats {
   display: grid;
@@ -1716,7 +1724,7 @@ legend {
 .stats .num {
   font-family: var(--font-num);
   font-size: 28px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
 }
 .stats small {
@@ -1736,7 +1744,7 @@ legend {
   flex: none;
   width: 3.6em;
   font-family: var(--font-num);
-  font-weight: 900;
+  font-weight: 700;
   color: var(--muted, #4a4a4a);
   font-variant-numeric: tabular-nums;
 }
@@ -1769,17 +1777,15 @@ legend {
   display: inline-flex;
   padding: 0;
 }
+/* Text only: the squares stay in the markup but are not shown (no looping motion). */
 .loading .dots {
-  display: inline-flex;
-  gap: 6px;
+  display: none;
 }
 .loading .dots i {
   width: 11px;
   height: 11px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
   border-radius: 3px;
-  background: var(--shu, #ff4b2b);
-  animation: hop 0.9s infinite ease-in-out;
+  background: var(--gray-soft);
 }
 .loading .dots i:nth-child(2) {
   background: var(--yellow, #ffd43b);
@@ -1816,7 +1822,7 @@ legend {
 .errorbox b {
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 900;
+  font-weight: 700;
 }
 .empty p,
 .errorbox p {
@@ -1870,9 +1876,9 @@ legend {
   border-bottom: var(--border, 3px) solid var(--ink, #111);
 }
 .sheet-title {
-  font-family: var(--font-display);
+  font-family: var(--font-hand);
   font-size: 17px;
-  font-weight: 900;
+  font-weight: 600;
   color: var(--ink, #111);
 }
 .sheet-body {
@@ -1968,20 +1974,19 @@ legend {
 }
 .toast {
   padding: 10px 18px;
-  border: var(--border, 3px) solid var(--ink, #111);
+  /* Light: no visible border (a soft shadow); dark: a 1px --line border instead of a shadow. */
+  border: 1px solid var(--toast-border);
   border-radius: var(--radius, 12px);
-  background: var(--ink, #111);
-  color: var(--bg, #fff4d6);
-  box-shadow: 4px 4px 0 var(--yellow, #ffd43b);
+  background: var(--toast-bg);
+  color: var(--toast-fg);
+  box-shadow: var(--shadow-float);
   font-size: 14px;
   font-weight: 700;
   text-align: center;
   animation: toastIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.25);
 }
 .toast.error {
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  box-shadow: 4px 4px 0 var(--ink, #111);
+  border-left: 4px solid var(--shu-ink);
 }
 @keyframes toastIn {
   from {

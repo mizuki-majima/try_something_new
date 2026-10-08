@@ -98,13 +98,13 @@
 }
 .tg-member .t,
 .tg-upc .t {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
-  font-weight: 400;
+  font-family: var(--font-display);
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 .tg-member .cnt {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
-  font-weight: 400;
+  font-family: var(--font-display);
+  font-weight: 700;
   white-space: nowrap;
 }
 .tg-you {
@@ -125,8 +125,8 @@
   padding: 0 8px;
   border: var(--border-thin, 2px) solid var(--ink, #111);
   border-radius: 6px;
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  background: var(--shu-soft);
+  color: var(--shu-ink);
   font-size: 12px;
   font-weight: 700;
   transform: rotate(-4deg);
@@ -156,8 +156,8 @@
 }
 .tg-cheer-n {
   min-width: 1.5em;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
-  font-weight: 400;
+  font-family: var(--font-display);
+  font-weight: 700;
   text-align: center;
 }
 
@@ -187,9 +187,9 @@
   gap: 12px;
 }
 .tg-detail-title {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
   font-size: 20px;
-  font-weight: 400;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .tg-detail-stats {
@@ -240,15 +240,15 @@
 }
 .tg-next-date b {
   margin-right: 4px;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-hand);
   font-size: clamp(26px, 8vw, 36px);
-  font-weight: 400;
+  font-weight: 600;
 }
 .tg-next-meta b {
   margin: 0 2px;
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .tg-next .btn {
   margin-top: 6px;

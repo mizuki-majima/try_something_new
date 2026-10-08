@@ -11,9 +11,9 @@ const proxy: Record<string, ProxyOptions> = {
   "^/media/": { target: API_ORIGIN },
 };
 
-/** Browser chrome = the white header (tokens.css --surface); splash = the cream page (--bg). */
-const THEME_COLOR = "#ffffff";
-const BACKGROUND_COLOR = "#fff4d6";
+/** Browser chrome = the header and splash = the page: both the paper colour (tokens.css --bg, light). */
+const THEME_COLOR = "#FAF8F4";
+const BACKGROUND_COLOR = "#FAF8F4";
 
 /**
  * @fontsource CSS lists a .woff fallback next to every .woff2. Every supported browser takes

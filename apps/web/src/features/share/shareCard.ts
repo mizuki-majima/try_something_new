@@ -36,9 +36,9 @@ export const VERDICT_COLORS: Record<Verdict, string> = {
   modify: CARD_COLORS.blue,
 };
 
-/** Dela Gothic One for display/numbers/seals, Zen Kaku Gothic New for text. */
+/** Klee One 600 (handwritten) for the title, seals, numbers and the verdict; the device's fonts at 700 for labels and text. */
 export const CARD_FONTS = {
-  display: FONT_STACKS.num,
+  hand: FONT_STACKS.hand,
   body: FONT_STACKS.body,
 } as const;
 
@@ -180,7 +180,7 @@ export const TITLE_SIZES = [56, 48, 40] as const;
 export const REFLECTION_SIZES = [28, 25, 22] as const;
 
 export function fitTitle(title: string, maxWidth: number, measure: Measure): TextBlock {
-  return fitText(title, maxWidth, measure, (s) => `400 ${s}px ${CARD_FONTS.display}`, TITLE_SIZES, (_s, i) => (i === 0 ? 1 : 2), 1.2);
+  return fitText(title, maxWidth, measure, (s) => `600 ${s}px ${CARD_FONTS.hand}`, TITLE_SIZES, (_s, i) => (i === 0 ? 1 : 2), 1.2);
 }
 
 /** The ひとこと in 「」, as many lines as the space allows. */
@@ -254,16 +254,16 @@ export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayou
 
   // Left column: seal, verdict sticker on its lower right, count.
   const sealR = 116;
-  const seal = { cx: inner.x + LEFT_W / 2 - 10, cy: inner.y + sealR + 6, r: sealR, char: d.seal || "印", font: `400 ${Math.round(sealR * 1.18)}px ${CARD_FONTS.display}` };
+  const seal = { cx: inner.x + LEFT_W / 2 - 10, cy: inner.y + sealR + 6, r: sealR, char: d.seal || "印", font: `600 ${Math.round(sealR * 1.18)}px ${CARD_FONTS.hand}` };
   let sticker: CardLayout["sticker"] = null;
   if (d.verdict) {
     const label = VERDICTS[d.verdict].label;
-    const font = `400 34px ${CARD_FONTS.display}`;
+    const font = `600 34px ${CARD_FONTS.hand}`;
     const w = Math.ceil(measure(font, label)) + 48;
     sticker = { cx: Math.min(inner.x + LEFT_W - w / 2 + 6, seal.cx + sealR * 0.55), cy: seal.cy + sealR - 4, w, h: 66, label, font, color: VERDICT_COLORS[d.verdict] };
   }
-  const countFont = `400 96px ${CARD_FONTS.display}`;
-  const denomFont = `400 40px ${CARD_FONTS.display}`;
+  const countFont = `600 96px ${CARD_FONTS.hand}`;
+  const denomFont = `600 40px ${CARD_FONTS.hand}`;
   const value = String(d.count);
   const countY = bottom - 4;
   const count = {
@@ -308,7 +308,7 @@ export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayou
 
   // Under the card: period (left) and logo (right).
   const stripY = CARD.y + CARD.h + CARD.shadow + (CARD_H - (CARD.y + CARD.h + CARD.shadow)) / 2 + 2;
-  const logoFont = `400 30px ${CARD_FONTS.display}`;
+  const logoFont = `600 30px ${CARD_FONTS.hand}`;
   const logoText = "30日だけ";
   const logoX = CARD_W - 48;
   const sealRSmall = 19;
@@ -319,7 +319,7 @@ export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayou
     count,
     title,
     grid,
-    gridSeal: { r: Math.round(cell * 0.4), font: `400 ${Math.round(cell * 0.46)}px ${CARD_FONTS.display}` },
+    gridSeal: { r: Math.round(cell * 0.4), font: `600 ${Math.round(cell * 0.46)}px ${CARD_FONTS.hand}` },
     reflection,
     period: { x: CARD.x + 4, y: stripY, text: d.period, font: `700 22px ${CARD_FONTS.body}` },
     logo: { x: logoX, y: stripY, text: logoText, font: logoFont, sealR: sealRSmall, sealX: logoX - measure(logoFont, logoText) - 12 - sealRSmall },
@@ -467,7 +467,7 @@ export function drawCard(x: Ctx, l: CardLayout): void {
   x.font = l.period.font;
   x.textAlign = "left";
   x.fillText(l.period.text, l.period.x, l.period.y);
-  drawSeal(x, l.logo.sealX, l.logo.y, l.logo.sealR, "卅", `400 ${Math.round(l.logo.sealR * 1.15)}px ${CARD_FONTS.display}`, -6, 3, 3);
+  drawSeal(x, l.logo.sealX, l.logo.y, l.logo.sealR, "卅", `600 ${Math.round(l.logo.sealR * 1.15)}px ${CARD_FONTS.hand}`, -6, 3, 3);
   x.fillStyle = C.ink;
   x.font = l.logo.font;
   x.textAlign = "right";
@@ -481,22 +481,17 @@ function delay(ms: number): Promise<void> {
 /** Make sure the web fonts (only the glyphs we draw) are loaded before painting. */
 export async function ensureCardFonts(d: ShareCardData, timeoutMs = 5000): Promise<void> {
   try {
-    await loadFonts();
+    // The card needs the handwritten glyphs even when Save-Data skipped them for the page.
+    await loadFonts({ force: true });
   } catch {
     // fall back to system fonts
   }
   const fonts = typeof document !== "undefined" ? document.fonts : undefined;
   if (!fonts?.load) return;
-  const display = `${d.title}${d.seal}卅30日だけ0123456789/ ${d.verdict ? VERDICTS[d.verdict].label : ""}`;
-  const body = `${d.reflection}「」${d.period}押せた日${d.verdict ? VERDICTS[d.verdict].desc : ""}`;
-  await Promise.race([
-    Promise.all([
-      fonts.load(`400 56px "Dela Gothic One"`, display),
-      fonts.load(`700 26px "Zen Kaku Gothic New"`, body),
-      fonts.load(`400 24px "Zen Kaku Gothic New"`, body),
-    ]).catch(() => undefined),
-    delay(timeoutMs),
-  ]);
+  // Only what is drawn in Klee One: title, seals, numbers, the verdict and the logo. Labels and the
+  // ひとこと use the device's fonts (nothing to load).
+  const hand = `${d.title}${d.seal || "印"}卅30日だけ0123456789/ ${d.verdict ? VERDICTS[d.verdict].label : ""}`;
+  await Promise.race([fonts.load(`600 56px "Klee One"`, hand).catch(() => undefined), delay(timeoutMs)]);
 }
 
 /** Draw the card and return it as a PNG Blob. Throws when the browser cannot draw. */

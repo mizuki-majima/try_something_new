@@ -5,15 +5,15 @@
   gap: 20px;
 }
 .lp-h1 {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: 28px;
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.2;
 }
 .lp-h2 {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: 19px;
-  font-weight: 400;
+  font-weight: 600;
 }
 .lp-section {
   display: grid;
@@ -36,9 +36,9 @@
   box-shadow: 5px 5px 0 var(--ink, #111);
 }
 .lp-stat b {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
   font-size: clamp(34px, 10vw, 46px);
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
@@ -51,8 +51,8 @@
   color: var(--on-accent, #111);
 }
 .lp-stat-stamps {
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  background: var(--shu-soft);
+  color: var(--shu-ink);
 }
 .lp-verdicts {
   display: flex;
@@ -74,13 +74,14 @@
   transform: rotate(-2deg);
 }
 .lp-v span {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 15px;
 }
 .lp-v b {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 22px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1;
 }
 .lp-v-continue {
@@ -147,7 +148,8 @@
   min-width: 0;
 }
 .lp-card-title {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 17px;
   line-height: 1.35;
 }
@@ -161,9 +163,9 @@
 }
 .lp-card-meta b {
   color: var(--ink, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .lp-card-quote {
   display: -webkit-box;
@@ -228,11 +230,12 @@
   place-items: center;
   width: 24px;
   height: 24px;
-  border: 2px solid var(--ink, #111);
+  border: 1.5px solid var(--shu);
   border-radius: 50%;
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  background: transparent;
+  color: var(--shu);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 12px;
   line-height: 1;
   transform: rotate(-6deg);

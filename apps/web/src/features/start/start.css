@@ -20,7 +20,8 @@
   width: 96px;
   flex: none;
   text-align: center;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 24px;
 }
 @keyframes st-pop {
@@ -71,9 +72,9 @@
 }
 .st-radio b {
   display: block;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1.4;
 }
 .st-radio small {
@@ -116,7 +117,7 @@
 }
 .st-submit {
   width: 100%;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-weight: 400;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 18px;
 }
