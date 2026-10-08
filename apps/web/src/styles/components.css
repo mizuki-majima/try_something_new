@@ -1,10 +1,12 @@
 /*
- * Shared component classes — NEO-BRUTALISM (docs/design.md, "Classes" lists what pages may use).
+ * Shared component classes — 「白いノート」 (docs/design.md, "Classes" lists what pages may use).
  * Page agents compose these; page-only tweaks belong in a CSS file next to the page.
  * Layout: one hand-held column (max 720px). Phones get a bottom tab bar, desktops (>=760px) a top nav.
  *
- * Rules of thumb: 3px ink borders (2px for details), hard offset shadows (no blur), flat fills,
- * text on a coloured fill = --on-accent, press = the shadow collapses and the element sinks.
+ * Rules of thumb: white cards on paper, 1px --rule lines and space between things, --line (3:1) only
+ * around controls, no offset shadows, no tilt except the seal (-4deg). A state is never shown by
+ * colour alone: it also gets a thicker border, a mark (✓ drawn in CSS, never a text character) or text.
+ * Motion: 120–240ms fades or a small scale, nothing that loops.
  */
 
 /* ---------- header / nav / tab bar ---------- */
@@ -12,15 +14,16 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  padding-top: var(--safe-top, 0px);
-  background: var(--surface, #fff);
-  border-bottom: var(--border, 3px) solid var(--ink, #111);
+  padding-top: var(--safe-top);
+  /* The paper colour: matches theme-color (index.html, lib/theme.ts, the manifest). */
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
 }
 .top-in {
   max-width: 720px;
-  min-height: var(--header-h, 60px);
+  min-height: var(--header-h);
   margin: 0 auto;
-  padding: 6px 8px 6px 16px;
+  padding: 4px 8px 4px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -30,14 +33,14 @@
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 10px;
-  min-height: var(--tap, 44px);
-  font-family: var(--font-display);
+  gap: 9px;
+  min-height: var(--tap);
+  font-family: var(--font-hand);
   font-size: 19px;
-  font-weight: 900;
+  font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1;
-  color: var(--ink, #111);
+  color: var(--ink);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -45,36 +48,35 @@
   text-decoration: none;
 }
 .brand .seal {
-  --s: 34px;
-  transition: transform 150ms ease-out;
-}
-.brand:hover .seal {
-  transform: rotate(-14deg);
+  --s: 28px;
+  --seal-bw: 1.5px;
 }
 .nav {
   display: none;
-  gap: 6px;
+  gap: 2px;
 }
 .nav a {
   display: inline-flex;
   align-items: center;
-  min-height: var(--tap, 44px);
-  padding: 0 12px;
-  border: var(--border-thin, 2px) solid transparent;
-  border-radius: 10px;
-  color: var(--ink, #111);
-  font-weight: 700;
+  min-height: var(--tap);
+  padding: 0 10px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
 }
 .nav a:hover {
-  border-color: var(--ink, #111);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
 }
 .nav a[aria-current="page"] {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  border-color: var(--ink, #111);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
+  color: var(--accent-ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
 .top-actions {
   display: flex;
@@ -82,51 +84,106 @@
   gap: 6px;
   min-width: 0;
 }
+/* Sync status: a small dot and quiet text, no box. */
 .sync {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
   min-height: 28px;
-  padding: 0 9px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-pill, 999px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  font-size: 11px;
-  font-weight: 700;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.2;
   text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Default (この端末, offline): a hollow dot. */
 .sync::before {
   content: "";
   flex: none;
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid var(--ink, #111);
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--muted);
   border-radius: 50%;
-  background: var(--surface, #fff);
+  background: transparent;
 }
 .sync.synced::before {
-  background: var(--mint, #3ddc97);
+  border-color: var(--accent-ink);
+  background: var(--accent-ink);
 }
 .sync.pending::before,
 .sync.waiting::before {
-  background: var(--yellow, #ffd43b);
-}
-.sync.offline::before {
-  background: var(--gray, #e6e1d3);
+  border-color: var(--amber-ink);
+  background: var(--amber-ink);
 }
 .sync.error {
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  color: var(--shu-ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 .sync.error::before {
-  border-color: var(--on-accent, #111);
-  background: var(--on-accent, #111);
+  border-color: var(--shu-ink);
+  background: var(--shu-ink);
+}
+/* 「設定」: a gear and visible text in a 44px rounded control. Below 400px the text goes under the gear
+   in a 44×44 square, so the sync text keeps its room. */
+.top-settings {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0 14px 0 10px;
+  border: var(--border-ctl) solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--press) ease-out;
+}
+.top-settings svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+@media (hover: hover) {
+  .top-settings:hover {
+    background: var(--bg-2);
+    text-decoration: none;
+  }
+}
+.top-settings[aria-current="page"] {
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+@media (max-width: 399px) {
+  .top-settings {
+    flex-direction: column;
+    gap: 1px;
+    width: var(--tap);
+    height: var(--tap);
+    padding: 0;
+    border-radius: 12px;
+    font-size: 12px;
+    letter-spacing: 0;
+  }
+  .top-settings svg {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 /* The page column. (Plain .wrap is the flex-wrap utility below.) */
@@ -144,25 +201,26 @@ main.wrap:focus {
 .site-foot {
   max-width: 720px;
   margin: 0 auto;
-  padding: 12px 16px calc(var(--tabbar-h, 68px) + 36px + var(--safe-bottom, 0px));
+  padding: 12px 16px calc(var(--tabbar-h) + 32px + var(--safe-bottom));
 }
 .site-foot nav {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 0 18px;
-  border-top: var(--border-thin, 2px) dashed var(--ink, #111);
+  border-top: 1px solid var(--rule);
   padding-top: 8px;
 }
 .site-foot a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
+/* Phone tab bar: equal columns, the current tab marked by a short green line, colour and weight. */
 .tabbar {
   position: fixed;
   left: 0;
@@ -171,38 +229,41 @@ main.wrap:focus {
   z-index: 20;
   display: flex;
   justify-content: space-around;
-  gap: 6px;
-  background: var(--surface, #fff);
-  border-top: var(--border, 3px) solid var(--ink, #111);
-  padding: 6px 8px calc(6px + var(--safe-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--rule);
+  padding: 0 4px var(--safe-bottom);
 }
 .tabbar a {
+  position: relative;
   flex: 1;
   min-width: 0;
-  min-height: 54px;
+  min-height: var(--tabbar-h);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
-  padding: 3px 0;
-  border: var(--border, 3px) solid transparent;
-  border-radius: 12px;
-  color: var(--ink, #111);
-  font-size: 11px;
-  font-weight: 700;
+  gap: 2px;
+  padding: 6px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.3;
   text-decoration: none;
-  transition: transform var(--press, 100ms) ease-out;
 }
 .tabbar a[aria-current="page"] {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  border-color: var(--ink, #111);
-  box-shadow: 2px 2px 0 var(--ink, #111);
+  color: var(--accent-ink);
+  font-weight: 700;
 }
-.tabbar a:active {
-  transform: translate(1px, 1px);
+.tabbar a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 24px;
+  height: 3px;
+  margin-left: -12px;
+  border-radius: 2px;
+  background: var(--accent-ink);
 }
 .tabbar svg,
 .nav svg {
@@ -230,28 +291,38 @@ main.wrap:focus {
   }
 }
 
-/* ---------- bands (offline / session) ---------- */
+/* ---------- bands (offline / wait / session): in the page flow, a 1px line under each ---------- */
 .band {
   padding: 8px 16px;
-  border-bottom: var(--border, 3px) solid var(--ink, #111);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  font-size: 13px;
-  font-weight: 700;
+  border-bottom: 1px solid var(--rule);
+  background: var(--gray-soft);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
   text-align: center;
 }
 .band a {
   color: inherit;
 }
+/* The server asked us to wait (429). */
+.band.wait {
+  background: var(--sand);
+  color: var(--amber-ink);
+}
+/* The session is broken: the way out is a 朱 link. */
 .band.warn {
-  background: var(--shu, #ff4b2b);
+  background: var(--shu-soft);
+}
+.band.warn a {
+  color: var(--shu-ink);
 }
 
 /* ---------- notice band (お知らせ: dismissible, in the page flow, never over the page) ---------- */
 .notice-band {
-  border-bottom: var(--border, 3px) solid var(--ink, #111);
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
+  border-bottom: 1px solid var(--rule);
+  background: var(--accent-soft);
+  color: var(--ink);
 }
 .notice-in {
   display: flex;
@@ -267,7 +338,7 @@ main.wrap:focus {
   flex: 1 1 12rem;
   min-width: 0;
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
@@ -275,12 +346,12 @@ main.wrap:focus {
   display: inline-block;
   margin-right: 4px;
   padding: 0 8px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-pill, 999px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--accent-ink);
   font-size: 12px;
-  line-height: 1.6;
+  font-weight: 700;
+  line-height: 1.7;
 }
 .notice-text a {
   color: inherit;
@@ -288,13 +359,19 @@ main.wrap:focus {
 }
 .notice-close {
   flex: none;
+  min-width: 44px;
   margin-left: auto;
+}
+/* On the soft green, a green ring keeps the button's edge at 3:1 in both themes. */
+.notice-band .btn {
+  border-color: var(--accent-ink);
 }
 
 /* ---------- seals + stamp card ---------- */
+/* The seal (印): a 朱 ring and a handwritten 朱 character, no fill, tilted a little like a real stamp. */
 .seal {
   --s: 40px;
-  --seal-bw: var(--border, 3px);
+  --seal-bw: 1.75px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -302,40 +379,35 @@ main.wrap:focus {
   width: var(--s);
   height: var(--s);
   border-radius: 50%;
-  border: var(--seal-bw) solid var(--ink, #111);
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: calc(var(--s) * 0.48);
+  border: var(--seal-bw) solid var(--shu);
+  background: transparent;
+  color: var(--shu);
+  font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: calc(var(--s) * 0.5);
   line-height: 1;
-  transform: rotate(-6deg);
+  transform: rotate(-4deg);
 }
 .seal.sm {
   --s: 26px;
-  --seal-bw: var(--border-thin, 2px);
-  box-shadow: 2px 2px 0 var(--ink, #111);
+  --seal-bw: 1.5px;
 }
 .seal.lg {
   --s: 52px;
 }
 .seal.xl {
   --s: 64px;
-  box-shadow: 4px 4px 0 var(--ink, #111);
 }
-/* On the 朱 primary button: a yellow seal with an on-accent ring. */
+/* On the green primary button: ring and character in the button's text colour. */
 .seal.inv {
-  border-color: var(--on-accent, #111);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: 2px 2px 0 var(--on-accent, #111);
+  border-color: var(--on-primary);
+  color: var(--on-primary);
 }
 
 .grid30 {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 7px;
+  gap: 6px;
   max-width: 480px;
 }
 /* Phones around 360px: a tighter gap keeps every cell at least 44px (SPEC: tap targets). */
@@ -349,42 +421,53 @@ main.wrap:focus {
   aspect-ratio: 1;
   min-width: 0;
   padding: 0;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-sm, 8px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
-  transition:
-    transform var(--press, 100ms) ease-out,
-    box-shadow var(--press, 100ms) ease-out;
+  transition: background-color var(--press) ease-out;
 }
 .cell .n {
   position: absolute;
-  top: 3px;
-  left: 5px;
+  top: 2px;
+  left: 4px;
+  z-index: 1;
   font-family: var(--font-num);
-  font-size: 10px;
-  font-weight: 900;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.2;
-  color: var(--muted, #4a4a4a);
+  letter-spacing: 0;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .cell:disabled {
-  color: var(--ink, #111);
+  color: var(--ink);
   cursor: default;
 }
+/* Today: a thicker green border, the soft green and a green date (border-box: same size). */
 .cell.today {
-  --muted: var(--on-accent, #111);
-  border-width: var(--border, 3px);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
+  border: var(--border-strong) solid var(--accent-ink);
+  background: var(--accent-soft);
 }
-/* Not yet: diagonal hatch. */
+.cell.today .n {
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+/* A stamped day: the soft 朱 behind the ring (also on today: the green border stays). */
+.cell:has(> .st) {
+  background: var(--shu-soft);
+}
+.cell:has(> .st) .n {
+  left: 2px;
+  padding: 0 2px;
+  border-radius: 4px;
+  background: var(--shu-soft);
+}
+/* Not yet: a dotted border and no fill pattern. */
 .cell.future {
+  border-style: dotted;
   cursor: default;
-  background-color: var(--surface, #fff);
-  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 7px);
 }
 .cell.locked,
 .grid30.ro .cell {
@@ -393,76 +476,58 @@ main.wrap:focus {
 .cell.locked.clickable {
   cursor: pointer;
 }
+/*
+ * The day shown below the card: an ink ring inside the border (a box-shadow, so the green border of
+ * today stays visible and the outline is left to the keyboard focus ring). Forced colours drop
+ * box-shadows: see the forced-colours block at the end.
+ */
 .cell.selected {
-  --muted: var(--on-accent, #111);
-  border-width: var(--border, 3px);
-  background: var(--blue, #6c8cff);
-  color: var(--on-accent, #111);
+  box-shadow: inset 0 0 0 2px var(--ink);
 }
-/* Press effects only on cells that are buttons (a read-only card's cells are not). */
+/* Hover only on cells that are buttons (a read-only card's cells are not); nothing lifts. */
 @media (hover: hover) {
-  button.cell:not(:disabled):not(.locked):hover,
-  button.cell.clickable:not(:disabled):hover {
-    transform: translate(-1px, -1px);
-    box-shadow: 3px 3px 0 var(--ink, #111);
+  button.cell:not(:disabled):not(.locked):not(:has(> .st)):hover,
+  button.cell.clickable:not(:disabled):not(:has(> .st)):hover {
+    background: var(--bg-2);
   }
-  button.cell.today:not(:disabled):hover {
-    box-shadow: 4px 4px 0 var(--ink, #111);
+  button.cell.today:not(:disabled):not(:has(> .st)):hover {
+    background: var(--accent-soft);
   }
 }
-button.cell:not(:disabled):active {
-  transform: translate(2px, 2px);
-  box-shadow: 0 0 0 var(--ink, #111);
-}
-/* The stamp: a 朱 disc with an ink ring, the seal kanji in ink, tilted like a real stamp. */
+/*
+ * The stamp: a 朱 ring with the handwritten seal character in 朱, tilted like a real stamp. It sits a
+ * little toward the lower right so the date in the corner stays readable, and the date gets the
+ * cell's soft 朱 behind it where the two meet.
+ */
 .cell .st {
   position: absolute;
-  inset: 11%;
+  inset: 19% 7% 7% 19%;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 2.5px solid var(--ink, #111);
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: min(26px, 5.2vw);
+  border: 1.75px solid var(--shu);
+  background: transparent;
+  color: var(--shu);
+  font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: min(28px, 5.2vw);
   line-height: 1;
-  transform: rotate(-8deg);
+  transform: rotate(-4deg);
 }
-/* "ドン": lands big, squashes, settles. The cell takes the hit. */
+/* Just pressed: fades in and settles from a little bigger (200ms, no bounce). */
 .cell .st.new {
   z-index: 2;
-  animation: stampIn 420ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
-}
-.cell:has(.st.new) {
-  animation: stampHit 260ms 140ms ease-out;
+  animation: stampIn 200ms ease-out both;
 }
 @keyframes stampIn {
-  0% {
-    transform: translate(-3px, -10px) scale(1.7) rotate(-22deg);
+  from {
     opacity: 0;
+    transform: scale(1.12) rotate(-4deg);
   }
-  40% {
-    transform: scale(0.8) rotate(-8deg);
+  to {
     opacity: 1;
-  }
-  70% {
-    transform: scale(1.08) rotate(-8deg);
-  }
-  100% {
-    transform: scale(1) rotate(-8deg);
-    opacity: 1;
-  }
-}
-@keyframes stampHit {
-  0%,
-  100% {
-    transform: none;
-  }
-  35% {
-    transform: translate(2px, 2px);
+    transform: scale(1) rotate(-4deg);
   }
 }
 
@@ -477,119 +542,100 @@ button.cell:not(:disabled):active {
 .mini i {
   display: block;
   aspect-ratio: 1;
-  border: 1.5px solid var(--ink, #111);
-  border-radius: 3px;
-  background: var(--surface, #fff);
-}
-.mini i.now {
-  border-width: 2.5px;
-  background: var(--yellow, #ffd43b);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface);
 }
 .mini i.on {
-  background: var(--shu, #ff4b2b);
+  border-color: var(--shu);
+  background: var(--shu);
+}
+.mini i.now {
+  border: 2px solid var(--accent-ink);
 }
 
 /* ---------- buttons ---------- */
 .btn {
-  --btn-sh: var(--ink, #111);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: var(--tap, 44px);
-  padding: 9px 18px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  box-shadow: 5px 5px 0 var(--btn-sh);
-  font-size: 15px;
+  min-height: 48px;
+  padding: 8px 20px;
+  border: var(--border-ctl) solid var(--line);
+  border-radius: var(--radius-hand-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
   font-weight: 700;
   line-height: 1.3;
   text-align: center;
   text-decoration: none;
   cursor: pointer;
   transition:
-    transform var(--press, 100ms) ease-out,
-    box-shadow var(--press, 100ms) ease-out,
-    background-color var(--press, 100ms);
+    background-color var(--press) ease-out,
+    transform var(--press) ease-out;
 }
 @media (hover: hover) {
   .btn:hover:not(:disabled):not([aria-disabled="true"]) {
-    transform: translate(-2px, -2px);
-    box-shadow: 7px 7px 0 var(--btn-sh);
+    background: var(--bg-2);
   }
 }
 .btn:active:not(:disabled):not([aria-disabled="true"]) {
-  transform: translate(3px, 3px);
-  box-shadow: 2px 2px 0 var(--btn-sh);
+  background: var(--gray-soft);
+  transform: translateY(1px);
 }
 .btn.primary {
-  --muted: var(--on-accent, #111);
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  --muted: var(--on-primary);
+  border-color: var(--primary-border);
+  background: var(--accent);
+  color: var(--on-primary);
+}
+@media (hover: hover) {
+  .btn.primary:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--accent-hover);
+  }
+}
+.btn.primary:active:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--accent-hover);
 }
 .btn.ghost {
   background: transparent;
-  box-shadow: none;
-}
-@media (hover: hover) {
-  .btn.ghost:hover:not(:disabled):not([aria-disabled="true"]) {
-    transform: none;
-    box-shadow: none;
-    background: var(--yellow, #ffd43b);
-    color: var(--on-accent, #111);
-  }
-}
-.btn.ghost:active:not(:disabled):not([aria-disabled="true"]) {
-  transform: translate(1px, 1px);
-  box-shadow: none;
 }
 .btn.lg {
   width: 100%;
   min-height: 56px;
-  padding: 13px 20px;
+  padding: 12px 20px;
   font-size: 17px;
-  font-weight: 900;
 }
 .btn.sm {
-  padding: 6px 13px;
-  font-size: 13px;
-  border-radius: 10px;
-  box-shadow: 3px 3px 0 var(--btn-sh);
+  min-height: 44px;
+  padding: 6px 14px;
+  font-size: 14px;
+}
+/* Destructive: 朱 text and ring on the surface; the soft 朱 on hover. */
+.btn.danger {
+  border-color: var(--shu-ink);
+  color: var(--shu-ink);
 }
 @media (hover: hover) {
-  .btn.sm:hover:not(:disabled):not([aria-disabled="true"]) {
-    transform: translate(-1px, -1px);
-    box-shadow: 4px 4px 0 var(--btn-sh);
+  .btn.danger:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--shu-soft);
   }
 }
-.btn.sm:active:not(:disabled):not([aria-disabled="true"]) {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 var(--btn-sh);
-}
-.btn.ghost.sm {
-  box-shadow: none;
-}
-/* Destructive: 朱 text, ring and shadow on white. */
-.btn.danger {
-  --btn-sh: var(--danger, #c42b0e);
-  border-color: var(--danger, #c42b0e);
-  color: var(--danger, #c42b0e);
-}
 .btn.danger.solid {
-  --btn-sh: var(--ink, #111);
-  border-color: var(--ink, #111);
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  border-color: var(--shu-ink);
+  background: var(--shu-soft);
+  color: var(--shu-ink);
 }
 /* Doubled class: wins over every variant (.btn.danger.solid included). */
 .btn.btn:disabled,
 .btn.btn[aria-disabled="true"] {
-  border-color: var(--ink, #111);
-  background: var(--gray, #e6e1d3);
-  color: var(--muted-base, #4a4a4a);
-  box-shadow: none;
+  border-style: dashed;
+  border-color: var(--line);
+  background: var(--gray-soft);
+  color: var(--muted-base);
   cursor: not-allowed;
 }
 .btn[aria-busy="true"] {
@@ -600,38 +646,41 @@ button.cell:not(:disabled):active {
   flex: 1;
   min-width: 0;
 }
-/* 「今日の印を押す」: the one big stamp. */
+/* 「きょうの分を押す」: the one big stamp, a full-width primary button with a small seal in front. */
 .stampbtn {
-  min-height: 64px;
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  box-shadow: 6px 6px 0 var(--btn-sh, #111);
+  width: 100%;
+  min-height: 56px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.stampbtn .seal {
+  --s: 26px;
+  --seal-bw: 1.5px;
 }
 .linkbtn {
   display: inline-flex;
   align-items: center;
-  min-height: var(--tap, 44px);
+  min-height: var(--tap);
   padding: 0 2px;
   border: 0;
   background: none;
-  color: var(--link, #2f4fd6);
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 600;
   text-decoration: underline;
-  text-decoration-thickness: 2px;
+  text-decoration-thickness: 1px;
   text-underline-offset: 3px;
   cursor: pointer;
 }
 .linkbtn:hover {
-  text-decoration-thickness: 3px;
+  text-decoration-thickness: 2px;
 }
 .linkbtn.danger {
-  color: var(--danger, #c42b0e);
+  color: var(--shu-ink);
 }
 .linkbtn:disabled {
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   cursor: default;
 }
 .iconbtn {
@@ -639,26 +688,26 @@ button.cell:not(:disabled):active {
   align-items: center;
   justify-content: center;
   flex: none;
-  width: var(--tap, 44px);
-  height: var(--tap, 44px);
+  width: var(--tap);
+  height: var(--tap);
   padding: 0;
-  border: var(--border-thin, 2px) solid transparent;
+  border: 0;
   border-radius: 10px;
   background: none;
-  color: var(--ink, #111);
+  color: var(--ink);
   cursor: pointer;
 }
-.iconbtn:hover:not(:disabled),
-.iconbtn[aria-current="page"] {
-  border-color: var(--ink, #111);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
+@media (hover: hover) {
+  .iconbtn:hover:not(:disabled) {
+    background: var(--bg-2);
+  }
 }
-.iconbtn:active:not(:disabled) {
-  transform: translate(1px, 1px);
+.iconbtn[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .iconbtn:disabled {
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   cursor: default;
 }
 .iconbtn svg {
@@ -676,43 +725,50 @@ button.cell:not(:disabled):active {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-height: 44px;
-  padding: 4px 14px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-pill, 999px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  font-size: 13px;
-  font-weight: 700;
+  padding: 4px 16px;
+  border: var(--border-ctl) solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.3;
   cursor: pointer;
-  transition:
-    transform var(--press, 100ms) ease-out,
-    box-shadow var(--press, 100ms) ease-out;
+  transition: background-color var(--press) ease-out;
 }
 @media (hover: hover) {
   .chip:hover:not(:disabled) {
-    transform: translate(-1px, -1px);
-    box-shadow: 3px 3px 0 var(--ink, #111);
+    background: var(--bg-2);
   }
 }
-.chip:active:not(:disabled) {
-  transform: translate(1px, 1px);
-  box-shadow: none;
-}
+/* Selected: the soft green, a 2px green ring and a ✓ drawn with borders (no text: it would join the name). */
 .chip.on,
 .chip[aria-checked="true"],
 .chip[aria-pressed="true"] {
-  --muted: var(--on-accent, #111);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: 2px 2px 0 var(--ink, #111);
+  padding-inline: calc(16px - (var(--border-strong) - var(--border-ctl)));
+  border: var(--border-strong) solid var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.chip.on::before,
+.chip[aria-checked="true"]::before,
+.chip[aria-pressed="true"]::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 10px;
+  margin: -3px 1px 0 0;
+  border: solid var(--accent-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 .chip:disabled {
   border-style: dashed;
-  background: var(--gray, #e6e1d3);
-  color: var(--muted-base, #4a4a4a);
+  background: var(--gray-soft);
+  color: var(--muted-base);
   cursor: default;
 }
 
@@ -731,7 +787,7 @@ button.cell:not(:disabled):active {
 .field > legend {
   font-size: 14px;
   font-weight: 700;
-  color: var(--ink, #111);
+  color: var(--ink);
 }
 .field-foot {
   display: flex;
@@ -740,24 +796,25 @@ button.cell:not(:disabled):active {
   min-height: 0;
 }
 .field-hint {
-  font-size: 12px;
-  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+  color: var(--muted);
 }
 .field-err {
   font-size: 13px;
   font-weight: 700;
-  color: var(--danger, #c42b0e);
+  color: var(--shu-ink);
 }
 .counter {
   margin-left: auto;
   font-size: 12px;
-  font-weight: 700;
-  color: var(--muted, #4a4a4a);
+  font-weight: 600;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .counter.over {
-  color: var(--danger, #c42b0e);
+  color: var(--shu-ink);
+  font-weight: 700;
 }
 input[type="text"],
 input[type="search"],
@@ -775,19 +832,24 @@ select {
   min-width: 0;
   min-height: 48px;
   padding: 10px 12px;
-  border: var(--border, 3px) solid var(--ink, #111);
+  border: var(--border-ctl) solid var(--line);
   border-radius: 10px;
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  background: var(--surface);
+  color: var(--ink);
   font: inherit;
   font-size: 16px; /* 16px keeps iOS Safari from zooming on focus */
-  transition: box-shadow var(--press, 100ms) ease-out;
+  transition:
+    border-color var(--press) ease-out,
+    box-shadow var(--press) ease-out;
 }
 :is(input, textarea, select)::placeholder {
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   opacity: 1;
 }
-/* Focus: a yellow block with an ink rim behind the field. */
+/*
+ * Focus: the green focus ring (base.css :focus-visible) plus a green border and a soft green halo.
+ * The ring is the cue that does not depend on colour; mouse and touch focus on a <select> skip it.
+ */
 input[type="text"]:focus,
 input[type="search"]:focus,
 input[type="number"]:focus,
@@ -800,17 +862,15 @@ input[type="tel"]:focus,
 input:not([type]):focus,
 textarea:focus,
 select:focus {
-  outline: none;
-  box-shadow:
-    4px 4px 0 var(--yellow, #ffd43b),
-    4px 4px 0 2px var(--ink, #111);
+  border-color: var(--accent-ink);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 select {
   appearance: none;
   padding-right: 40px;
   background-image:
-    linear-gradient(45deg, transparent 50%, var(--ink, #111) 50%),
-    linear-gradient(135deg, var(--ink, #111) 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
   background-position:
     calc(100% - 21px) 52%,
     calc(100% - 14px) 52%;
@@ -828,15 +888,15 @@ textarea {
 }
 :is(input, textarea, select):disabled {
   border-style: dashed;
-  background-color: var(--gray, #e6e1d3);
-  color: var(--muted-base, #4a4a4a);
+  background-color: var(--gray-soft);
+  color: var(--muted-base);
   cursor: not-allowed;
 }
 [aria-invalid="true"] {
-  border-color: var(--danger, #c42b0e) !important;
+  border-color: var(--shu-ink) !important;
 }
-:is(input, textarea, select)[aria-invalid="true"]:not(:focus) {
-  box-shadow: 4px 4px 0 var(--shu, #ff4b2b);
+:is(input, textarea, select)[aria-invalid="true"] {
+  border-width: 2px;
 }
 fieldset {
   display: grid;
@@ -854,14 +914,14 @@ legend {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  min-height: var(--tap, 44px);
+  min-height: var(--tap);
   padding: 12px 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  border: var(--border-ctl) solid var(--line);
+  border-radius: var(--radius-hand-sm);
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
-  transition: box-shadow var(--press, 100ms) ease-out;
+  transition: background-color var(--press) ease-out;
 }
 .radio input,
 .check input {
@@ -869,39 +929,46 @@ legend {
   width: 20px;
   height: 20px;
   margin: 3px 0 0;
-  accent-color: var(--ink, #111);
+  accent-color: var(--accent-ink);
 }
 .radio b {
   display: block;
-  font-weight: 900;
+  font-weight: 700;
 }
 .radio small {
   display: block;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
+/* Chosen: the soft green, a 2px green ring and a ✓ at the end (drawn, so the name does not change). */
 .radio:has(input:checked) {
-  --muted: var(--on-accent, #111);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
+  padding: calc(12px - (var(--border-strong) - var(--border-ctl))) calc(14px - (var(--border-strong) - var(--border-ctl)));
+  border: var(--border-strong) solid var(--accent-ink);
+  background: var(--accent-soft);
 }
-.radio:has(input:checked) input {
-  accent-color: var(--on-accent, #111);
+.radio:has(input:checked)::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 12px;
+  margin: 3px 4px 0 auto;
+  border: solid var(--accent-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 .radio:has(input:focus-visible) {
-  outline: 3px solid var(--ink, #111);
-  outline-offset: 3px;
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
 }
 .check {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  min-height: var(--tap, 44px);
+  min-height: var(--tap);
   cursor: pointer;
 }
 .check small {
   display: block;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .seal-pick {
   display: flex;
@@ -911,9 +978,9 @@ legend {
 .seal-pick input {
   width: 68px;
   text-align: center;
-  font-family: var(--font-display);
+  font-family: var(--font-hand);
   font-size: 24px;
-  font-weight: 900;
+  font-weight: 600;
 }
 .two {
   display: grid;
@@ -923,28 +990,22 @@ legend {
 
 /* ---------- cards + layout utilities ---------- */
 .card {
-  --muted: var(--muted-base, #4a4a4a);
-  padding: 18px 16px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  box-shadow: var(--shadow-lg, 6px 6px 0 #111);
-}
-.card.flat {
-  box-shadow: none;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
 }
 @media (min-width: 520px) {
   .card {
     padding: 20px;
   }
 }
-/* A bordered box without the shadow (insets, lists inside cards). */
+/* A quiet inset (lists inside cards): the sunken paper, no border. */
 .box {
   padding: 12px 14px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--soft, #fff4d6);
+  border-radius: var(--radius);
+  background: var(--bg-2);
 }
 .stack {
   display: grid;
@@ -986,23 +1047,23 @@ legend {
   margin-top: 32px;
 }
 .muted {
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .note {
   font-size: 13px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .note.err {
-  color: var(--danger, #c42b0e);
+  color: var(--shu-ink);
   font-weight: 700;
 }
 .display {
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .num {
   font-family: var(--font-num);
-  font-weight: 900;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 /* Short display texts: break Japanese between phrases (Chromium; others ignore it). */
@@ -1021,39 +1082,48 @@ legend {
 }
 .h1 {
   margin: 4px 0 14px;
-  font-family: var(--font-display);
-  font-size: clamp(26px, 7vw, 38px);
-  font-weight: 900;
-  line-height: 1.2;
+  font-family: var(--font-hand);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
 }
 .h2 {
   margin: 4px 0 12px;
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 900;
-  line-height: 1.3;
+  font-family: var(--font-hand);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
 }
-/* Section label: heavy body type with a small 朱 block. */
+@media (min-width: 760px) {
+  .h1 {
+    font-size: 30px;
+  }
+  .h2 {
+    font-size: 22px;
+  }
+}
+/* Section label: handwritten, with a short green line in front. */
 .h3 {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 6px 0 4px;
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
+  font-family: var(--font-hand);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   line-height: 1.4;
-  color: var(--ink, #111);
+  color: var(--ink);
 }
 .h3::before {
   content: "";
   flex: none;
-  width: 10px;
-  height: 10px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
+  width: 12px;
+  height: 3px;
   border-radius: 2px;
-  background: var(--shu, #ff4b2b);
+  background: var(--accent-ink);
 }
 .pagehead {
   display: flex;
@@ -1066,82 +1136,58 @@ legend {
 .pagehead :is(.h1, .h2) {
   margin: 0;
 }
-/* Sticker tilt (badges, seals, verdicts). .r tilts the other way. */
-.sticker {
-  display: inline-block;
-  transform: rotate(-3deg);
-}
-.sticker.r {
-  transform: rotate(2.5deg);
-}
-.hatch {
-  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 8px);
-}
-/* Highlighter: yellow block behind a few words. */
+/* Highlighter: a soft green band under the lower part of a few words (no box, no tilt). */
 .hl {
-  padding: 0 0.15em;
-  border-radius: 3px;
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
+  padding: 0 0.1em;
+  background: linear-gradient(transparent 62%, var(--accent-soft) 62%);
+  color: inherit;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
 
-/* Flat colour fills. Text inside inherits --on-accent (#111, AA on every fill). */
+/* Soft fills (older names). Ink text reads on each (10.45–10.92 light, 9.01–10.26 dark). */
 .fill-yellow,
-.fill-mint,
-.fill-blue,
-.fill-pink,
-.fill-lilac,
-.fill-shu,
-.fill-cat {
-  --muted: var(--on-accent, #111);
-  color: var(--on-accent, #111);
-}
-.fill-yellow {
-  background: var(--yellow, #ffd43b);
-}
 .fill-mint {
-  background: var(--mint, #3ddc97);
+  background: var(--accent-soft);
 }
 .fill-blue {
-  background: var(--blue, #6c8cff);
+  background: var(--mist);
 }
-.fill-pink {
-  background: var(--pink, #ff9ec7);
+.fill-pink,
+.fill-shu {
+  background: var(--shu-soft);
 }
 .fill-lilac {
-  background: var(--lilac, #b9a2ff);
-}
-.fill-shu {
-  background: var(--shu, #ff4b2b);
+  background: var(--lavender);
 }
 .fill-cat {
-  background: var(--cat, var(--yellow, #ffd43b));
+  background: var(--cat, var(--accent-soft));
 }
 .fill-gray {
-  background: var(--gray, #e6e1d3);
-  color: var(--ink, #111);
+  background: var(--gray-soft);
+}
+:is(.fill-yellow, .fill-mint, .fill-blue, .fill-pink, .fill-lilac, .fill-shu, .fill-cat, .fill-gray) {
+  color: var(--ink);
 }
 :is(.fill-yellow, .fill-mint, .fill-blue, .fill-pink, .fill-lilac, .fill-shu, .fill-cat) a:not(.btn) {
   color: inherit;
 }
 
-/* Category colours (recipe genres): set --cat, used by .badge / .tag / .fill-cat. */
+/* Category colours (recipe genres), in this order: body, mind, hands, people, quit. The genre name is always written too. */
 .cat-body {
-  --cat: var(--mint, #3ddc97);
+  --cat: var(--accent-soft);
 }
 .cat-mind {
-  --cat: var(--blue, #6c8cff);
+  --cat: var(--mist);
 }
 .cat-hands {
-  --cat: var(--yellow, #ffd43b);
+  --cat: var(--sand);
 }
 .cat-people {
-  --cat: var(--pink, #ff9ec7);
+  --cat: var(--shu-soft);
 }
 .cat-quit {
-  --cat: var(--lilac, #b9a2ff);
+  --cat: var(--lavender);
 }
 
 .meta {
@@ -1149,33 +1195,31 @@ legend {
   flex-wrap: wrap;
   align-items: center;
   gap: 2px 10px;
-  font-size: 12px;
-  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+  color: var(--muted);
 }
 .tag {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-pill, 999px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  font-size: 11px;
-  font-weight: 700;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
 }
 .tag.story {
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
+  background: var(--accent-soft);
 }
 .tag:is(.cat-body, .cat-mind, .cat-hands, .cat-people, .cat-quit) {
   background: var(--cat);
-  color: var(--on-accent, #111);
 }
 .ok {
-  color: var(--mint-ink, #0b7343);
+  color: var(--accent-ink);
   font-weight: 700;
 }
 .kv {
@@ -1183,25 +1227,26 @@ legend {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 0;
-  border-top: var(--border-thin, 2px) solid var(--ink, #111);
+  border-top: 1px solid var(--rule);
   font-size: 14px;
 }
 .kv span {
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .backlink {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: var(--tap, 44px);
-  color: var(--ink, #111);
-  font-size: 13px;
-  font-weight: 700;
+  min-height: var(--tap);
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 600;
   text-decoration: none;
 }
 .backlink:hover {
   text-decoration: underline;
-  text-decoration-thickness: 2px;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 .backlink svg {
   width: 18px;
@@ -1218,15 +1263,15 @@ legend {
 .chhead .title {
   flex: 1;
   min-width: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-hand);
   font-size: 19px;
-  font-weight: 900;
-  line-height: 1.3;
+  font-weight: 600;
+  line-height: 1.35;
 }
 .daynum {
-  font-family: var(--font-num);
+  font-family: var(--font-hand);
   font-size: 34px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1236,7 +1281,7 @@ legend {
   font-family: var(--font-body);
   font-size: 12px;
   font-weight: 700;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .actions {
   display: grid;
@@ -1252,9 +1297,8 @@ legend {
   display: grid;
   gap: 8px;
   padding: 12px 14px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--soft, #fff4d6);
+  border-radius: var(--radius);
+  background: var(--bg-2);
 }
 .waitbox {
   grid-template-columns: 1fr auto;
@@ -1271,26 +1315,24 @@ legend {
   grid-row: 1 / 3;
   grid-column: 2;
 }
-/* 「次の1日組」: a pink sticker card. */
+/* 「次の1日組」: a plain card. */
 .teaser {
-  --muted: var(--on-accent, #111);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-top: 22px;
-  padding: 14px 16px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--pink, #ff9ec7);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow, 5px 5px 0 #111);
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
 }
 .teaser b {
   display: block;
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .teaser .muted {
   font-size: 13px;
@@ -1302,17 +1344,22 @@ legend {
 }
 .hero h1 {
   margin-bottom: 14px;
-  font-size: clamp(28px, 8vw, 44px);
-  line-height: 1.2;
+  font-size: 30px;
+  line-height: 1.3;
+}
+@media (min-width: 760px) {
+  .hero h1 {
+    font-size: 38px;
+  }
 }
 .hero > p {
   max-width: 34em;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 16px;
 }
 .ctas {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   margin-top: 22px;
 }
 @media (min-width: 520px) {
@@ -1332,32 +1379,24 @@ legend {
   }
 }
 .step {
-  --muted: var(--on-accent, #111);
   padding: 14px 16px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
-}
-.step:nth-child(3n + 2) {
-  background: var(--mint, #3ddc97);
-}
-.step:nth-child(3n) {
-  background: var(--pink, #ff9ec7);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
 }
 .step b {
   display: block;
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .step small {
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .credit {
   margin-top: 20px;
-  font-size: 12px;
-  color: var(--muted, #4a4a4a);
+  font-size: 13px;
+  color: var(--muted);
 }
 
 /* ---------- recipes ---------- */
@@ -1366,7 +1405,7 @@ legend {
 }
 .rlist {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   margin-top: 14px;
 }
 @media (min-width: 560px) {
@@ -1381,28 +1420,25 @@ legend {
   width: 100%;
   min-width: 0;
   padding: 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  box-shadow: var(--shadow, 5px 5px 0 #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
   font-weight: 400;
   text-align: left;
   text-decoration: none;
   cursor: pointer;
   transition:
-    transform var(--press, 100ms) ease-out,
-    box-shadow var(--press, 100ms) ease-out;
+    background-color var(--press) ease-out,
+    border-color var(--press) ease-out;
 }
 @media (hover: hover) {
   .recipe:hover {
-    transform: translate(-2px, -2px);
-    box-shadow: var(--shadow-hover, 7px 7px 0 #111);
+    border-color: var(--line);
   }
 }
 .recipe:active {
-  transform: translate(3px, 3px);
-  box-shadow: var(--shadow-press, 2px 2px 0 #111);
+  background: var(--bg-2);
 }
 .recipe .rc {
   display: grid;
@@ -1413,8 +1449,8 @@ legend {
 .recipe .t {
   font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 900;
-  line-height: 1.35;
+  font-weight: 700;
+  line-height: 1.4;
 }
 .recipe .s {
   display: -webkit-box;
@@ -1422,7 +1458,7 @@ legend {
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-size: 13px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .rhead {
   display: flex;
@@ -1446,16 +1482,16 @@ legend {
 }
 .how li::marker {
   font-family: var(--font-num);
-  font-weight: 900;
+  font-weight: 700;
+  color: var(--accent-ink);
 }
 /* The story quote. (.tag.story is the small "体験談あり" tag and must not pick these up.) */
 .story:not(.tag) {
   margin: 0;
   padding: 12px 14px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  box-shadow: 4px 4px 0 var(--shu, #ff4b2b);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
   white-space: pre-wrap;
 }
 
@@ -1468,9 +1504,9 @@ legend {
 .gl {
   display: block;
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .slot {
   display: flex;
@@ -1479,26 +1515,19 @@ legend {
   min-height: 3em;
   margin-bottom: 14px;
   padding: 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow-lg, 6px 6px 0 #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
   font-family: var(--font-display);
-  font-size: clamp(20px, 6vw, 28px);
-  font-weight: 900;
+  font-size: 22px;
+  font-weight: 700;
   text-align: center;
 }
+/* While drawing: the sunken paper and quiet text (no shaking, no pattern). */
 .slot.spin {
-  background-color: var(--surface, #fff);
-  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 8px);
-  color: var(--ink, #111);
-  animation: jitter 120ms steps(2) infinite;
-}
-@keyframes jitter {
-  50% {
-    transform: translate(1px, -1px);
-  }
+  background: var(--bg-2);
+  color: var(--muted);
 }
 .gres {
   display: grid;
@@ -1522,34 +1551,34 @@ legend {
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
 }
+/* Your own card: a green line down the left edge (and 「あなた」 in the text). */
 .person.me {
-  box-shadow: 5px 5px 0 var(--shu, #ff4b2b);
+  border-left: 3px solid var(--accent-ink);
 }
 .person .who {
   font-size: 13px;
   font-weight: 700;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .person .t {
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .person .cnt {
   font-family: var(--font-num);
   font-size: 22px;
-  font-weight: 900;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .person .cnt small {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .ptop {
   display: flex;
@@ -1560,28 +1589,31 @@ legend {
 .pill {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-pill, 999px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  font-size: 11px;
-  font-weight: 700;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
 }
 .pill.today {
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .pill.same {
-  background: var(--blue, #6c8cff);
-  color: var(--on-accent, #111);
+  border-color: transparent;
+  background: var(--mist);
+  color: var(--slate);
 }
 .pill.first {
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+  border-color: transparent;
+  background: var(--shu-soft);
+  color: var(--shu-ink);
 }
 
 /* ---------- reflection / badges / log ---------- */
@@ -1597,82 +1629,73 @@ legend {
 .verdict {
   display: grid;
   gap: 2px;
-  min-height: var(--tap, 44px);
+  min-height: var(--tap);
   padding: 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
+  border: var(--border-ctl) solid var(--line);
+  border-radius: var(--radius-hand-sm);
+  background: var(--surface);
+  color: var(--ink);
   text-align: left;
   cursor: pointer;
-  transition:
-    transform var(--press, 100ms) ease-out,
-    box-shadow var(--press, 100ms) ease-out;
+  transition: background-color var(--press) ease-out;
 }
 @media (hover: hover) {
   .verdict:hover {
-    transform: translate(-1px, -1px);
-    box-shadow: var(--shadow, 5px 5px 0 #111);
+    background: var(--bg-2);
   }
-}
-.verdict:active {
-  transform: translate(2px, 2px);
-  box-shadow: none;
 }
 .verdict b {
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 900;
+  font-weight: 700;
 }
 .verdict small {
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
+/* Chosen: the verdict's soft colour and a 2px ring in its ink (no tilt). */
 .verdict.on,
 .verdict[aria-checked="true"] {
-  --muted: var(--on-accent, #111);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow, 5px 5px 0 #111);
-  transform: rotate(-1.5deg);
-}
-.verdict.continue:is(.on, [aria-checked="true"]) {
-  background: var(--mint, #3ddc97);
+  padding: calc(14px - (var(--border-strong) - var(--border-ctl)));
+  border: var(--border-strong) solid var(--accent-ink);
+  background: var(--accent-soft);
 }
 .verdict.modify:is(.on, [aria-checked="true"]) {
-  background: var(--blue, #6c8cff);
+  border-color: var(--slate);
+  background: var(--mist);
 }
 .verdict.stop:is(.on, [aria-checked="true"]) {
-  --muted: var(--muted-base, #4a4a4a);
-  background: var(--gray, #e6e1d3);
-  color: var(--ink, #111);
+  border-color: var(--line);
+  background: var(--gray-soft);
 }
-/* Sticker: colour fill + 2px ring, tilted. Verdict colours: continue=mint, stop=gray, modify=blue. */
+/* Verdict label: 続ける = soft green, 形を変える = mist/slate, やめる = gray; always the word too. */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 1px 10px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border: 1px solid var(--rule);
   border-radius: 8px;
-  background: var(--cat, var(--yellow, #ffd43b));
-  color: var(--on-accent, #111);
-  box-shadow: 2px 2px 0 var(--ink, #111);
+  background: var(--cat, var(--accent-soft));
+  color: var(--ink);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.5;
   white-space: nowrap;
-  transform: rotate(-2deg);
 }
 .badge.continue {
-  background: var(--mint, #3ddc97);
-}
-.badge.stop {
-  background: var(--gray, #e6e1d3);
-  color: var(--ink, #111);
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .badge.modify {
-  background: var(--blue, #6c8cff);
+  border-color: var(--slate);
+  background: var(--mist);
+  color: var(--slate);
+}
+.badge.stop {
+  border-color: var(--line);
+  background: var(--gray-soft);
+  color: var(--ink);
 }
 .sharecard {
   display: block;
@@ -1680,24 +1703,22 @@ legend {
   max-width: 600px;
   height: auto;
   margin: 0 auto;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  box-shadow: var(--shadow-lg, 6px 6px 0 #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
 }
 .cardph {
   padding: 40px 16px;
-  border: var(--border, 3px) dashed var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background-color: var(--surface, #fff);
-  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 2px, transparent 2px 8px);
-  color: var(--muted, #4a4a4a);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--muted);
   font-weight: 700;
   text-align: center;
 }
 .quote {
   padding: 6px 0 0;
   font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
 }
 .stats {
   display: grid;
@@ -1708,19 +1729,18 @@ legend {
 .stats > div {
   display: grid;
   padding: 10px 12px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  box-shadow: var(--shadow-sm, 3px 3px 0 #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 .stats .num {
   font-family: var(--font-num);
   font-size: 28px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
 }
 .stats small {
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-weight: 700;
 }
 .notes {
@@ -1736,17 +1756,16 @@ legend {
   flex: none;
   width: 3.6em;
   font-family: var(--font-num);
-  font-weight: 900;
-  color: var(--muted, #4a4a4a);
+  font-weight: 700;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .daynote {
   display: grid;
   gap: 8px;
   padding: 12px 14px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--soft, #fff4d6);
+  border-radius: var(--radius);
+  background: var(--bg-2);
 }
 .dn-head {
   display: flex;
@@ -1761,72 +1780,56 @@ legend {
   justify-content: center;
   gap: 12px;
   padding: 32px 0;
-  color: var(--muted, #4a4a4a);
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
 }
 .loading.inline {
   display: inline-flex;
   padding: 0;
 }
+/* Text only: the squares stay in the markup but are not shown (no looping motion). */
 .loading .dots {
-  display: inline-flex;
-  gap: 6px;
+  display: none;
 }
-.loading .dots i {
-  width: 11px;
-  height: 11px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: 3px;
-  background: var(--shu, #ff4b2b);
-  animation: hop 0.9s infinite ease-in-out;
-}
-.loading .dots i:nth-child(2) {
-  background: var(--yellow, #ffd43b);
-  animation-delay: 0.15s;
-}
-.loading .dots i:nth-child(3) {
-  background: var(--mint, #3ddc97);
-  animation-delay: 0.3s;
-}
-@keyframes hop {
-  0%,
-  60%,
-  100% {
-    transform: none;
-  }
-  30% {
-    transform: translateY(-6px);
-  }
-}
+/* Empty: a dotted hand-drawn box on ruled paper, a handwritten line and one button. */
 .empty,
 .errorbox {
-  --muted: var(--muted-base, #4a4a4a);
   display: grid;
   justify-items: center;
   gap: 12px;
   padding: 28px 18px;
-  border: var(--border, 3px) dashed var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  border-radius: var(--radius-hand);
+  color: var(--ink);
   text-align: center;
+}
+.empty {
+  border: 1px dotted var(--line);
+  background-color: var(--surface);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--rule-faint) 31px 32px);
 }
 .empty b,
 .errorbox b {
-  font-family: var(--font-display);
+  font-family: var(--font-hand);
   font-size: 18px;
-  font-weight: 900;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 .empty p,
 .errorbox p {
   max-width: 30em;
-  font-size: 13px;
-  color: var(--muted, #4a4a4a);
+  font-size: 14px;
+  color: var(--muted);
 }
 .errorbox {
-  border-style: solid;
-  box-shadow: 5px 5px 0 var(--shu, #ff4b2b);
+  background: var(--shu-soft);
+}
+.errorbox b {
+  color: var(--shu-ink);
+}
+/* On the soft 朱, a --muted ring keeps the retry button's edge at 3:1 in both themes. */
+.errorbox .btn {
+  border-color: var(--muted);
 }
 
 /* ---------- sheet / dialog ---------- */
@@ -1838,11 +1841,11 @@ legend {
 .sheet-bg {
   position: absolute;
   inset: 0;
-  background: var(--overlay, rgba(17, 17, 17, 0.6));
-  animation: fade 0.18s ease-out;
+  background: var(--overlay);
+  animation: fade 200ms ease-out;
 }
+/* Phones: a bottom sheet with rounded top corners and a small grip. */
 .sheet-panel {
-  --muted: var(--muted-base, #4a4a4a);
   position: absolute;
   left: 0;
   right: 0;
@@ -1850,12 +1853,21 @@ legend {
   display: flex;
   flex-direction: column;
   max-height: 92%;
-  border: var(--border, 3px) solid var(--ink, #111);
+  border: 1px solid var(--float-border);
   border-bottom: 0;
-  border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  animation: up 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+  border-radius: 20px 20px 0 0;
+  background: var(--surface);
+  color: var(--ink);
+  animation: up 200ms ease-out;
+}
+.sheet-panel:not(.dialog)::before {
+  content: "";
+  flex: none;
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 0;
+  border-radius: 2px;
+  background: var(--rule);
 }
 .sheet-panel:focus {
   outline: none;
@@ -1867,13 +1879,13 @@ legend {
   justify-content: space-between;
   gap: 8px;
   padding: 6px 6px 6px 16px;
-  border-bottom: var(--border, 3px) solid var(--ink, #111);
+  border-bottom: 1px solid var(--rule);
 }
 .sheet-title {
-  font-family: var(--font-display);
+  font-family: var(--font-hand);
   font-size: 17px;
-  font-weight: 900;
-  color: var(--ink, #111);
+  font-weight: 600;
+  color: var(--ink);
 }
 .sheet-body {
   display: grid;
@@ -1882,9 +1894,9 @@ legend {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 18px 16px calc(24px + var(--safe-bottom, 0px));
+  padding: 18px 16px calc(24px + var(--safe-bottom));
 }
-/* Centred panels float, so they get the hard shadow; the bottom sheet does not. */
+/* Centred panels float: a soft shadow in light, a 1px border in the dark. */
 .sheet-panel.dialog {
   left: 50%;
   right: auto;
@@ -1892,11 +1904,14 @@ legend {
   bottom: auto;
   width: min(420px, calc(100% - 32px));
   max-height: 88%;
-  border-bottom: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius-lg, 16px);
-  box-shadow: var(--shadow-lg, 6px 6px 0 #111);
+  border-bottom: 1px solid var(--float-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-float);
   transform: translate(-50%, -50%);
-  animation: pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  animation: rise 200ms ease-out;
+}
+.sheet-panel.dialog .sheet-head {
+  padding-block: 10px;
 }
 .sheet-panel.dialog .sheet-body {
   padding-bottom: 20px;
@@ -1915,7 +1930,7 @@ legend {
 }
 @keyframes up {
   from {
-    transform: translateY(40px);
+    transform: translateY(8px);
     opacity: 0;
   }
   to {
@@ -1923,9 +1938,9 @@ legend {
     opacity: 1;
   }
 }
-@keyframes pop {
+@keyframes rise {
   from {
-    transform: translate(-50%, -46%) scale(0.96);
+    transform: translate(-50%, calc(-50% + 8px));
     opacity: 0;
   }
   to {
@@ -1941,11 +1956,14 @@ legend {
     bottom: auto;
     width: min(640px, calc(100% - 32px));
     max-height: 88%;
-    border-bottom: var(--border, 3px) solid var(--ink, #111);
-    border-radius: var(--radius-lg, 16px);
-    box-shadow: var(--shadow-lg, 6px 6px 0 #111);
+    border-bottom: 1px solid var(--float-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-float);
     transform: translate(-50%, -50%);
-    animation: pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    animation: rise 200ms ease-out;
+  }
+  .sheet-panel:not(.dialog)::before {
+    display: none;
   }
   .sheet-panel.dialog {
     width: min(420px, calc(100% - 32px));
@@ -1959,7 +1977,7 @@ legend {
 .toast-host {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--tabbar-h, 68px) + 22px + var(--safe-bottom, 0px));
+  bottom: calc(var(--tabbar-h) + 20px + var(--safe-bottom));
   z-index: 60;
   width: max-content;
   max-width: calc(100% - 32px);
@@ -1968,29 +1986,61 @@ legend {
 }
 .toast {
   padding: 10px 18px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--ink, #111);
-  color: var(--bg, #fff4d6);
-  box-shadow: 4px 4px 0 var(--yellow, #ffd43b);
+  /* Light: no visible border (a soft shadow); dark: a 1px --line border instead of a shadow. */
+  border: 1px solid var(--toast-border);
+  border-radius: var(--radius);
+  background: var(--toast-bg);
+  color: var(--toast-fg);
+  box-shadow: var(--shadow-float);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: center;
-  animation: toastIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+  animation: toastIn 200ms ease-out;
 }
 .toast.error {
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  box-shadow: 4px 4px 0 var(--ink, #111);
+  border-left: 4px solid var(--shu-ink);
 }
 @keyframes toastIn {
   from {
-    transform: translateY(12px) scale(0.96);
+    transform: translateY(8px);
     opacity: 0;
   }
 }
 @media (min-width: 760px) {
   .toast-host {
     bottom: 32px;
+  }
+}
+
+/*
+ * ---------- forced colours (Windows high contrast) ----------
+ * Fills and box-shadows are dropped, so the selected / today states get an outline (and the selected
+ * day a double border). Keyboard focus must still show on top of them: the focus rules come last,
+ * with the same specificity, and draw a thicker ring further out.
+ */
+@media (forced-colors: active) {
+  .chip.on,
+  .chip[aria-checked="true"],
+  .chip[aria-pressed="true"],
+  .radio:has(input:checked),
+  .verdict.on,
+  .verdict[aria-checked="true"],
+  .cell.today {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+  .cell.selected {
+    border-style: double;
+    border-width: 4px;
+  }
+  .tabbar a[aria-current="page"]::before {
+    background: Highlight;
+  }
+  .chip:focus-visible,
+  .verdict:focus-visible,
+  .radio:has(input:focus-visible),
+  .cell:focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: 3px;
   }
 }

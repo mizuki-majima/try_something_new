@@ -39,7 +39,7 @@ function ThrottleBand({ throttle }: { throttle: Throttle }) {
     return () => clearInterval(timer);
   }, []);
   return (
-    <div className="band" role="status" data-testid="throttle-band">
+    <div className="band wait" role="status" data-testid="throttle-band">
       {throttle.reason}
       {resumeText(throttle.until, now)}。記録はこの端末に保存されています。
     </div>

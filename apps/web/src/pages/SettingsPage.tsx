@@ -1,6 +1,7 @@
 /**
- * 設定 (SPEC UI "/settings"; FR-1, FR-2, FR-14, FR-16, FR-17). Sections have ids so other screens can
- * link to them: #profile #reminder #transfer #backup #display #danger.
+ * 設定 (SPEC UI "/settings"; FR-1, FR-2, FR-14, FR-16, FR-17, FR-21). Sections have ids so other screens
+ * can link to them: #profile #reminder #transfer #backup #display #danger.
+ * 表示 (the theme) comes first so it is easy to find at night (#20); the jump links follow the same order.
  * Without an account only what makes sense is shown (redeem a code, theme, links).
  */
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
@@ -91,16 +92,16 @@ export default function SettingsPage() {
 
   const jumps: { id: string; label: string }[] = signedIn
     ? [
+        { id: "display", label: "表示" },
         { id: "profile", label: "プロフィール" },
         { id: "reminder", label: "リマインド" },
         { id: "transfer", label: "引き継ぎ" },
         { id: "backup", label: "バックアップ" },
-        { id: "display", label: "表示" },
         { id: "danger", label: "データ削除" },
       ]
     : [
-        { id: "transfer", label: "引き継ぎ" },
         { id: "display", label: "表示" },
+        { id: "transfer", label: "引き継ぎ" },
       ];
 
   return (
@@ -138,11 +139,11 @@ export default function SettingsPage() {
         </section>
       )}
 
+      <DisplaySection />
       {signedIn && <AccountSections app={app} />}
 
       <TransferSection app={app} signedIn={signedIn} hasLocalData={hasLocalData} />
       {signedIn && <BackupSection app={app} />}
-      <DisplaySection />
       {(signedIn || app.sessionInvalid || app.challenges.length > 0) && <DangerSection app={app} signedIn={signedIn} />}
       <LinksSection />
     </div>
@@ -912,6 +913,7 @@ function DisplaySection() {
         テーマ
       </p>
       <ChipGroup labelledBy="theme-label" value={pref} options={THEME_OPTIONS} onChange={setPref} />
+      <p className="note">ダークは、暗い部屋でもまぶしくない落ち着いた色です。</p>
     </Section>
   );
 }

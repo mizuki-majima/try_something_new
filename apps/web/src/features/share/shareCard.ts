@@ -1,8 +1,8 @@
 /**
- * The 1200×630 reflection card (FR-7, docs/design.md "シェア用カード"): cream grid paper, a white
- * card with a thick ink border and a hard 12px shadow, a big seal on the left with the verdict
- * sticker slapped on it and the "23 / 30" count, the title, the 30 cells and the ひとこと on the
- * right, and the 「30日だけ」 logo bottom right.
+ * The 1200×630 reflection card (FR-7, docs/design.md "シェア用カード"): plain paper, a white card
+ * with a thin line and no shadow, a big 朱 ring seal on the left with the verdict label on it and
+ * the "23 / 30" count, the title, the 30 cells and the ひとこと on the right, and the 「30日だけ」
+ * logo bottom right. Always the light 「白いノート」 colours (the PNG is shared as is).
  *
  * Layout is computed by pure functions (computeCardLayout, wrapText, fitTitle …) that only need a
  * text-measuring function, so they are unit-tested without a canvas. drawCard() just paints a
@@ -15,30 +15,32 @@ import { FONT_STACKS, loadFonts } from "../../lib/fonts";
 export const CARD_W = 1200;
 export const CARD_H = 630;
 
-/** Light-theme colours from docs/design.md (the card is always light). */
+/** Light-theme colours from tokens.css (the card is always light). */
 export const CARD_COLORS = {
-  bg: "#FFF4D6",
-  grid: "rgba(17, 17, 17, 0.08)",
+  bg: "#FAF8F4",
   surface: "#FFFFFF",
-  ink: "#111111",
-  muted: "#4A4A4A",
-  shu: "#FF4B2B",
-  yellow: "#FFD43B",
-  mint: "#3DDC97",
-  blue: "#6C8CFF",
-  gray: "#E6E1D3",
-  onAccent: "#111111",
+  ink: "#34312C",
+  muted: "#6B655C",
+  line: "#8C8579",
+  rule: "#E2DDD3",
+  shu: "#B9553D",
+  shuSoft: "#F6E3DC",
+  gray: "#ECE8E1",
+  accent: "#4A6B4E",
+  slate: "#52637A",
+  onVerdict: "#FFFFFF",
 } as const;
 
+/** Verdict label fills; the word is drawn in white on each (5.99 / 6.13 / 5.77). */
 export const VERDICT_COLORS: Record<Verdict, string> = {
-  continue: CARD_COLORS.mint,
-  stop: CARD_COLORS.gray,
-  modify: CARD_COLORS.blue,
+  continue: CARD_COLORS.accent,
+  stop: CARD_COLORS.muted,
+  modify: CARD_COLORS.slate,
 };
 
-/** Dela Gothic One for display/numbers/seals, Zen Kaku Gothic New for text. */
+/** Klee One 600 (handwritten) for the title, seals, numbers and the verdict; the device's fonts at 700 for labels and text. */
 export const CARD_FONTS = {
-  display: FONT_STACKS.num,
+  hand: FONT_STACKS.hand,
   body: FONT_STACKS.body,
 } as const;
 
@@ -48,7 +50,7 @@ export type ShareCardData = {
   verdict: Verdict | null;
   stampedDays: number[];
   count: number;
-  /** Closing day (cells after it are hatched); 30 for a full run. */
+  /** Closing day (cells after it are greyed out); 30 for a full run. */
   lastDay: number;
   reflection: string;
   period: string;
@@ -180,7 +182,7 @@ export const TITLE_SIZES = [56, 48, 40] as const;
 export const REFLECTION_SIZES = [28, 25, 22] as const;
 
 export function fitTitle(title: string, maxWidth: number, measure: Measure): TextBlock {
-  return fitText(title, maxWidth, measure, (s) => `400 ${s}px ${CARD_FONTS.display}`, TITLE_SIZES, (_s, i) => (i === 0 ? 1 : 2), 1.2);
+  return fitText(title, maxWidth, measure, (s) => `600 ${s}px ${CARD_FONTS.hand}`, TITLE_SIZES, (_s, i) => (i === 0 ? 1 : 2), 1.2);
 }
 
 /** The ひとこと in 「」, as many lines as the space allows. */
@@ -239,7 +241,7 @@ export type CardLayout = {
   logo: { x: number; y: number; text: string; font: string; sealR: number; sealX: number };
 };
 
-export const CARD = { x: 44, y: 34, w: 1100, h: 526, border: 6, shadow: 12, radius: 22, pad: 44 } as const;
+export const CARD = { x: 44, y: 34, w: 1100, h: 526, border: 2, shadow: 0, radius: 22, pad: 44 } as const;
 const LEFT_W = 300;
 const COL_GAP = 40;
 /** Preferred 10×3 grid with big cells; 15×2 when the ひとこと needs the room. */
@@ -252,18 +254,18 @@ export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayou
   const inner = { x: CARD.x + CARD.pad, y: CARD.y + CARD.pad, w: CARD.w - CARD.pad * 2, h: CARD.h - CARD.pad * 2 };
   const bottom = inner.y + inner.h;
 
-  // Left column: seal, verdict sticker on its lower right, count.
+  // Left column: seal, verdict label on its lower right, count.
   const sealR = 116;
-  const seal = { cx: inner.x + LEFT_W / 2 - 10, cy: inner.y + sealR + 6, r: sealR, char: d.seal || "印", font: `400 ${Math.round(sealR * 1.18)}px ${CARD_FONTS.display}` };
+  const seal = { cx: inner.x + LEFT_W / 2 - 10, cy: inner.y + sealR + 6, r: sealR, char: d.seal || "印", font: `600 ${Math.round(sealR * 1.18)}px ${CARD_FONTS.hand}` };
   let sticker: CardLayout["sticker"] = null;
   if (d.verdict) {
     const label = VERDICTS[d.verdict].label;
-    const font = `400 34px ${CARD_FONTS.display}`;
+    const font = `600 34px ${CARD_FONTS.hand}`;
     const w = Math.ceil(measure(font, label)) + 48;
     sticker = { cx: Math.min(inner.x + LEFT_W - w / 2 + 6, seal.cx + sealR * 0.55), cy: seal.cy + sealR - 4, w, h: 66, label, font, color: VERDICT_COLORS[d.verdict] };
   }
-  const countFont = `400 96px ${CARD_FONTS.display}`;
-  const denomFont = `400 40px ${CARD_FONTS.display}`;
+  const countFont = `600 96px ${CARD_FONTS.hand}`;
+  const denomFont = `600 40px ${CARD_FONTS.hand}`;
   const value = String(d.count);
   const countY = bottom - 4;
   const count = {
@@ -308,7 +310,7 @@ export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayou
 
   // Under the card: period (left) and logo (right).
   const stripY = CARD.y + CARD.h + CARD.shadow + (CARD_H - (CARD.y + CARD.h + CARD.shadow)) / 2 + 2;
-  const logoFont = `400 30px ${CARD_FONTS.display}`;
+  const logoFont = `600 30px ${CARD_FONTS.hand}`;
   const logoText = "30日だけ";
   const logoX = CARD_W - 48;
   const sealRSmall = 19;
@@ -319,7 +321,7 @@ export function computeCardLayout(d: ShareCardData, measure: Measure): CardLayou
     count,
     title,
     grid,
-    gridSeal: { r: Math.round(cell * 0.4), font: `400 ${Math.round(cell * 0.46)}px ${CARD_FONTS.display}` },
+    gridSeal: { r: Math.round(cell * 0.4), font: `600 ${Math.round(cell * 0.46)}px ${CARD_FONTS.hand}` },
     reflection,
     period: { x: CARD.x + 4, y: stripY, text: d.period, font: `700 22px ${CARD_FONTS.body}` },
     logo: { x: logoX, y: stripY, text: logoText, font: logoFont, sealR: sealRSmall, sealX: logoX - measure(logoFont, logoText) - 12 - sealRSmall },
@@ -342,24 +344,17 @@ function roundRect(x: Ctx, r: Rect, radius: number): void {
   x.closePath();
 }
 
-function drawSeal(x: Ctx, cx: number, cy: number, r: number, char: string, font: string, rotDeg: number, border: number, shadow: number): void {
+/** The seal: a 朱 ring with the handwritten character in 朱, no fill, tilted a little. */
+function drawSeal(x: Ctx, cx: number, cy: number, r: number, char: string, font: string, ring: number): void {
   x.save();
   x.translate(cx, cy);
-  x.rotate((rotDeg * Math.PI) / 180);
-  if (shadow > 0) {
-    x.fillStyle = CARD_COLORS.ink;
-    x.beginPath();
-    x.arc(shadow, shadow, r, 0, Math.PI * 2);
-    x.fill();
-  }
-  x.fillStyle = CARD_COLORS.shu;
+  x.rotate((-4 * Math.PI) / 180);
+  x.lineWidth = ring;
+  x.strokeStyle = CARD_COLORS.shu;
   x.beginPath();
-  x.arc(0, 0, r, 0, Math.PI * 2);
-  x.fill();
-  x.lineWidth = border;
-  x.strokeStyle = CARD_COLORS.ink;
+  x.arc(0, 0, r - ring / 2, 0, Math.PI * 2);
   x.stroke();
-  x.fillStyle = CARD_COLORS.ink;
+  x.fillStyle = CARD_COLORS.shu;
   x.font = font;
   x.textAlign = "center";
   x.textBaseline = "middle";
@@ -369,57 +364,32 @@ function drawSeal(x: Ctx, cx: number, cy: number, r: number, char: string, font:
 
 export function drawCard(x: Ctx, l: CardLayout): void {
   const C = CARD_COLORS;
-  // Grid paper.
+  // Plain paper.
   x.fillStyle = C.bg;
   x.fillRect(0, 0, CARD_W, CARD_H);
-  x.strokeStyle = C.grid;
-  x.lineWidth = 1;
-  x.beginPath();
-  for (let i = 0.5; i <= CARD_W; i += 24) {
-    x.moveTo(i, 0);
-    x.lineTo(i, CARD_H);
-  }
-  for (let i = 0.5; i <= CARD_H; i += 24) {
-    x.moveTo(0, i);
-    x.lineTo(CARD_W, i);
-  }
-  x.stroke();
 
-  // Card with a hard shadow.
-  x.fillStyle = C.ink;
-  roundRect(x, { ...l.card, x: l.card.x + CARD.shadow, y: l.card.y + CARD.shadow }, CARD.radius);
-  x.fill();
+  // White card with a thin line (no shadow).
   x.fillStyle = C.surface;
   roundRect(x, l.card, CARD.radius);
   x.fill();
   x.lineWidth = CARD.border;
-  x.strokeStyle = C.ink;
+  x.strokeStyle = C.rule;
   roundRect(x, { x: l.card.x + CARD.border / 2, y: l.card.y + CARD.border / 2, w: l.card.w - CARD.border, h: l.card.h - CARD.border }, CARD.radius - CARD.border / 2);
   x.stroke();
 
-  // Seal + verdict sticker.
-  drawSeal(x, l.seal.cx, l.seal.cy, l.seal.r, l.seal.char, l.seal.font, -6, 6, 8);
+  // Seal + verdict label (upright, white word on the verdict colour).
+  drawSeal(x, l.seal.cx, l.seal.cy, l.seal.r, l.seal.char, l.seal.font, 6);
   if (l.sticker) {
     const s = l.sticker;
-    x.save();
-    x.translate(s.cx, s.cy);
-    x.rotate((-6 * Math.PI) / 180);
-    const box = { x: -s.w / 2, y: -s.h / 2, w: s.w, h: s.h };
-    x.fillStyle = C.ink;
-    roundRect(x, { ...box, x: box.x + 6, y: box.y + 6 }, 10);
-    x.fill();
+    const box = { x: s.cx - s.w / 2, y: s.cy - s.h / 2, w: s.w, h: s.h };
     x.fillStyle = s.color;
-    roundRect(x, box, 10);
+    roundRect(x, box, 12);
     x.fill();
-    x.lineWidth = 4;
-    x.strokeStyle = C.ink;
-    x.stroke();
-    x.fillStyle = C.onAccent;
+    x.fillStyle = C.onVerdict;
     x.font = s.font;
     x.textAlign = "center";
     x.textBaseline = "middle";
-    x.fillText(s.label, 0, 2);
-    x.restore();
+    x.fillText(s.label, s.cx, s.cy + 2);
   }
 
   // Count.
@@ -440,16 +410,15 @@ export function drawCard(x: Ctx, l: CardLayout): void {
   x.textBaseline = "top";
   l.title.lines.forEach((line, i) => x.fillText(line, l.title.x, l.title.y + i * l.title.lineHeight + (l.title.lineHeight - l.title.size) / 2));
 
-  // 30 cells.
+  // 30 cells: stamped = soft 朱 with the ring; days after an early finish ("ここで区切る") are greyed out.
   for (const c of l.grid) {
-    roundRect(x, c, 7);
-    // Days after an early finish ("ここで区切る") are greyed out.
-    x.fillStyle = c.after ? C.gray : C.surface;
+    roundRect(x, c, 8);
+    x.fillStyle = c.stamped ? C.shuSoft : c.after ? C.gray : C.surface;
     x.fill();
-    x.lineWidth = 2.5;
-    x.strokeStyle = C.ink;
+    x.lineWidth = 1.5;
+    x.strokeStyle = C.line;
     x.stroke();
-    if (c.stamped) drawSeal(x, c.x + c.w / 2, c.y + c.h / 2, l.gridSeal.r, l.seal.char, l.gridSeal.font, -8, 2, 0);
+    if (c.stamped) drawSeal(x, c.x + c.w / 2, c.y + c.h / 2, l.gridSeal.r, l.seal.char, l.gridSeal.font, 2);
   }
 
   // ひとこと.
@@ -463,11 +432,11 @@ export function drawCard(x: Ctx, l: CardLayout): void {
 
   // Strip under the card.
   x.textBaseline = "middle";
-  x.fillStyle = C.ink;
+  x.fillStyle = C.muted;
   x.font = l.period.font;
   x.textAlign = "left";
   x.fillText(l.period.text, l.period.x, l.period.y);
-  drawSeal(x, l.logo.sealX, l.logo.y, l.logo.sealR, "卅", `400 ${Math.round(l.logo.sealR * 1.15)}px ${CARD_FONTS.display}`, -6, 3, 3);
+  drawSeal(x, l.logo.sealX, l.logo.y, l.logo.sealR, "卅", `600 ${Math.round(l.logo.sealR * 1.15)}px ${CARD_FONTS.hand}`, 2);
   x.fillStyle = C.ink;
   x.font = l.logo.font;
   x.textAlign = "right";
@@ -481,22 +450,17 @@ function delay(ms: number): Promise<void> {
 /** Make sure the web fonts (only the glyphs we draw) are loaded before painting. */
 export async function ensureCardFonts(d: ShareCardData, timeoutMs = 5000): Promise<void> {
   try {
-    await loadFonts();
+    // The card needs the handwritten glyphs even when Save-Data skipped them for the page.
+    await loadFonts({ force: true });
   } catch {
     // fall back to system fonts
   }
   const fonts = typeof document !== "undefined" ? document.fonts : undefined;
   if (!fonts?.load) return;
-  const display = `${d.title}${d.seal}卅30日だけ0123456789/ ${d.verdict ? VERDICTS[d.verdict].label : ""}`;
-  const body = `${d.reflection}「」${d.period}押せた日${d.verdict ? VERDICTS[d.verdict].desc : ""}`;
-  await Promise.race([
-    Promise.all([
-      fonts.load(`400 56px "Dela Gothic One"`, display),
-      fonts.load(`700 26px "Zen Kaku Gothic New"`, body),
-      fonts.load(`400 24px "Zen Kaku Gothic New"`, body),
-    ]).catch(() => undefined),
-    delay(timeoutMs),
-  ]);
+  // Only what is drawn in Klee One: title, seals, numbers, the verdict and the logo. Labels and the
+  // ひとこと use the device's fonts (nothing to load).
+  const hand = `${d.title}${d.seal || "印"}卅30日だけ0123456789/ ${d.verdict ? VERDICTS[d.verdict].label : ""}`;
+  await Promise.race([fonts.load(`600 56px "Klee One"`, hand).catch(() => undefined), delay(timeoutMs)]);
 }
 
 /** Draw the card and return it as a PNG Blob. Throws when the browser cannot draw. */

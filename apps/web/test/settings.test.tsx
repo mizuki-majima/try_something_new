@@ -406,3 +406,38 @@ describe("SettingsPage — without an account", () => {
     expect(screen.getByRole("link", { name: "プライバシーポリシー" }).getAttribute("href")).toBe("/privacy");
   });
 });
+
+describe("SettingsPage — order (#20: 表示 first, easy to find at night)", () => {
+  /** The h2 of every section, in page order (the links section's heading is visually hidden). */
+  const sectionTitles = () => screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+  const jumpLinks = () =>
+    within(screen.getByRole("navigation", { name: "設定の項目" }))
+      .getAllByRole("link")
+      .map((a) => [a.textContent, a.getAttribute("href")]);
+
+  it("with an account: 表示 → プロフィール → リマインド → 引き継ぎ → バックアップ → データ削除 → links, and the jump links in the same order", () => {
+    const { store } = fakeStore();
+    renderSettings(store);
+    expect(sectionTitles()).toEqual(["表示", "プロフィール", "リマインド", "引き継ぎ", "バックアップ", "データ削除", "このサービスについて"]);
+    expect(jumpLinks()).toEqual([
+      ["表示", "#display"],
+      ["プロフィール", "#profile"],
+      ["リマインド", "#reminder"],
+      ["引き継ぎ", "#transfer"],
+      ["バックアップ", "#backup"],
+      ["データ削除", "#danger"],
+    ]);
+    expect(screen.getByText("ダークは、暗い部屋でもまぶしくない落ち着いた色です。")).toBeTruthy();
+  });
+
+  it("without an account: the intro → 表示 → 引き継ぎ → links", () => {
+    localStorage.removeItem(KEYS.token);
+    const { store } = fakeStore({ user: null, hasSession: false });
+    renderSettings(store);
+    expect(sectionTitles()).toEqual(["まだアカウントはありません", "表示", "引き継ぎ", "このサービスについて"]);
+    expect(jumpLinks()).toEqual([
+      ["表示", "#display"],
+      ["引き継ぎ", "#transfer"],
+    ]);
+  });
+});

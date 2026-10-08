@@ -1,5 +1,6 @@
 /**
- * /gacha — 次の30日ガチャ (SPEC FR-12) and ひらめき提案（お試し）(FR-13, rule-based, no AI — ADR 0003).
+ * /gacha — 次の30日ガチャ (SPEC FR-12) and ひらめき提案（お試し）(FR-13, rule-based, no AI — ADR 0003),
+ * in the 「えらぶ」 tab with /recipes (ChooseNav); ひらめき提案 sits under a line after the result.
  * The pool is useRecipes() narrowed by 時間 / ジャンル / 場所; when nothing fits, conditions are
  * relaxed (place → genre → time) with a note. The slot cycles for ~1.2 s, not under reduced motion.
  */
@@ -21,6 +22,7 @@ import {
   type Suggestion,
 } from "@thirty/shared";
 import { ChipGroup, type ChipOption } from "../components/Chip";
+import { ChooseNav } from "../components/ChooseNav";
 import { TextField } from "../components/Field";
 import { SparkleIcon } from "../components/Icons";
 import { RecipeMeta } from "../components/RecipeMeta";
@@ -118,6 +120,7 @@ export default function GachaPage() {
 
   return (
     <section className="stack g-page" aria-labelledby="g-title">
+      <ChooseNav current="gacha" />
       <h1 className="h2" id="g-title">
         次の30日ガチャ
       </h1>
@@ -196,6 +199,8 @@ export default function GachaPage() {
           </div>
         </section>
       )}
+
+      <hr className="g-sep" />
 
       <Suggestions
         filters={filters}

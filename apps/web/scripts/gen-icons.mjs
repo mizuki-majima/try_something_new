@@ -4,10 +4,12 @@
  *
  *   PLAYWRIGHT_BROWSERS_PATH=<browsers dir> node apps/web/scripts/gen-icons.mjs
  *
- * NEO-BRUTALISM (docs/design.md): the brand seal 「卅」 is a 朱 disc with an ink ring, a hard
- * offset shadow and the kanji in ink, tilted -6deg. The kanji is drawn from the real Dela Gothic One
- * glyph outline (read from the @fontsource WOFF file), so favicon.svg needs no web font. PNGs and the
- * OG image are rendered with Playwright's Chromium (the OG page loads the @fontsource font files).
+ * The brand seal 「卅」. The kanji is drawn from the real Klee One 600 glyph outline (read from the
+ * @fontsource WOFF file, which has TrueType glyf outlines), so favicon.svg needs no web font. PNGs and
+ * the OG image are rendered with Playwright's Chromium (the OG page embeds the @fontsource font files).
+ * Colours and shapes: docs/design.md 「白いノート」 (Issue #20). App icons and the favicon are a filled 朱
+ * circle with the kanji in paper colour on a paper tile, so they still read at 16–48px; the OG image
+ * uses the thin 朱 ring seal of the app.
  * Re-run only when the brand changes; the outputs are committed.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -21,17 +23,20 @@ const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(here, "..", "public");
 
-// tokens.css (light theme)
-const BG = "#fff4d6";
-const GRID = "rgba(17,17,17,0.08)";
+// tokens.css (light theme, and the dark values the favicon switches to)
+const BG = "#faf8f4";
 const SURFACE = "#ffffff";
-const INK = "#111111";
-const MUTED = "#4a4a4a";
-const SHU = "#ff4b2b";
-const YELLOW = "#ffd43b";
-const MINT = "#3ddc97";
-const PINK = "#ff9ec7";
-const HATCH = "rgba(17,17,17,0.22)";
+const INK = "#34312c";
+const MUTED = "#6b655c";
+const LINE = "#8c8579";
+const RULE = "#e2ddd3";
+const RULE_FAINT = "rgba(52,49,44,0.06)";
+const SHU = "#b9553d";
+const SHU_SOFT = "#f6e3dc";
+const ACCENT_INK = "#3f6b4a";
+const ACCENT_SOFT = "#e6eee3";
+const DARK_BG = "#1c1b19";
+const DARK_SHU = "#d4866f";
 
 const fontFile = (pkg, file) => require.resolve(`@fontsource/${pkg}/files/${file}`);
 const log = (msg) => process.stdout.write(`${msg}\n`);
@@ -236,9 +241,9 @@ function contoursToPath(contours) {
 }
 
 async function loadGlyph(char) {
-  const tables = await loadWoff(fontFile("dela-gothic-one", "dela-gothic-one-japanese-400-normal.woff"));
+  const tables = await loadWoff(fontFile("klee-one", "klee-one-japanese-600-normal.woff"));
   const index = glyphIndex(tables.cmap, char.codePointAt(0));
-  if (!index) throw new Error(`Dela Gothic One has no glyph for ${char}`);
+  if (!index) throw new Error(`Klee One has no glyph for ${char}`);
   const [start] = glyphOffset(tables, index);
   const g = tables.glyf;
   return {
@@ -258,38 +263,47 @@ function glyphPath(glyph, cx, cy, em, attrs) {
   return `<path ${attrs} transform="translate(${r2(cx)} ${r2(cy)}) scale(${s.toFixed(5)} ${(-s).toFixed(5)}) translate(${-gx} ${-gy})" d="${glyph.path}"/>`;
 }
 
-function gridBackground(size, cell) {
-  return (
-    `<defs><pattern id="g" width="${r2(cell)}" height="${r2(cell)}" patternUnits="userSpaceOnUse">` +
-    `<path d="M${r2(cell)} 0H0V${r2(cell)}" fill="none" stroke="${GRID}" stroke-width="${Math.max(1, r2(size / 256))}"/></pattern></defs>` +
-    `<rect width="${size}" height="${size}" fill="${BG}"/><rect width="${size}" height="${size}" fill="url(#g)"/>`
-  );
-}
-
 /**
- * The seal in a `size` box, like the CSS .seal: 朱 disc, ink ring, hard ink shadow (down-right),
- * ink kanji, the whole stamp rotated -6deg. `diameter` is the disc's outer size relative to the box;
- * ring and shadow scale with it (CSS: 3px ring + 3px shadow on a 40px seal).
- * `adaptive` adds a dark-mode style (cream ring and shadow) for favicon.svg.
+ * The app icon / favicon in a `size` box: a paper tile, a filled 朱 circle and the kanji in paper
+ * colour, tilted -4deg like the seal. `diameter` is the circle's size relative to the box.
+ * `tile`: "full" (a full-bleed square; the OS applies its own mask) or "rounded" (favicon).
+ * `adaptive` adds the dark colours (tile #1c1b19, circle #d4866f, kanji #1c1b19) for favicon.svg.
  */
-function sealSvg(glyph, { size, diameter, background = false, glyphRatio = 0.54, adaptive = false }) {
-  const outer = size * diameter;
-  const ring = Math.max(1.5, outer * 0.075);
-  const shadow = Math.max(1.5, outer * 0.08);
-  const c = (size - shadow) / 2;
-  const r = (outer - ring) / 2;
+function iconSvg(glyph, { size, diameter, tile = "full", glyphRatio = 0.56, adaptive = false }) {
+  const c = size / 2;
+  const r = (size * diameter) / 2;
   const style = adaptive
-    ? `<style>.o{fill:${INK}}.k{stroke:${INK}}@media (prefers-color-scheme:dark){.o{fill:#f7f3e8}.k{stroke:#f7f3e8}}</style>`
+    ? `<style>.t{fill:${BG}}.d{fill:${SHU}}.k{fill:${BG};stroke:${BG}}@media (prefers-color-scheme:dark){.t{fill:${DARK_BG}}.d{fill:${DARK_SHU}}.k{fill:${DARK_BG};stroke:${DARK_BG}}}</style>`
     : "";
-  const ink = (cls, prop) => (adaptive ? `class="${cls}"` : `${prop}="${INK}"`);
+  const paint = (cls, colour) => (adaptive ? `class="${cls}"` : `fill="${colour}"`);
+  const rx = tile === "rounded" ? r2(size * 0.22) : 0;
+  // Klee One's pen strokes are thin: a matching outline (about 1.3% of the icon) keeps the kanji
+  // readable at 16–48px. The path is drawn in font units, so the width is converted to them.
+  const em = r * 2 * glyphRatio;
+  const strokeUnits = r2((size * 0.013 * glyph.unitsPerEm) / em);
+  const kanji = adaptive
+    ? `class="k" stroke-width="${strokeUnits}" stroke-linejoin="round"`
+    : `fill="${BG}" stroke="${BG}" stroke-width="${strokeUnits}" stroke-linejoin="round"`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">` +
     style +
-    (background ? gridBackground(size, size / 12) : "") +
-    `<g transform="rotate(-6 ${r2(c)} ${r2(c)})">` +
-    `<circle cx="${r2(c + shadow)}" cy="${r2(c + shadow)}" r="${r2(outer / 2)}" ${ink("o", "fill")}/>` +
-    `<circle cx="${r2(c)}" cy="${r2(c)}" r="${r2(r)}" fill="${SHU}" ${ink("k", "stroke")} stroke-width="${r2(ring)}"/>` +
-    glyphPath(glyph, c, c, outer * glyphRatio, `fill="${INK}"`) +
+    `<rect width="${size}" height="${size}" rx="${rx}" ${paint("t", BG)}/>` +
+    `<g transform="rotate(-4 ${r2(c)} ${r2(c)})">` +
+    `<circle cx="${r2(c)}" cy="${r2(c)}" r="${r2(r)}" ${paint("d", SHU)}/>` +
+    glyphPath(glyph, c, c, em, kanji) +
+    `</g></svg>`
+  );
+}
+
+/** The app's seal (CSS .seal): a thin 朱 ring and the 朱 kanji, no fill, tilted -4deg. */
+function ringSealSvg(glyph, size) {
+  const c = size / 2;
+  const ring = Math.max(1.5, size * 0.045);
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">` +
+    `<g transform="rotate(-4 ${r2(c)} ${r2(c)})">` +
+    `<circle cx="${r2(c)}" cy="${r2(c)}" r="${r2(c - ring / 2)}" fill="none" stroke="${SHU}" stroke-width="${r2(ring)}"/>` +
+    glyphPath(glyph, c, c, size * 0.5, `fill="${SHU}"`) +
     `</g></svg>`
   );
 }
@@ -301,7 +315,7 @@ function badgeSvg(glyph, size) {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">` +
     `<defs><mask id="m"><rect width="${size}" height="${size}" fill="#fff"/>${glyphPath(glyph, c, c, r * 2 * 0.58, 'fill="#000"')}</mask></defs>` +
-    `<g transform="rotate(-6 ${c} ${c})"><circle cx="${c}" cy="${c}" r="${r2(r)}" fill="#fff" mask="url(#m)"/></g></svg>`
+    `<g transform="rotate(-4 ${c} ${c})"><circle cx="${c}" cy="${c}" r="${r2(r)}" fill="#fff" mask="url(#m)"/></g></svg>`
   );
 }
 
@@ -314,44 +328,42 @@ async function fontFace(family, weight, pkg, file, range) {
 
 async function ogHtml(glyph) {
   const faces = [
-    await fontFace("Dela Gothic One", 400, "dela-gothic-one", "dela-gothic-one-japanese-400-normal.woff2"),
-    await fontFace("Dela Gothic One", 400, "dela-gothic-one", "dela-gothic-one-latin-400-normal.woff2", "U+0000-00FF"),
-    await fontFace("Zen Kaku Gothic New", 700, "zen-kaku-gothic-new", "zen-kaku-gothic-new-japanese-700-normal.woff2"),
-    await fontFace("Zen Kaku Gothic New", 700, "zen-kaku-gothic-new", "zen-kaku-gothic-new-latin-700-normal.woff2", "U+0000-00FF"),
+    // The OG image is a PNG, so the whole page can use the embedded handwriting font (no CJK system font needed).
+    await fontFace("Klee One", 600, "klee-one", "klee-one-japanese-600-normal.woff2"),
+    await fontFace("Klee One", 600, "klee-one", "klee-one-latin-600-normal.woff2", "U+0000-00FF"),
   ].join("");
   const stamped = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13]);
   const today = 14;
   const cells = Array.from({ length: 30 }, (_, i) => {
     const day = i + 1;
-    const cls = day === today ? "cell today" : day > today ? "cell future" : "cell";
+    const cls = ["cell", day === today ? "today" : "", day > today ? "future" : "", stamped.has(day) ? "on" : ""].filter(Boolean).join(" ");
     return `<div class="${cls}"><span class="n">${day}</span>${stamped.has(day) ? '<span class="st">試</span>' : ""}</div>`;
   }).join("");
-  const brandSeal = sealSvg(glyph, { size: 104, diameter: 0.9 });
+  const brandSeal = ringSealSvg(glyph, 96);
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>
 ${faces}
 *{box-sizing:border-box;margin:0}
 html,body{width:1200px;height:630px}
-body{font-family:"Zen Kaku Gothic New",sans-serif;font-weight:700;color:${INK};background:${BG};
- background-image:linear-gradient(${GRID} 1px,transparent 1px),linear-gradient(90deg,${GRID} 1px,transparent 1px);background-size:30px 30px;
- padding:52px 64px 64px 52px;font-synthesis:none}
+body{font-family:"Klee One",sans-serif;font-weight:600;color:${INK};background:${BG};padding:52px 56px 56px;font-synthesis:none}
 .card{position:relative;display:flex;align-items:center;gap:52px;height:100%;padding:0 52px 0 56px;background:${SURFACE};
- border:6px solid ${INK};border-radius:28px;box-shadow:12px 12px 0 ${INK}}
+ background-image:repeating-linear-gradient(to bottom,transparent 0 47px,${RULE_FAINT} 47px 48px);
+ border:2px solid ${RULE};border-radius:20px 26px 19px 25px/25px 19px 26px 20px}
 .left{flex:1;min-width:0}
-.brand{display:flex;align-items:center;gap:18px;margin-bottom:34px}
-.brand b{font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:64px;letter-spacing:.02em;line-height:1}
-.tag{font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:46px;line-height:1.45;white-space:nowrap}
-.hl{background:${YELLOW};padding:0 .12em;border-radius:6px}
-.sub{margin-top:26px;font-size:23px;color:${MUTED};line-height:1.6;white-space:nowrap}
-.sticker{position:absolute;top:-28px;right:44px;padding:6px 20px;border:4px solid ${INK};border-radius:14px;background:${MINT};
- box-shadow:5px 5px 0 ${INK};font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:26px;transform:rotate(4deg)}
-.grid{display:grid;grid-template-columns:repeat(6,54px);gap:8px;padding:18px;border:4px solid ${INK};border-radius:18px;background:${PINK};
- box-shadow:6px 6px 0 ${INK};transform:rotate(-2deg)}
-.cell{position:relative;width:54px;height:54px;border:3px solid ${INK};border-radius:9px;background:${SURFACE}}
-.cell .n{position:absolute;top:2px;left:5px;font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:11px;color:${MUTED}}
-.cell.today{border-width:4px;background:${YELLOW};box-shadow:3px 3px 0 ${INK}}.cell.today .n{color:${INK}}
-.cell.future{background-image:repeating-linear-gradient(135deg,${HATCH} 0 2px,transparent 2px 7px)}
-.st{position:absolute;inset:10%;border-radius:50%;border:3px solid ${INK};background:${SHU};color:${INK};display:flex;align-items:center;justify-content:center;
- font-family:"Dela Gothic One",sans-serif;font-weight:400;font-size:22px;line-height:1;transform:rotate(-8deg)}
+.brand{display:flex;align-items:center;gap:20px;margin-bottom:34px}
+.brand b{font-weight:600;font-size:62px;letter-spacing:.04em;line-height:1}
+.tag{font-weight:600;font-size:44px;line-height:1.5;letter-spacing:.04em;white-space:nowrap}
+.hl{background:linear-gradient(transparent 58%,${ACCENT_SOFT} 58%,${ACCENT_SOFT} 90%,transparent 90%);padding:0 .06em}
+.sub{margin-top:24px;font-size:23px;color:${MUTED};line-height:1.65;white-space:nowrap}
+.label{position:absolute;top:30px;right:44px;padding:4px 16px;border:2px solid ${ACCENT_INK};border-radius:12px;background:${ACCENT_SOFT};
+ color:${ACCENT_INK};font-size:24px}
+.grid{display:grid;grid-template-columns:repeat(6,56px);gap:8px;margin-top:40px}
+.cell{position:relative;width:56px;height:56px;border:1.5px solid ${LINE};border-radius:9px;background:${SURFACE}}
+.cell .n{position:absolute;top:2px;left:4px;z-index:1;padding:0 2px;border-radius:4px;font-size:13px;line-height:1.2;color:${MUTED}}
+.cell.on{background:${SHU_SOFT}}.cell.on .n{background:${SHU_SOFT}}
+.cell.today{border:2.5px solid ${ACCENT_INK};background:${ACCENT_SOFT}}.cell.today .n{color:${ACCENT_INK}}
+.cell.future{border-style:dotted}
+.st{position:absolute;inset:19% 7% 7% 19%;border-radius:50%;border:2px solid ${SHU};color:${SHU};display:flex;align-items:center;justify-content:center;
+ font-size:21px;line-height:1;transform:rotate(-4deg)}
 </style></head><body>
 <div class="card">
   <div class="left">
@@ -360,7 +372,7 @@ body{font-family:"Zen Kaku Gothic New",sans-serif;font-weight:700;color:${INK};b
     <p class="sub">毎日1タップで印を押して、30日目に<br>「続ける・やめる・形を変える」を決める。</p>
   </div>
   <div class="grid">${cells}</div>
-  <div class="sticker">1日1タップ</div>
+  <div class="label">1日1タップ</div>
 </div>
 </body></html>`;
 }
@@ -371,17 +383,17 @@ async function main() {
   const glyph = await loadGlyph("卅");
   await mkdir(join(PUBLIC, "icons"), { recursive: true });
 
-  const favicon = sealSvg(glyph, { size: 64, diameter: 0.84, glyphRatio: 0.6, adaptive: true });
+  const favicon = iconSvg(glyph, { size: 64, diameter: 0.84, tile: "rounded", glyphRatio: 0.6, adaptive: true });
   await writeFile(join(PUBLIC, "favicon.svg"), `${favicon}\n`);
   log("public/favicon.svg");
 
   const pngs = [
-    // Full-bleed squares on grid paper: the OS applies its own mask / rounding.
-    { file: "icons/icon-192.png", svg: sealSvg(glyph, { size: 192, diameter: 0.66, background: true }) },
-    { file: "icons/icon-512.png", svg: sealSvg(glyph, { size: 512, diameter: 0.66, background: true }) },
-    // Maskable: disc + shadow stay inside the 80% safe circle.
-    { file: "icons/maskable-512.png", svg: sealSvg(glyph, { size: 512, diameter: 0.6, background: true }) },
-    { file: "icons/apple-touch-icon-180.png", svg: sealSvg(glyph, { size: 180, diameter: 0.64, background: true }) },
+    // Full-bleed paper squares: the OS applies its own mask / rounding.
+    { file: "icons/icon-192.png", svg: iconSvg(glyph, { size: 192, diameter: 0.7 }) },
+    { file: "icons/icon-512.png", svg: iconSvg(glyph, { size: 512, diameter: 0.7 }) },
+    // Maskable: the circle stays inside the 80% safe circle.
+    { file: "icons/maskable-512.png", svg: iconSvg(glyph, { size: 512, diameter: 0.62 }) },
+    { file: "icons/apple-touch-icon-180.png", svg: iconSvg(glyph, { size: 180, diameter: 0.7 }) },
     // Android status-bar badge: only the alpha channel is used.
     { file: "icons/badge-72.png", svg: badgeSvg(glyph, 72), transparent: true },
   ];
@@ -401,8 +413,8 @@ async function main() {
     await page.setContent(await ogHtml(glyph), { waitUntil: "load" });
     await page.evaluate(async () => {
       await Promise.all([
-        document.fonts.load('400 64px "Dela Gothic One"', "30日だけどうせ過ぎるなら、ひとつ試してみる。試1タップ0123456789"),
-        document.fonts.load('700 23px "Zen Kaku Gothic New"', "毎日1タップで印を押して、30日目に「続ける・やめる・形を変える」を決める。"),
+        document.fonts.load('600 64px "Klee One"', "30日だけどうせ過ぎるなら、ひとつ試してみる。試1タップ0123456789"),
+        document.fonts.load('600 23px "Klee One"', "毎日1タップで印を押して、30日目に「続ける・やめる・形を変える」を決める。"),
       ]);
       await document.fonts.ready;
     });

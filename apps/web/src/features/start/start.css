@@ -1,4 +1,4 @@
-/* Start sheet + seal field (features/start). Neo-brutalism per docs/design.md, tokens with fallbacks. */
+/* Start sheet + seal field (features/start). 「白いノート」 per docs/design.md. */
 
 .st-form {
   display: grid;
@@ -11,25 +11,19 @@
   align-items: center;
   gap: 16px;
 }
+/* The seal preview: the same 朱 ring as everywhere; a new character fades in. */
 .st-seal-preview {
   display: inline-flex;
   flex: none;
-  animation: st-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+  animation: fade 200ms ease-out;
 }
 .st-seal input {
   width: 96px;
   flex: none;
   text-align: center;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 24px;
-}
-@keyframes st-pop {
-  0% {
-    transform: scale(1.35) rotate(-10deg);
-  }
-  100% {
-    transform: none;
-  }
 }
 
 /* ---------- いつから ---------- */
@@ -44,7 +38,7 @@
 .st-when legend {
   margin-bottom: 4px;
   padding: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
 }
 .st-radio {
@@ -53,70 +47,89 @@
   gap: 12px;
   min-height: 44px;
   padding: 12px 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  box-shadow: 3px 3px 0 var(--ink, #111);
+  border: var(--border-ctl) solid var(--line);
+  border-radius: var(--radius-hand-sm);
+  background: var(--surface);
   cursor: pointer;
-  transition:
-    transform 0.1s,
-    box-shadow 0.1s;
+  transition: background-color var(--press) ease-out;
 }
 .st-radio input {
   flex: none;
   width: 20px;
   height: 20px;
   margin: 3px 0 0;
-  accent-color: var(--ink, #111);
+  accent-color: var(--accent-ink);
 }
 .st-radio b {
   display: block;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1.4;
 }
 .st-radio small {
   display: block;
   margin-top: 2px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 13px;
 }
-.st-radio:has(input:checked) {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 var(--ink, #111);
+@media (hover: hover) {
+  .st-radio:hover {
+    background: var(--bg-2);
+  }
 }
-.st-radio:has(input:checked) small {
-  color: var(--on-accent, #111);
+/* Chosen: the soft green, a 2px green ring and a ✓ drawn at the end (no text: the name stays 「今日から…」). */
+.st-radio:has(input:checked) {
+  padding: calc(12px - (var(--border-strong) - var(--border-ctl))) calc(14px - (var(--border-strong) - var(--border-ctl)));
+  border: var(--border-strong) solid var(--accent-ink);
+  background: var(--accent-soft);
+}
+.st-radio:has(input:checked)::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 12px;
+  margin: 3px 4px 0 auto;
+  border: solid var(--accent-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 .st-radio:has(input:focus-visible) {
-  outline: 3px solid var(--blue, #6c8cff);
-  outline-offset: 3px;
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+/* Forced colours: the chosen one gets an outline; keyboard focus (after it) a thicker ring further out. */
+@media (forced-colors: active) {
+  .st-radio:has(input:checked) {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+  .st-radio:has(input:focus-visible) {
+    outline: 3px solid CanvasText;
+    outline-offset: 3px;
+  }
 }
 
 /* ---------- notes ---------- */
 .st-note {
   padding: 10px 12px;
-  border: 2px dashed var(--ink, #111);
   border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.6;
+  background: var(--bg-2);
+  font-size: 14px;
+  line-height: 1.7;
 }
 .st-full,
 .st-error {
   padding: 10px 12px;
-  border: var(--border, 3px) solid var(--shu, #ff4b2b);
   border-radius: 10px;
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  background: var(--shu-soft);
+  color: var(--shu-ink);
   font-size: 14px;
   font-weight: 700;
 }
 .st-submit {
   width: 100%;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-weight: 400;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 18px;
 }

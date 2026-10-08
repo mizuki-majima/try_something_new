@@ -1,6 +1,7 @@
 /**
  * Service worker (vite-plugin-pwa, injectManifest).
- * - Precaches the app shell (JS/CSS/HTML/icons; fonts are excluded and cached on first use).
+ * - Precaches the app shell (JS/CSS/HTML/icons; fonts are excluded and cached on first use, in
+ *   FONT_CACHE, bounded to FONT_CACHE_MAX_ENTRIES files).
  * - SPA navigations fall back to /index.html, except server routes (/api, /s, /media).
  * - Recipe details are fetched network-first (cache only as the offline fallback); recipe lists
  *   are served stale-while-revalidate for up to a day; a 404/410 removes the cached copy
@@ -11,11 +12,11 @@
  */
 import { CacheableResponsePlugin } from "workbox-cacheable-response";
 import { clientsClaim } from "workbox-core";
-import { ExpirationPlugin } from "workbox-expiration";
+import { CacheExpiration, ExpirationPlugin } from "workbox-expiration";
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute, type PrecacheEntry } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
-import { LEGACY_RECIPE_CACHE } from "./lib/swCaches";
+import { FONT_CACHE, FONT_CACHE_MAX_ENTRIES, LEGACY_FONT_CACHE, deleteLegacyCaches } from "./lib/swCaches";
 import { createRecipeStrategies } from "./swRecipes";
 
 declare let self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<PrecacheEntry | string> };
@@ -37,10 +38,10 @@ const sameOrigin = (url: URL) => url.origin === self.location.origin;
 registerRoute(
   ({ request, url }) => sameOrigin(url) && (request.destination === "font" || /\.(woff2?|ttf|otf)$/.test(url.pathname)),
   new CacheFirst({
-    cacheName: "fonts",
+    cacheName: FONT_CACHE,
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
-      new ExpirationPlugin({ maxEntries: 400, maxAgeSeconds: 365 * 24 * 60 * 60 }),
+      new ExpirationPlugin({ maxEntries: FONT_CACHE_MAX_ENTRIES, maxAgeSeconds: 365 * 24 * 60 * 60 }),
     ],
   }),
 );
@@ -53,9 +54,16 @@ registerRoute(
   "GET",
 );
 
-// Older versions cached list and detail together, 14 days, served stale: drop that cache.
+// Drop the caches older versions used: recipe list and detail together (14 days, served stale), and
+// the fonts before #20 (slices of the old display and body fonts), with that cache's expiration
+// records (IndexedDB "workbox-expiration").
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.delete(LEGACY_RECIPE_CACHE).then(() => undefined));
+  event.waitUntil(
+    Promise.all([
+      deleteLegacyCaches(),
+      new CacheExpiration(LEGACY_FONT_CACHE, { maxEntries: 1 }).delete().catch(() => undefined),
+    ]).then(() => undefined),
+  );
 });
 
 // ---------- push ----------

@@ -11,18 +11,18 @@
   gap: 2px;
   min-width: 0;
   padding: 8px 12px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-sm, 8px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--ink);
 }
 .mn-day {
-  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  color: var(--muted);
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .mn-text {
-  font-weight: 700;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }

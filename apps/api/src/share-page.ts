@@ -51,44 +51,45 @@ export function shareDescription(v: Pick<ShareView, "verdict" | "days" | "reflec
   return v.reflection ? `${head} — ${excerpt(v.reflection, 80)}` : head;
 }
 
-// Neo-brutalism (docs/design.md): cream grid background, 3px ink borders, hard offset shadows,
-// flat colours, heavy headings. Fonts are not loaded here, so headings fall back to heavy system fonts.
+// 「白いノート」 (docs/design.md): plain paper, white cards with a thin line, no offset shadows, a 朱 ring
+// seal. Light, and the calm dark palette when the OS is dark (the page has no script, so no manual
+// theme). No web fonts here: headings use the device's rounded / Japanese fonts at 700.
 const STYLE = `
-:root{--bg:#FFF4D6;--surface:#FFFFFF;--ink:#111111;--muted:#4A4A4A;--shu:#FF4B2B;--yellow:#FFD43B;--mint:#3DDC97;--blue:#6C8CFF;--gray:#E6E1D3;--on-accent:#111111;--grid:rgba(17,17,17,.08);color-scheme:light dark}
-@media (prefers-color-scheme:dark){:root{--bg:#141414;--surface:#1F1F1F;--ink:#F7F3E8;--muted:#C9C4B8;--shu:#FF5A3C;--blue:#7C98FF;--gray:#3A3A3A;--grid:rgba(247,243,232,.08)}}
+:root{--bg:#FAF8F4;--bg-2:#F3F0EA;--surface:#FFFFFF;--ink:#34312C;--muted:#6B655C;--line:#8C8579;--rule:#E2DDD3;--accent:#4A6B4E;--accent-hover:#3F5E43;--accent-ink:#3F6B4A;--accent-soft:#E6EEE3;--on-primary:#FFFFFF;--primary-border:#4A6B4E;--shu:#B9553D;--mist:#E3E9F0;--slate:#52637A;--gray-soft:#ECE8E1;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#1C1B19;--bg-2:#211F1D;--surface:#262522;--ink:#E6E1D8;--muted:#A9A398;--line:#827C72;--rule:#3A3834;--accent:#3E5A44;--accent-hover:#46654C;--accent-ink:#9CC3A0;--accent-soft:#2F3B30;--on-primary:#E6E1D8;--primary-border:#9CC3A0;--shu:#D4866F;--mist:#2B333C;--slate:#A9B8CB;--gray-soft:#33312D}.shot img{filter:brightness(.92)}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;min-height:100vh;background-color:var(--bg);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px;color:var(--ink);font-family:"Zen Kaku Gothic New","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI","Yu Gothic",Meiryo,system-ui,sans-serif;line-height:1.7;font-size:16px}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Noto Sans CJK JP","Yu Gothic UI",Meiryo,system-ui,sans-serif;line-height:1.75;letter-spacing:.02em;font-size:16px}
 a{color:inherit}
-a:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
-.display{font-family:"Dela Gothic One","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",system-ui,sans-serif;font-weight:900;letter-spacing:.01em}
-.top{background:var(--surface);border-bottom:3px solid var(--ink);padding:10px 16px}
-.logo{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:20px;min-height:44px}
-.logo-seal{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--shu);color:var(--on-accent);border:3px solid var(--ink);box-shadow:3px 3px 0 var(--ink);transform:rotate(-6deg);font-size:18px}
+a:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
+.display{font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;font-weight:700;letter-spacing:.02em}
+.top{background:var(--bg);border-bottom:1px solid var(--rule);padding:6px 16px}
+.logo{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-size:19px;min-height:44px}
+.logo-seal{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--shu);color:var(--shu);transform:rotate(-4deg);font-size:14px;line-height:1}
 main{max-width:760px;margin:0 auto;padding:24px 16px 32px}
-.shot{margin:0 0 24px;border:3px solid var(--ink);border-radius:12px;box-shadow:6px 6px 0 var(--ink);overflow:hidden;background:var(--surface)}
+.shot{margin:0 0 24px;border:1px solid var(--rule);border-radius:12px;overflow:hidden;background:var(--surface)}
 .shot img{display:block;width:100%;height:auto;aspect-ratio:1200/630}
-.card{background:var(--surface);border:3px solid var(--ink);border-radius:12px;box-shadow:6px 6px 0 var(--ink);padding:20px}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:14px 18px 13px 17px/17px 13px 18px 14px;padding:20px}
 .head{display:flex;gap:16px;align-items:center}
-.seal{flex:none;display:grid;place-items:center;width:72px;height:72px;border-radius:50%;background:var(--shu);color:var(--on-accent);border:3px solid var(--ink);box-shadow:3px 3px 0 var(--ink);transform:rotate(-6deg);font-size:38px;line-height:1}
+.seal{flex:none;display:grid;place-items:center;width:64px;height:64px;border-radius:50%;border:1.75px solid var(--shu);color:var(--shu);transform:rotate(-4deg);font-size:32px;line-height:1}
 .who{margin:0;color:var(--muted);font-weight:700;font-size:14px}
-h1{margin:2px 0 0;font-size:clamp(22px,5vw,32px);line-height:1.3;overflow-wrap:anywhere}
+h1{margin:2px 0 0;font-size:clamp(22px,5vw,30px);line-height:1.35;overflow-wrap:anywhere}
 .facts{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin:18px 0 0}
-.sticker{display:inline-block;padding:4px 14px;border:3px solid var(--ink);border-radius:999px;color:var(--on-accent);font-size:18px;transform:rotate(-3deg);box-shadow:3px 3px 0 var(--ink)}
-.v-continue{background:var(--mint)}.v-stop{background:var(--gray);color:var(--ink)}.v-modify{background:var(--blue)}
-.days{font-size:28px;line-height:1}.days small{font-size:15px;margin-left:2px}
+.sticker{display:inline-block;padding:2px 14px;border:1px solid var(--line);border-radius:8px;background:var(--gray-soft);color:var(--ink);font-size:17px}
+.v-continue{border-color:var(--accent-ink);background:var(--accent-soft);color:var(--accent-ink)}.v-modify{border-color:var(--slate);background:var(--mist);color:var(--slate)}
+.days{font-size:28px;line-height:1}.days small{font-size:15px;margin-left:2px;color:var(--muted)}
 .period{color:var(--muted);font-size:14px}
-.reflection{margin:18px 0 0;padding:14px 16px;border:2px solid var(--ink);border-radius:12px;background:var(--bg);white-space:pre-wrap;overflow-wrap:anywhere}
-.cta{display:flex;justify-content:center;align-items:center;min-height:56px;margin:28px 0 0;padding:12px 20px;background:var(--shu);color:var(--on-accent);border:3px solid var(--ink);border-radius:12px;box-shadow:5px 5px 0 var(--ink);font-size:20px;text-decoration:none;text-align:center}
-@media (prefers-reduced-motion:no-preference){.cta{transition:transform .1s,box-shadow .1s}.cta:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--ink)}.cta:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--ink)}}
+.reflection{margin:18px 0 0;padding:14px 16px;border-radius:12px;background:var(--bg-2);white-space:pre-wrap;overflow-wrap:anywhere}
+.cta{display:flex;justify-content:center;align-items:center;min-height:56px;margin:28px 0 0;padding:12px 20px;background:var(--accent);color:var(--on-primary);border:1.5px solid var(--primary-border);border-radius:9px 11px 8px 12px/12px 8px 11px 9px;font-size:18px;text-decoration:none;text-align:center}
+@media (hover:hover){.cta:hover{background:var(--accent-hover)}}
 .sub{margin:18px 0 0;text-align:center}
-.sub a{display:inline-block;padding:10px 4px;font-weight:700}
+.sub a{display:inline-block;padding:10px 4px;font-weight:600;color:var(--accent-ink)}
 .report{margin-top:4px;font-size:14px}.report a{color:var(--muted);font-weight:400}
 .empty{text-align:center}
 .empty p{margin:12px 0 0}
 footer{max-width:760px;margin:0 auto;padding:8px 16px 32px;color:var(--muted);font-size:13px;text-align:center}
 footer a{display:inline-block;padding:10px 0}
-footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:0 18px;font-size:14px}
+footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:0 18px;border-top:1px solid var(--rule);font-size:14px}
 footer nav a{padding:12px 2px;min-height:44px}
 footer p{margin:4px 0 0}
 `;
@@ -122,7 +123,8 @@ function layout({ title, head, body }: PageParts): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#FFF4D6">
+<meta name="theme-color" content="#1C1B19" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#FAF8F4">
 ${head}
 <style>${STYLE}</style>
 </head>

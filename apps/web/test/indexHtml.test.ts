@@ -1,11 +1,14 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { KEYS } from "../src/lib/storage";
+import { THEME_COLORS } from "../src/lib/theme";
 import { PUBLIC_ORIGIN_PLACEHOLDER, applyPublicOrigin, normalizeOrigin, publicOrigin } from "../vite.config";
 
 const webRoot = path.resolve(__dirname, "..");
 const indexHtml = readFileSync(path.join(webRoot, "index.html"), "utf8");
 const jitlessJs = readFileSync(path.join(webRoot, "public/zod-jitless.js"), "utf8");
+const themeBootJs = readFileSync(path.join(webRoot, "public/theme-boot.js"), "utf8");
 
 const meta = (html: string, attr: string) => new RegExp(`<meta ${attr} content="([^"]*)"`).exec(html)?.[1];
 
@@ -61,5 +64,58 @@ describe("index.html: zod jitless before the app (CSP without 'unsafe-eval')", (
     delete (globalThis as { __zod_globalConfig?: unknown }).__zod_globalConfig;
     new Function(jitlessJs)();
     expect((globalThis as { __zod_globalConfig?: Record<string, unknown> }).__zod_globalConfig).toEqual({ jitless: true });
+  });
+});
+
+describe("index.html: a manual theme before the first paint (/theme-boot.js, #20)", () => {
+  /** The two theme-color metas as index.html ships them. */
+  function setUpHead(): HTMLMetaElement[] {
+    document.head.innerHTML = [
+      '<meta name="theme-color" content="#FAF8F4" media="(prefers-color-scheme: light)" />',
+      '<meta name="theme-color" content="#1C1B19" media="(prefers-color-scheme: dark)" />',
+    ].join("");
+    return [...document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
+  }
+
+  afterEach(() => {
+    localStorage.clear();
+    delete document.documentElement.dataset.theme;
+    document.head.innerHTML = "";
+    vi.restoreAllMocks();
+  });
+
+  it("is a blocking classic script in <head>, after the theme-color metas and before every module script", () => {
+    const tag = '<script src="/theme-boot.js"></script>';
+    const at = indexHtml.indexOf(tag);
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(indexHtml.indexOf("</head>"));
+    expect(at).toBeGreaterThan(indexHtml.lastIndexOf('<meta name="theme-color"'));
+    expect(at).toBeLessThan(indexHtml.indexOf('<script type="module"'));
+  });
+
+  it.each(["dark", "light"] as const)("applies a stored 「%s」 to <html> and both theme-color metas, like applyTheme()", (pref) => {
+    const metas = setUpHead();
+    localStorage.setItem(KEYS.theme, pref);
+    new Function(themeBootJs)();
+    expect(document.documentElement.dataset.theme).toBe(pref);
+    expect(metas.map((m) => m.content.toLowerCase())).toEqual([THEME_COLORS[pref], THEME_COLORS[pref]]);
+  });
+
+  it("leaves everything to the device when nothing (or 「端末に合わせる」) is stored, or storage throws", () => {
+    for (const stored of [null, "system", "sepia"]) {
+      const metas = setUpHead();
+      if (stored) localStorage.setItem(KEYS.theme, stored);
+      new Function(themeBootJs)();
+      expect(document.documentElement.dataset.theme, String(stored)).toBeUndefined();
+      expect(metas.map((m) => m.content)).toEqual(["#FAF8F4", "#1C1B19"]);
+      localStorage.clear();
+    }
+    const metas = setUpHead();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    expect(() => new Function(themeBootJs)()).not.toThrow();
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(metas.map((m) => m.content)).toEqual(["#FAF8F4", "#1C1B19"]);
   });
 });

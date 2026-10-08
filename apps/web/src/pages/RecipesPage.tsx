@@ -1,12 +1,14 @@
 /**
- * /recipes — チャレンジレシピ (SPEC FR-10). The bundled official recipes show at once (also
- * offline); community recipes and the counters merge in when the API answers. Search, category
- * and sort live in the URL (?q=&cat=&sort=) so "back" from a recipe keeps them.
+ * /recipes — チャレンジレシピ (SPEC FR-10), in the 「えらぶ」 tab with /gacha (ChooseNav above the h1).
+ * The bundled official recipes show at once (also offline); community recipes and the counters merge
+ * in when the API answers. Search, category and sort live in the URL (?q=&cat=&sort=) so "back" from
+ * a recipe keeps them.
  */
 import { useDeferredValue, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { CATEGORY_KEYS, type Category } from "@thirty/shared";
 import { ChipGroup, type ChipOption } from "../components/Chip";
+import { ChooseNav } from "../components/ChooseNav";
 import { EmptyState, Loading } from "../components/States";
 import { usePageTitle } from "../lib/hooks";
 import { RECIPE_SORTS, filterRecipes, isCategory, isRecipeSort, sortRecipes, useRecipes, type CategoryFilter, type RecipeSort } from "../lib/recipes";
@@ -64,11 +66,12 @@ export default function RecipesPage() {
 
   return (
     <section className="stack rp-page" aria-labelledby="rp-title">
+      <ChooseNav current="recipes" />
       <div className="pagehead">
         <h1 className="h2" id="rp-title">
           チャレンジレシピ
         </h1>
-        <Link to="/recipes/new" className="btn sm">
+        <Link to="/recipes/new" className="rp-write">
           ＋ レシピを書く
         </Link>
       </div>

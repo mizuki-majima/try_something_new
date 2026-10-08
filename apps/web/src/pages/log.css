@@ -1,113 +1,136 @@
-/* 記録 (LogPage). Neo-brutalism per docs/design.md, tokens with fallbacks. */
+/* 記録 (LogPage). 「白いノート」 per docs/design.md. */
 
 .lp-page {
   display: grid;
   gap: 20px;
 }
 .lp-h1 {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: 28px;
-  font-weight: 400;
-  line-height: 1.2;
+  font-family: var(--font-hand);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 .lp-h2 {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: 19px;
-  font-weight: 400;
+  font-family: var(--font-hand);
+  font-size: 20px;
+  font-weight: 600;
+}
+@media (min-width: 760px) {
+  .lp-h1 {
+    font-size: 30px;
+  }
+  .lp-h2 {
+    font-size: 22px;
+  }
 }
 .lp-section {
   display: grid;
   gap: 12px;
+}
+/* 「続けている30日は「きょう」にあります。」: one quiet line under the h1. */
+.lp-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  margin-top: -10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.lp-open a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 /* ---------- totals ---------- */
 .lp-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 12px;
 }
 .lp-stat {
   display: grid;
   gap: 2px;
   padding: 14px 16px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  box-shadow: 5px 5px 0 var(--ink, #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
 }
 .lp-stat b {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: clamp(34px, 10vw, 46px);
-  font-weight: 400;
+  font-family: var(--font-hand);
+  font-size: 40px;
+  font-weight: 600;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 .lp-stat small {
+  color: var(--muted);
   font-size: 13px;
   font-weight: 700;
 }
-.lp-stat-tried {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-}
-.lp-stat-stamps {
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
+/* The stamps total: its number in 朱, like the seals it counts. */
+.lp-stat-stamps b {
+  color: var(--shu-ink);
 }
 .lp-verdicts {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
+/* Verdict counts: 続ける = soft green, 形を変える = mist/slate, やめる = gray; the word is always there. */
 .lp-v {
   display: inline-flex;
   align-items: baseline;
   gap: 10px;
   padding: 6px 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
+  border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 3px 3px 0 var(--ink, #111);
-  color: var(--on-accent, #111);
-  transform: rotate(-2deg);
+  background: var(--gray-soft);
+  color: var(--ink);
 }
 .lp-v span {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 15px;
 }
 .lp-v b {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 22px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1;
 }
 .lp-v-continue {
-  background: var(--mint, #3ddc97);
-}
-.lp-v-stop {
-  background: var(--gray, #e6e1d3);
-  color: var(--ink, #111);
-  transform: rotate(1.5deg);
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .lp-v-modify {
-  background: var(--blue, #6c8cff);
-  transform: rotate(-1deg);
+  border-color: var(--slate);
+  background: var(--mist);
+  color: var(--slate);
 }
 
 .lp-empty {
   padding: 12px 14px;
-  border: 2px dashed var(--ink, #111);
-  border-radius: 10px;
-  color: var(--muted, #4a4a4a);
+  border: 1px dotted var(--line);
+  border-radius: var(--radius-hand-sm);
+  color: var(--muted);
   font-size: 14px;
 }
 
 /* ---------- finished ---------- */
 .lp-done {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -117,28 +140,23 @@
   align-items: flex-start;
   gap: 14px;
   padding: 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  box-shadow: 5px 5px 0 var(--ink, #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
   text-decoration: none;
   transition:
-    transform 0.1s ease-out,
-    box-shadow 0.1s ease-out;
+    background-color var(--press) ease-out,
+    border-color var(--press) ease-out;
 }
 @media (hover: hover) {
-  .lp-card:hover {
-    transform: translate(-2px, -2px);
-    box-shadow: 7px 7px 0 var(--ink, #111);
-  }
+  .lp-card:hover,
   .lp-note-body:hover {
-    box-shadow: 3px 3px 0 var(--ink, #111);
+    border-color: var(--line);
   }
 }
 .lp-card:active {
-  transform: translate(3px, 3px);
-  box-shadow: 2px 2px 0 var(--ink, #111);
+  background: var(--bg-2);
 }
 .lp-card-body {
   display: grid;
@@ -147,39 +165,40 @@
   min-width: 0;
 }
 .lp-card-title {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 17px;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 .lp-card-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 10px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 13px;
 }
 .lp-card-meta b {
-  color: var(--ink, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  color: var(--ink);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .lp-card-quote {
   display: -webkit-box;
   overflow: hidden;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  font-weight: 700;
+  font-weight: 600;
 }
 
-/* ---------- notes timeline ---------- */
+/* ---------- notes timeline: a thin line with a small dot per note ---------- */
 .lp-notes {
   display: grid;
   margin: 0 0 0 8px;
   padding: 0;
   list-style: none;
-  border-left: var(--border, 3px) solid var(--ink, #111);
+  border-left: 1px solid var(--rule);
 }
 .lp-note {
   position: relative;
@@ -190,37 +209,38 @@
 .lp-note::before {
   content: "";
   position: absolute;
-  top: 6px;
-  left: -9px;
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--ink, #111);
-  background: var(--yellow, #ffd43b);
-  transform: rotate(45deg);
+  top: 7px;
+  left: -5px;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg);
 }
 .lp-note-date {
-  color: var(--muted, #4a4a4a);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
 }
 .lp-note-body {
   display: grid;
   gap: 4px;
   min-height: 44px;
   padding: 10px 12px;
-  border: 2px solid var(--ink, #111);
+  border: 1px solid var(--rule);
   border-radius: 10px;
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  background: var(--surface);
+  color: var(--ink);
   text-decoration: none;
+  transition: border-color var(--press) ease-out;
 }
 .lp-note-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--muted, #4a4a4a);
-  font-size: 12.5px;
-  font-weight: 700;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
 }
 .lp-note-seal {
   display: grid;
@@ -228,25 +248,27 @@
   place-items: center;
   width: 24px;
   height: 24px;
-  border: 2px solid var(--ink, #111);
+  border: 1.5px solid var(--shu);
   border-radius: 50%;
-  background: var(--shu, #ff4b2b);
-  color: var(--on-accent, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  background: transparent;
+  color: var(--shu);
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 12px;
   line-height: 1;
-  transform: rotate(-6deg);
+  transform: rotate(-4deg);
 }
 /* A note shown in 「みんな」 (#17). */
 .lp-note-tag {
   flex: none;
   margin-left: auto;
-  padding: 0 7px;
-  border: 2px solid var(--ink, #111);
-  border-radius: 6px;
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
+  padding: 0 8px;
+  border: 1px solid var(--accent-ink);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-size: 12px;
+  font-weight: 700;
   line-height: 1.6;
   white-space: nowrap;
 }

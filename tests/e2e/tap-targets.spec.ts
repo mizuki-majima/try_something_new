@@ -1,8 +1,9 @@
 /**
  * SPEC "Non-functional Requirements" (accessibility) and docs/design.md: tap targets are at least
  * 44px. Measured at 360px, the narrowest phone we support: the 30 cells (the stamp toggles on きょう
- * and the challenge page), every chip (genre, sort, gacha conditions, theme) and the notice band's
- * close button (#17), which must also leave the page below it and fit the width.
+ * and the challenge page), every chip (genre, sort, gacha conditions, theme), the notice band's
+ * close button (#17), which must also leave the page below it and fit the width, and (#20) the
+ * 「えらびかた」 links (レシピ / ガチャ) and the header link 「設定」.
  */
 import type { Locator, Page } from "@playwright/test";
 import { EFFECTIVE, REVISED_ON } from "../../apps/web/src/lib/legal";
@@ -36,6 +37,16 @@ test("chips are at least 44px on /recipes, /gacha and /settings", async ({ page 
     await page.goto(path);
     await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
     await expectTappable(page, "main .chip", path);
+  }
+});
+
+test("the えらびかた links on /recipes and /gacha and the header 「設定」 are at least 44px (#20)", async ({ page }) => {
+  for (const path of ["/recipes", "/gacha"]) {
+    await page.goto(path);
+    await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "えらびかた" }).getByRole("link")).toHaveCount(2);
+    await expectTappable(page, 'nav[aria-label="えらびかた"] a', path);
+    await expectTappable(page, 'header a[href="/settings"]', path);
   }
 });
 

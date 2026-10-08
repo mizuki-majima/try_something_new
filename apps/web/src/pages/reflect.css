@@ -1,4 +1,4 @@
-/* 振り返り (ReflectPage). Neo-brutalism per docs/design.md, tokens with fallbacks. */
+/* 振り返り (ReflectPage). 「白いノート」 per docs/design.md. */
 
 .rf-page {
   display: grid;
@@ -18,77 +18,84 @@
   min-width: 0;
 }
 .rf-kicker {
-  display: inline-block;
-  padding: 0 8px;
-  border: 2px solid var(--ink, #111);
-  border-radius: 6px;
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  font-size: 12px;
+  color: var(--accent-ink);
+  font-size: 14px;
   font-weight: 700;
-  transform: rotate(-2deg);
+  letter-spacing: 0.04em;
 }
 .rf-h1 {
-  margin-top: 6px;
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: clamp(20px, 5.6vw, 28px);
-  font-weight: 400;
+  margin-top: 4px;
+  font-family: var(--font-hand);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   line-height: 1.3;
+}
+@media (min-width: 760px) {
+  .rf-h1 {
+    font-size: 30px;
+  }
 }
 .rf-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 2px 12px;
   margin-top: 4px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 13px;
 }
 .rf-meta b {
-  color: var(--ink, #111);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  color: var(--ink);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 700;
 }
 
-/* 1 決める → 2 シェアする */
+/* 1 決める → 2 シェアする: handwritten numbers joined by a short line; the current step is green and bold. */
 .rf-steps {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 .rf-steps li {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 12px 3px 4px;
-  border: 2px solid var(--ink, #111);
-  border-radius: 999px;
-  background: var(--surface, #fff);
-  color: var(--muted, #4a4a4a);
+  gap: 8px;
+  color: var(--muted);
+}
+.rf-steps li + li::before {
+  content: "";
+  width: 18px;
+  height: 1px;
+  margin-right: 2px;
+  background: var(--line);
 }
 .rf-steps li span {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: var(--ink, #111);
-  color: var(--surface, #fff);
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: 12px;
-  font-weight: 400;
+  background: var(--gray-soft);
+  color: var(--ink);
+  font-family: var(--font-hand);
+  font-size: 17px; /* handwriting only at 17px and up */
+  font-weight: 600;
+  line-height: 1;
 }
 .rf-steps li[aria-current="step"] {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
+  color: var(--ink);
+  font-weight: 700;
 }
 .rf-steps li[aria-current="step"] span {
-  background: #111;
-  color: #fff;
+  background: var(--accent-ink);
+  color: var(--surface);
 }
 
 .rf-form,
@@ -97,22 +104,27 @@
   gap: 18px;
 }
 .rf-h2 {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: 22px;
-  font-weight: 400;
+  font-family: var(--font-hand);
+  font-size: 20px;
+  font-weight: 600;
   scroll-margin-top: 96px;
+}
+@media (min-width: 760px) {
+  .rf-h2 {
+    font-size: 22px;
+  }
 }
 .rf-h2:focus {
   outline: none;
 }
 .rf-early {
   padding: 10px 12px;
-  border: 2px dashed var(--ink, #111);
   border-radius: 10px;
+  background: var(--bg-2);
   font-size: 14px;
 }
 
-/* Three big verdict buttons (native radios, visually hidden). */
+/* Three big verdict choices (native radios, visually hidden). */
 .rf-verdicts {
   display: grid;
   gap: 14px;
@@ -129,23 +141,31 @@
     grid-column: 1 / -1;
   }
 }
+/* Each choice: a white card with a thin stripe of its colour on the left. */
 .rf-verdict {
+  --v-ink: var(--accent-ink);
+  --v-soft: var(--accent-soft);
   position: relative;
   display: grid;
   align-content: start;
   gap: 4px;
   min-height: 96px;
   padding: 16px 16px 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: 14px;
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  box-shadow: 5px 5px 0 var(--ink, #111);
+  border: var(--border-ctl) solid var(--line);
+  border-left: 5px solid var(--v-ink);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
-  transition:
-    transform 0.1s ease-out,
-    box-shadow 0.1s ease-out,
-    background-color 0.1s;
+  transition: background-color var(--press) ease-out;
+}
+.rf-modify {
+  --v-ink: var(--slate);
+  --v-soft: var(--mist);
+}
+.rf-stop {
+  --v-ink: var(--muted);
+  --v-soft: var(--gray-soft);
 }
 .rf-verdict input {
   position: absolute;
@@ -155,28 +175,30 @@
   pointer-events: none;
 }
 .rf-verdict b {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
-  font-size: 24px;
-  font-weight: 400;
-  line-height: 1.25;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 .rf-verdict small {
-  font-size: 13px;
-  line-height: 1.55;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
 }
 @media (hover: hover) {
   .rf-verdict:hover {
-    transform: translate(-2px, -2px);
-    box-shadow: 7px 7px 0 var(--ink, #111);
+    background: var(--bg-2);
   }
 }
 .rf-verdict:has(input:focus-visible) {
-  outline: 3px solid var(--blue, #6c8cff);
-  outline-offset: 4px;
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
 }
+/* Chosen: its soft colour, a 2px ring in its ink, and the 「これにする」 label (after the name). */
 .rf-verdict:has(input:checked) {
-  transform: translate(3px, 3px) rotate(-1deg);
-  box-shadow: 2px 2px 0 var(--ink, #111);
+  border: var(--border-strong) solid var(--v-ink);
+  border-left-width: 5px;
+  background: var(--v-soft);
 }
 .rf-verdict:has(input:checked)::after {
   content: "これにする";
@@ -184,42 +206,13 @@
   top: -12px;
   right: 10px;
   padding: 0 8px;
-  border: 2px solid #111;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fff;
-  color: #111;
-  font-size: 11px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.7;
-  transform: rotate(4deg);
-}
-.rf-continue:has(input:checked) {
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
-}
-.rf-stop:has(input:checked) {
-  background: var(--gray, #e6e1d3);
-  color: var(--ink, #111);
-}
-.rf-modify:has(input:checked) {
-  background: var(--blue, #6c8cff);
-  color: var(--on-accent, #111);
-}
-/* Colour hint before choosing: a stripe on the left. */
-.rf-continue {
-  border-left-width: 12px;
-  border-left-color: var(--mint, #3ddc97);
-}
-.rf-modify {
-  border-left-width: 12px;
-  border-left-color: var(--blue, #6c8cff);
-}
-.rf-stop {
-  border-left-width: 12px;
-  border-left-color: var(--gray, #e6e1d3);
-}
-.rf-verdict:has(input:checked) {
-  border-left-color: var(--ink, #111);
 }
 
 .rf-submit,
@@ -230,9 +223,9 @@
 }
 .rf-decide,
 .rf-gacha {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 400;
+  font-weight: 700;
 }
 .rf-next .rf-gacha {
   flex-basis: 100%;
@@ -249,10 +242,11 @@
   justify-items: start;
   gap: 10px;
   padding: 16px;
-  border: var(--border, 3px) dashed var(--ink, #111);
-  border-radius: var(--radius, 12px);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-hand);
 }
 .rf-wait-h {
-  font-family: "Dela Gothic One", var(--font-body, sans-serif);
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 18px;
 }
