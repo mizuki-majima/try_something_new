@@ -76,5 +76,13 @@ describe("ConfirmDialog", () => {
     fireEvent.click(yes());
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("alertdialog")).toBeNull();
+
+    // An opening after an armed one starts unarmed again.
+    fireEvent.click(opener);
+    fireEvent.click(yes());
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    // The ignored press keeps focus on cancel (no Enter-to-confirm afterwards).
+    expect(fireEvent.mouseDown(yes())).toBe(false);
+    expect(document.activeElement).toBe(within(dialog()).getByRole("button", { name: "やめる" }));
   });
 });

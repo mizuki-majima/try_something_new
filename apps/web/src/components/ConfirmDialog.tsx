@@ -82,6 +82,8 @@ function ConfirmActions({ cancelRef, confirmLabel, cancelLabel, danger, busy, on
         type="button"
         className={danger ? "btn danger solid" : "btn primary"}
         onClick={armed ? onConfirm : undefined}
+        // An ignored press must not move focus here either, or a later Enter would confirm.
+        onMouseDown={armed ? undefined : (e) => e.preventDefault()}
         disabled={busy}
         aria-disabled={armed ? undefined : true}
         data-arming={armed ? undefined : ""}
