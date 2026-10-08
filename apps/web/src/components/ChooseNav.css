@@ -54,6 +54,10 @@
 .choose-nav a:focus-visible {
   outline-offset: -4px;
 }
+/* The current link already has a 2px inset ring: leave a band of the soft fill between it and focus. */
+.choose-nav a[aria-current="page"]:focus-visible {
+  outline-offset: -6px;
+}
 /*
  * Forced colours drop the fill and the inset ring: the current page is bold and underlined instead,
  * which leaves the outline to keyboard focus (an outline here would hide the focus ring).
