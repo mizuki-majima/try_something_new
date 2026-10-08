@@ -6,6 +6,7 @@ import { ToastHost, ToastProvider } from "../src/components/Toast";
 import { adminRequest, getAdminToken, setAdminToken } from "../src/lib/admin";
 import { KEYS, writeString } from "../src/lib/storage";
 import AdminPage, { PILOT_PARTIAL_NOTE, actionMessage, pilotRows } from "../src/pages/AdminPage";
+import { armed } from "./confirm";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -153,7 +154,7 @@ describe("AdminPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "復元" }));
     const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "復元する" }));
+    fireEvent.click(await armed(within(dialog).getByRole("button", { name: "復元する" })));
     await waitFor(() => expect(screen.getByText("公開中")).toBeTruthy());
     const post = fetchMock.mock.calls.find(([u]) => String(u) === API.adminModerate)!;
     expect(JSON.parse(String(post[1]!.body))).toEqual({ targetType: "recipe", targetId: "r0000000000001", action: "restore" });

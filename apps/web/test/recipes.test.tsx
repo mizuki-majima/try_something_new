@@ -11,6 +11,7 @@ import type { AppActions } from "../src/lib/appStore";
 import RecipeDetailPage from "../src/pages/RecipeDetailPage";
 import RecipeNewPage, { draftFromState } from "../src/pages/RecipeNewPage";
 import RecipesPage from "../src/pages/RecipesPage";
+import { armed } from "./confirm";
 
 vi.mock("../src/features/start/StartChallengeSheet", () => ({
   StartChallengeSheet: (p: { open: boolean; recipe?: { title: string } | null; preset?: { title?: string } | null }) =>
@@ -289,7 +290,7 @@ describe("RecipeDetailPage", () => {
       </>,
     );
     fireEvent.click(await screen.findByRole("button", { name: "このレシピを削除" }));
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "削除する" }));
+    fireEvent.click(await armed(within(screen.getByRole("alertdialog")).getByRole("button", { name: "削除する" })));
     expect((await screen.findByTestId("location")).textContent).toBe("/recipes");
     const del = fetchMock.mock.calls.find(([, init]) => init?.method === "DELETE")!;
     expect(del[0]).toBe("/api/recipes/c0000000000001");

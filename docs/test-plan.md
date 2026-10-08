@@ -1,6 +1,6 @@
 # Test Plan — 30日だけ
 
-Owner: AI QA ／ 対象: SPEC v1.6 ／ 最終更新: 2026-10-08
+Owner: AI QA ／ 対象: SPEC v1.7 ／ 最終更新: 2026-10-08
 
 方針: MVP では Critical User Flow（CUF）を最優先。網羅より「CUF が壊れたら必ず CI が赤になる」こと。次に過去の不具合の回帰、最後にエッジケース。課金される外部 API はどのテストからも呼ばない（このサービスには AI も課金 API も無い。[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
@@ -43,6 +43,7 @@ npx playwright show-report               # 前回の HTML レポート
 | ファイル | テスト | SPEC |
 |---|---|---|
 | `cuf1-start-and-stamp.spec.ts` | 初回ヒーロー → レシピ一覧 →「毎日1枚、写真を撮る」→ 今日から・ニックネーム →「30日、始める」→ カード（印「写」・1日目・0/30）→「きょう（1日目）の分を押す」→ 1/30・ひとこと保存 → 再読み込みで残る → API にも印・ひとこと・ニックネーム → ひとことは既定で自分だけ（`shown` なし・「みんなに見せる」はオフ・一覧の JSON に文面なし・`GET /api/members/:id/notes` は空。#17） | CUF-1 1〜5 |
+| 同上 | 予約を今日からにする前の確認（#21）:「次の1日組」の「1日組で予約する」で次の1日に予約 → カードに「予約中」、API も次の1日 →「今日から始める」→ ダイアログ「今日から始めますか？」に「（次の1日）の1日組から外れ…」、フォーカスは「やめておく」→「やめておく」→ 予約中のまま・フォーカスはカードのボタンに戻る・送信待ち0件 → 再読み込みでも予約中、`PATCH` は0回、API も次の1日 → カードの「今日から始める」を続けて2回タップ（2回目は、現れかけのダイアログの「今日から始める」の位置。そのボタンに `aria-disabled` が付いている間に当たったことも確かめる）→ ダイアログは開いたまま・予約中・`PATCH` 0回・送信待ち0件 → ダイアログの「今日から始める」→ 1日目・きょうの印のボタンにフォーカス・同期済み・`PATCH` はちょうど1回・API の開始日が今日 | FR-3 |
 | `cuf1-offline-stamp.spec.ts` | オフラインで押す →「オフライン・あとで同期」・送信待ち1件・サーバは未保存 → 復帰で「同期済み」とサーバ保存 | CUF-1 E |
 | 同上 | API が 503 の間に押す → 画面に残り「オフライン・あとで同期」→ API 復旧後の再送で保存 | CUF-1 E |
 | 同上 | Service Worker あり: 一度開いたあとオフラインで再読み込み（SW から配信）→「きょう」と公式レシピが開け、オフラインの印が復帰後に同期 | FR-20 |
@@ -109,6 +110,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 | ケース | どこで確かめるか |
 |---|---|
 | アラームが TLS のみの SNS トピックに Publish できる（`enforceSSL` が既定のポリシーを置き換えても。#6） | `infra/test/stack.test.ts` "lets this account's CloudWatch alarms publish…"、本番では Live smoke の `set-alarm-state` のテスト |
+| 予約を今日からに変えるのは確認のあとだけ（#21）: きょうのカードの「今日から始める」と編集の「今日から」の保存。文言は3通り（1日の予約は「N月1日の1日組から外れます。」、今日も1日なら「…から外れて、今日（…）の1日組で始めます。」、1日でない予約は「予約していたN月D日ではなく、今日から始めます。」）。「やめておく」・Esc は何も送らず送信待ちにも入れない（編集では選択が予約に戻り、シートは開いたまま。Esc は確認だけを閉じる）。「今日から始める」は `PATCH` 1回（編集では題名などと一緒に1回）。題名だけの編集や1日組への変更は聞かない。カードのボタンを続けて2回押しても決まらない（確認の実行ボタンは開いてから `CONFIRM_ARM_MS`＝400ms は押しても何もしない。フェイクタイマーで、すぐ押す → 送信待ち0件、399ms → 0件、400ms → ちょうど1件）。削除などほかの確認も同じ（開くたびに数え直す。キャンセル・Esc はすぐ効く） | `apps/web/test/today.test.tsx` "予約を今日からにする前に確かめる (#21)"（7件）, "shows a reservation that can start today instead, after asking (#21)"；`apps/web/test/confirm-dialog.test.tsx`；E2E `cuf1-start-and-stamp`（2件目、2回続けてタップ） |
 | 未来の日は押せない／押し忘れた過去の日は押せる／30日を過ぎたら 30 まで | `apps/web/test/today.test.tsx` "toggles a past day…", `apps/api/test/challenges.test.ts` "stamps" |
 | 端末と API の日付のずれ（今日 +1 日まで受け付ける）・タイムゾーン・DST | `apps/api/test/challenges.test.ts`, `apps/api/test/reminder.test.ts` "…DST…", `packages/shared/test/` |
 | 同時に開けるのは5件、1日10件の作成上限、同じ id の再送は数えない | `apps/api/test/challenges.test.ts` "creation quota…", `apps/web/test/start.test.tsx` "explains the limit when 5 challenges are open" |

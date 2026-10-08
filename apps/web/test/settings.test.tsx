@@ -8,6 +8,7 @@ import { PROFILE_LIMIT_MESSAGE, type AppActions, type AppSnapshot, type AppStore
 import { KEYS, writeString } from "../src/lib/storage";
 import { AppProvider } from "../src/lib/store";
 import SettingsPage, { REMINDER_TIMES, importErrorMessage, importResultMessage, readBackupFile } from "../src/pages/SettingsPage";
+import { armed } from "./confirm";
 
 const photos = vi.hoisted(() => ({ clearAllPhotos: vi.fn(async () => {}) }));
 vi.mock("../src/lib/photos", () => photos);
@@ -262,7 +263,7 @@ describe("SettingsPage — transfer", () => {
     fireEvent.change(screen.getByLabelText("引き継ぎコード（8文字）"), { target: { value: "ab12-cd34" } });
     fireEvent.click(screen.getByRole("button", { name: "引き継ぐ" }));
     const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "置き換えて引き継ぐ" }));
+    fireEvent.click(await armed(within(dialog).getByRole("button", { name: "置き換えて引き継ぐ" })));
     await waitFor(() => expect(actions.restoreWithCode).toHaveBeenCalledWith("ab12-cd34"));
     await screen.findByText("HOME");
   });
@@ -299,7 +300,7 @@ describe("SettingsPage — backup import", () => {
     await act(async () => {
       fireEvent.change(screen.getByLabelText("バックアップファイル"), { target: { files: [file(JSON.stringify({ ...BACKUP, challenges: [CHALLENGE] }))] } });
     });
-    fireEvent.click(await screen.findByRole("button", { name: "読み込む" }));
+    fireEvent.click(await armed(await screen.findByRole("button", { name: "読み込む" })));
     expect((await screen.findByRole("alert")).textContent).toBe("読み込み中です。少し待ってから、もう一度お試しください。");
     expect(fetchMock.mock.calls.filter(([u]) => String(u) === API.meImport)).toHaveLength(1);
     expect(actions.refresh).not.toHaveBeenCalled();
@@ -328,7 +329,7 @@ describe("SettingsPage — backup import", () => {
     await act(async () => {
       fireEvent.change(screen.getByLabelText("バックアップファイル"), { target: { files: [file(JSON.stringify({ ...BACKUP, challenges: [CHALLENGE] }))] } });
     });
-    fireEvent.click(await screen.findByRole("button", { name: "読み込む" }));
+    fireEvent.click(await armed(await screen.findByRole("button", { name: "読み込む" })));
     expect(await screen.findByText("1件を読み込みました（長すぎるひとこと1件は読み込みませんでした）")).toBeTruthy();
     await waitFor(() => expect(actions.refresh).toHaveBeenCalled());
   });
@@ -362,7 +363,7 @@ describe("SettingsPage — delete everything", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "すべてのデータを削除" }));
     const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "削除する" }));
+    fireEvent.click(await armed(within(dialog).getByRole("button", { name: "削除する" })));
     expect(await within(dialog).findByText("「削除」と入力すると削除できます")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(actions.resetLocal).not.toHaveBeenCalled();
@@ -385,7 +386,7 @@ describe("SettingsPage — delete everything", () => {
     fireEvent.click(screen.getByRole("button", { name: "すべてのデータを削除" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.change(within(dialog).getByLabelText(/確認のため/), { target: { value: "削除" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "削除する" }));
+    fireEvent.click(await armed(within(dialog).getByRole("button", { name: "削除する" })));
     expect(await within(dialog).findByText(/削除できませんでした/)).toBeTruthy();
     expect(actions.resetLocal).not.toHaveBeenCalled();
     expect(photos.clearAllPhotos).not.toHaveBeenCalled();

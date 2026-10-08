@@ -17,6 +17,7 @@ import { EmptyState, Loading } from "../components/States";
 import { useToast } from "../components/Toast";
 import { VerdictBadge } from "../features/share/VerdictBadge";
 import { SealField } from "../features/start/SealField";
+import { StartTodayConfirm, movesReservationToToday } from "../features/start/StartTodayConfirm";
 import { downloadIcs, googleCalendarUrl, reminderSchedule, type ReminderEvent } from "../lib/calendar";
 import { viewChallenge, type ChallengeView } from "../lib/challenge";
 import { usePageTitle } from "../lib/hooks";
@@ -589,10 +590,17 @@ function EditForm({ onClose, c, today, v }: { onClose: () => void; c: Challenge;
   const [startDate, setStartDate] = useState(c.startDate);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  // Saving 「今日から」 for a reservation asks first: it leaves the reserved day's group (#21).
+  const [confirmStart, setConfirmStart] = useState(false);
+  if (confirmStart && v.phase !== "waiting") setConfirmStart(false);
   const fallback = firstGrapheme(title.trim());
 
   function submit(e: FormEvent) {
     e.preventDefault();
+    save(false);
+  }
+
+  function save(startConfirmed: boolean) {
     const patch: { title?: string; seal?: string; startDate?: string } = {};
     if (title !== c.title) patch.title = title;
     const sealValue = seal.trim() || fallback;
@@ -600,6 +608,10 @@ function EditForm({ onClose, c, today, v }: { onClose: () => void; c: Challenge;
     if (v.phase === "waiting" && startDate !== c.startDate) patch.startDate = startDate;
     if (Object.keys(patch).length === 0) {
       onClose();
+      return;
+    }
+    if (!startConfirmed && movesReservationToToday(c.startDate, patch.startDate, today)) {
+      setConfirmStart(true);
       return;
     }
     const r = updateChallenge(c.id, patch);
@@ -613,37 +625,53 @@ function EditForm({ onClose, c, today, v }: { onClose: () => void; c: Challenge;
   }
 
   return (
-    <form className="st-form" onSubmit={submit} noValidate>
-      <TextField label="チャレンジ名" value={title} onChange={setTitle} max={LIMITS.challengeTitle} error={errors.title} autoComplete="off" />
-      <SealField value={seal} onChange={setSeal} fallback={fallback} error={errors.seal} />
-      {v.phase === "waiting" && (
-        <fieldset className="st-when">
-          <legend>いつから</legend>
-          <label className="st-radio">
-            <input type="radio" name={`${uid}-when`} checked={startDate === today} onChange={() => setStartDate(today)} />
-            <span>
-              <b>今日から</b>
-              <small>{jpPeriod(today)}</small>
-            </span>
-          </label>
-          <label className="st-radio">
-            <input type="radio" name={`${uid}-when`} checked={startDate === nf} onChange={() => setStartDate(nf)} />
-            <span>
-              <b>{jpDate(nf)}から（1日組）</b>
-              <small>同じ日に始める仲間と並びます · {jpPeriod(nf)}</small>
-            </span>
-          </label>
-          {errors.startDate && <span className="field-err">{errors.startDate}</span>}
-        </fieldset>
-      )}
-      {formError && (
-        <p className="st-error" role="alert">
-          {formError}
-        </p>
-      )}
-      <button type="submit" className="btn primary lg st-submit">
-        保存する
-      </button>
-    </form>
+    <>
+      <form className="st-form" onSubmit={submit} noValidate>
+        <TextField label="チャレンジ名" value={title} onChange={setTitle} max={LIMITS.challengeTitle} error={errors.title} autoComplete="off" />
+        <SealField value={seal} onChange={setSeal} fallback={fallback} error={errors.seal} />
+        {v.phase === "waiting" && (
+          <fieldset className="st-when">
+            <legend>いつから</legend>
+            <label className="st-radio">
+              <input type="radio" name={`${uid}-when`} checked={startDate === today} onChange={() => setStartDate(today)} />
+              <span>
+                <b>今日から</b>
+                <small>{jpPeriod(today)}</small>
+              </span>
+            </label>
+            <label className="st-radio">
+              <input type="radio" name={`${uid}-when`} checked={startDate === nf} onChange={() => setStartDate(nf)} />
+              <span>
+                <b>{jpDate(nf)}から（1日組）</b>
+                <small>同じ日に始める仲間と並びます · {jpPeriod(nf)}</small>
+              </span>
+            </label>
+            {errors.startDate && <span className="field-err">{errors.startDate}</span>}
+          </fieldset>
+        )}
+        {formError && (
+          <p className="st-error" role="alert">
+            {formError}
+          </p>
+        )}
+        <button type="submit" className="btn primary lg st-submit">
+          保存する
+        </button>
+      </form>
+      <StartTodayConfirm
+        open={confirmStart}
+        reservedStart={c.startDate}
+        today={today}
+        onConfirm={() => {
+          setConfirmStart(false);
+          save(true);
+        }}
+        onCancel={() => {
+          // 「やめておく」 keeps the reservation: the choice goes back to it, nothing is saved.
+          setConfirmStart(false);
+          setStartDate(c.startDate);
+        }}
+      />
+    </>
   );
 }
