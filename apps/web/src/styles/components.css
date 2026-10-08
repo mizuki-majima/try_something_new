@@ -629,9 +629,10 @@ main.wrap:focus {
   background: var(--shu-soft);
   color: var(--shu-ink);
 }
-/* Doubled class: wins over every variant (.btn.danger.solid included). */
+/* Doubled class: wins over every variant (.btn.danger.solid included). A confirm dialog's button that
+   is still arming (data-arming, its first 400ms) ignores presses but keeps its look: no grey flash. */
 .btn.btn:disabled,
-.btn.btn[aria-disabled="true"] {
+.btn.btn[aria-disabled="true"]:not([data-arming]) {
   border-style: dashed;
   border-color: var(--line);
   background: var(--gray-soft);

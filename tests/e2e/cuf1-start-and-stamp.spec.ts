@@ -1,7 +1,8 @@
 /**
  * CUF-1 steps 1–5 (SPEC "Critical User Flow"): first visit → recipe → start → stamp day 1 →
  * reload, and the stamp is on the server. The day's ひとこと stays private (#17: shown only by choice).
- * A reservation for the next 1st starts today only after asking (#21: it leaves that 1日組).
+ * A reservation for the next 1st starts today only after asking (#21: it leaves that 1日組), and a
+ * double tap on 「今日から始める」 does not answer the question it opens.
  */
 import { jpDate, nextFirst } from "@thirty/shared";
 import { expect, getChallenges, getCohort, getMe, getMemberNotes, syncStatus, test, thisMonth, today, uniqueNickname, waitForToken } from "./fixtures";
@@ -87,7 +88,7 @@ test("CUF-1: start 「毎日1枚、写真を撮る」 from the recipe and stamp 
   expect((await getMe(request, token)).user.nickname).toBe(nickname);
 });
 
-test("#21: a reservation for the next 1st starts today only after asking; やめておく keeps it", async ({ page, request }) => {
+test("#21: a reservation for the next 1st starts today only after asking; やめておく keeps it", async ({ page, request, hasTouch }) => {
   const RESERVED = "朝に白湯を飲む";
   const nf = nextFirst(today());
   const patches: string[] = [];
@@ -115,9 +116,13 @@ test("#21: a reservation for the next 1st starts today only after asking; やめ
   // 「今日から始める」 asks first and names the 1日組 it leaves; やめておく sends and queues nothing.
   const startToday = card.getByRole("button", { name: "今日から始める" });
   const confirm = page.getByRole("alertdialog", { name: "今日から始めますか？" });
+  const confirmButton = confirm.getByRole("button", { name: "今日から始める" });
   await startToday.click();
   await expect(confirm).toContainText(`${jpDate(nf)}の1日組から外れ`);
   await expect(confirm.getByRole("button", { name: "やめておく" })).toBeFocused();
+  // Where the dialog's 「今日から始める」 sits once it has appeared (and takes presses), for the double tap below.
+  await expect(confirmButton).toBeEnabled();
+  const confirmAt = center((await confirmButton.boundingBox())!);
   await confirm.getByRole("button", { name: "やめておく" }).click();
   await expect(confirm).toBeHidden();
   await expect(card.getByText("予約中", { exact: true })).toBeVisible();
@@ -131,9 +136,37 @@ test("#21: a reservation for the next 1st starts today only after asking; やめ
   expect(patches).toEqual([]);
   expect((await getChallenges(request, token))[0]!.startDate).toBe(nf);
 
-  // 「今日から始める」 in the dialog: one PATCH, and today's stamp button is next.
-  await startToday.click();
-  await confirm.getByRole("button", { name: "今日から始める" }).click();
+  // A double tap on the card's 「今日から始める」 whose second tap lands on the dialog's 「今日から始める」
+  // while the dialog is still appearing: that press is ignored, so the question stays and nothing is sent.
+  await page.evaluate(() => {
+    const w = window as unknown as { taps: { inDialog: boolean; label: string; ariaDisabled: string | null }[] };
+    w.taps = [];
+    document.addEventListener(
+      "click",
+      (e) => {
+        const b = (e.target as Element).closest("button");
+        if (b) w.taps.push({ inDialog: !!b.closest("[role=alertdialog]"), label: b.textContent ?? "", ariaDisabled: b.getAttribute("aria-disabled") });
+      },
+      true,
+    );
+  });
+  await startToday.click({ trial: true }); // scrolled into view, and nothing covers its centre
+  const openerAt = center((await startToday.boundingBox())!);
+  const tap = ({ x, y }: { x: number; y: number }) => (hasTouch ? page.touchscreen.tap(x, y) : page.mouse.click(x, y));
+  await tap(openerAt);
+  await tap(confirmAt);
+  expect(await page.evaluate(() => (window as unknown as { taps: unknown[] }).taps)).toEqual([
+    { inDialog: false, label: "今日から始める", ariaDisabled: null },
+    { inDialog: true, label: "今日から始める", ariaDisabled: "true" },
+  ]);
+  await expect(confirmButton).toBeEnabled();
+  await expect(confirm).toBeVisible();
+  await expect(card.getByText("予約中", { exact: true })).toBeVisible();
+  expect(patches).toEqual([]);
+  expect(await queued()).toBe(0);
+
+  // 「今日から始める」 in the dialog, now that it has been seen: one PATCH, and today's stamp button is next.
+  await confirmButton.click();
   await expect(confirm).toBeHidden();
   await expect(card.getByText("1日目", { exact: true })).toBeVisible();
   await expect(card.getByText("予約中", { exact: true })).toBeHidden();
@@ -142,3 +175,7 @@ test("#21: a reservation for the next 1st starts today only after asking; やめ
   expect(patches).toHaveLength(1);
   expect((await getChallenges(request, token))[0]!.startDate).toBe(today());
 });
+
+function center(box: { x: number; y: number; width: number; height: number }): { x: number; y: number } {
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}

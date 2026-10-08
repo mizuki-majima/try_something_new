@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { API, addDays, jpDate, nextFirst, todayIn, type Challenge } from "@thirty/shared";
 import { ToastHost, ToastProvider } from "../src/components/Toast";
+import { CONFIRM_ARM_MS } from "../src/components/ConfirmDialog";
 import { START_TODAY_TITLE, movesReservationToToday, startTodayMessage } from "../src/features/start/StartTodayConfirm";
 import { createAppStore } from "../src/lib/appStore";
 import type { OutboxItem } from "../src/lib/outbox";
@@ -12,6 +13,7 @@ import { AppProvider } from "../src/lib/store";
 import ChallengePage, { challengeBackLink } from "../src/pages/ChallengePage";
 import LogPage from "../src/pages/LogPage";
 import TodayPage from "../src/pages/TodayPage";
+import { armed } from "./confirm";
 
 const today = todayIn(deviceTimeZone());
 
@@ -157,7 +159,7 @@ describe("TodayPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "取り消す" }));
     const dialog = screen.getByRole("alertdialog");
     expect(dialog.textContent).toContain("朝の光");
-    fireEvent.click(screen.getAllByRole("button", { name: "取り消す" }).find((b) => dialog.contains(b))!);
+    fireEvent.click(await armed(screen.getAllByRole("button", { name: "取り消す" }).find((b) => dialog.contains(b))!));
     expect(await screen.findByRole("button", { name: "きょう（1日目）の分を押す" })).toBeTruthy();
     expect(store.getSnapshot().challenges[0]!.stamps["1"]).toBeUndefined();
   });
@@ -186,8 +188,9 @@ describe("TodayPage", () => {
     expect(screen.queryByRole("button", { name: /の分を押す/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "今日から始める" }));
     const dialog = screen.getByRole("alertdialog", { name: "今日から始めますか？" });
+    const yes = await armed(within(dialog).getByRole("button", { name: "今日から始める" }));
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole("button", { name: "今日から始める" }));
+      fireEvent.click(yes);
     });
     expect(store.getSnapshot().challenges[0]!.startDate).toBe(today);
     expect(await screen.findByRole("button", { name: "きょう（1日目）の分を押す" })).toBeTruthy();
@@ -329,11 +332,11 @@ describe("ChallengePage", () => {
     expect(store.getSnapshot().challenges[0]).toMatchObject({ title: "毎日2枚、写真を撮る", seal: "撮" });
   });
 
-  it("deletes after confirmation and goes back to きょう", () => {
+  it("deletes after confirmation and goes back to きょう", async () => {
     const store = renderAt("/c/abc123def4567890", [ch({})]);
     fireEvent.click(screen.getByRole("button", { name: "このチャレンジを削除" }));
     const dialog = screen.getByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "削除する" }));
+    fireEvent.click(await armed(within(dialog).getByRole("button", { name: "削除する" })));
     expect(store.getSnapshot().challenges).toHaveLength(0);
     expect(screen.getByTestId("where").textContent).toBe("/");
   });
@@ -784,7 +787,7 @@ describe("ひとこと: みんなに見せる (#17)", () => {
     fireEvent.click(screen.getByRole("button", { name: undo }));
     const confirm = screen.getByRole("alertdialog");
     expect(confirm.textContent).toContain("みんなに見せているひとことも消えます。");
-    fireEvent.click(within(confirm).getByRole("button", { name: "取り消す" }));
+    fireEvent.click(await armed(within(confirm).getByRole("button", { name: "取り消す" })));
     expect(await screen.findByText("印を取り消しました。見せていたひとことは、送信が終わるまで「みんな」に見えています。")).toBeTruthy();
   });
 
@@ -797,7 +800,7 @@ describe("ひとこと: みんなに見せる (#17)", () => {
     const store = renderNotes(path, [c], { online: true, token: true });
     await waitFor(() => expect(api.calls.some((x) => x.url === API.challenges)).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: undo }));
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "取り消す" }));
+    fireEvent.click(await armed(within(screen.getByRole("alertdialog")).getByRole("button", { name: "取り消す" })));
     await waitFor(() => expect(api.calls.some((x) => x.method === "DELETE")).toBe(true));
     await waitFor(() => expect(store.getSnapshot().stillShown).toEqual([]));
     // The switch went with the stamp: the note was taken back beside the queue, without waiting for the undo.
@@ -813,7 +816,7 @@ describe("ひとこと: みんなに見せる (#17)", () => {
     const store = renderNotes("/c/abc123def4567890", [c], { online: true, token: true });
     await waitFor(() => expect(api.calls.some((x) => x.url === API.challenges)).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "この日の印を取り消す" }));
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "取り消す" }));
+    fireEvent.click(await armed(within(screen.getByRole("alertdialog")).getByRole("button", { name: "取り消す" })));
     await waitFor(() => expect(api.calls.some((x) => x.method === "DELETE")).toBe(true));
     await waitFor(() => expect(store.getSnapshot().pending).toBe(0));
     expect(store.getSnapshot().stillShown).toEqual([]);
@@ -980,8 +983,9 @@ describe("予約を今日からにする前に確かめる (#21)", () => {
     expect(queued()).toEqual([]);
 
     fireEvent.click(startTodayOnCard());
+    const yes = await armed(within(dialog()).getByRole("button", { name: "今日から始める" }));
     await act(async () => {
-      fireEvent.click(within(dialog()).getByRole("button", { name: "今日から始める" }));
+      fireEvent.click(yes);
     });
     expect(store.getSnapshot().challenges[0]!.startDate).toBe(today);
     expect(queued().map((i) => i.op)).toEqual([{ kind: "challenge.patch", id: "abc123def4567890", body: { startDate: today } }]);
@@ -1002,10 +1006,44 @@ describe("予約を今日からにする前に確かめる (#21)", () => {
     expect(store.getSnapshot().challenges[0]!.startDate).toBe(nf);
 
     fireEvent.click(startTodayOnCard());
-    fireEvent.click(within(dialog()).getByRole("button", { name: "今日から始める" }));
+    fireEvent.click(await armed(within(dialog()).getByRole("button", { name: "今日から始める" })));
     await waitFor(() => expect(store.getSnapshot().pending).toBe(0));
     expect(api.patches).toEqual([{ startDate: today }]);
     expect(store.getSnapshot().challenges[0]!.startDate).toBe(today);
+  });
+
+  it("a double tap on 「今日から始める」 does not start today: the dialog's button ignores presses at first", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const store = renderPage("/", [ch({ startDate: nf })]);
+      startTodayOnCard().focus();
+      // The second tap lands on the dialog's 「今日から始める」 as soon as it opens (#21 review).
+      fireEvent.click(startTodayOnCard());
+      const yes = within(dialog()).getByRole("button", { name: "今日から始める" });
+      expect(yes.getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(yes);
+      expect(dialog()).toBeTruthy();
+      expect(store.getSnapshot().challenges[0]!.startDate).toBe(nf);
+      expect(queued()).toEqual([]);
+
+      // Still ignored just before CONFIRM_ARM_MS; focus stays on やめておく (aria-disabled, not disabled).
+      act(() => vi.advanceTimersByTime(CONFIRM_ARM_MS - 1));
+      fireEvent.click(yes);
+      expect(queued()).toEqual([]);
+      expect(document.activeElement).toBe(within(dialog()).getByRole("button", { name: "やめておく" }));
+
+      // From then on a press is taken: exactly one op.
+      act(() => vi.advanceTimersByTime(1));
+      expect(yes.getAttribute("aria-disabled")).toBeNull();
+      act(() => {
+        fireEvent.click(yes);
+      });
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(store.getSnapshot().challenges[0]!.startDate).toBe(today);
+      expect(queued().map((i) => i.op)).toEqual([{ kind: "challenge.patch", id: "abc123def4567890", body: { startDate: today } }]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a reservation that is not on a 1st names the day it replaces", () => {
@@ -1055,8 +1093,9 @@ describe("予約を今日からにする前に確かめる (#21)", () => {
     // 今日から again, and this time start: one PATCH with both changes.
     fireEvent.click(fromToday);
     fireEvent.click(within(sheet).getByRole("button", { name: "保存する" }));
+    const yes = await armed(within(dialog()).getByRole("button", { name: "今日から始める" }));
     await act(async () => {
-      fireEvent.click(within(dialog()).getByRole("button", { name: "今日から始める" }));
+      fireEvent.click(yes);
     });
     expect(screen.queryByRole("dialog", { name: "チャレンジを編集" })).toBeNull();
     expect(store.getSnapshot().challenges[0]).toMatchObject({ startDate: today, title: "毎日2枚、写真を撮る" });
