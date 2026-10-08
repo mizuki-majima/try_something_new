@@ -23,7 +23,7 @@ PILOT:
 - [ ] 2026-11-01: 同じく本番のログで参加者の操作と 4xx / 5xx を確かめ、CEO が参加者に「同期済み」かを聞く。最初の1週間はリマインドの送信数も（#8）
 - [ ] iPhone: Safari で予約した記録がホーム画面アプリに出ない件の画面での案内（[#15](https://github.com/mizuki-majima/try_something_new/issues/15)、P1）。11/1 より前に入れるかを AI PM が判断し、入れないなら招待文の補足で代える
 - [ ] PILOT 中: 機能は足さない。バグと運用だけ直す（例外: CEO の依頼で「みんな」の「詳しく見る」を追加。[#16](https://github.com/mizuki-majima/try_something_new/issues/16)。CEO の承認で、本人が選んだひとことメモを「詳しく見る」に出す。[#17](https://github.com/mizuki-majima/try_something_new/issues/17)）。週次レビューで管理画面の指標・AWS の請求・ログを見る
-- [ ] ひとことメモを、本人が「みんなに見せる」を選んだものだけ「みんな」に出す（[#17](https://github.com/mizuki-majima/try_something_new/issues/17)、[ADR 0007](docs/decisions/0007-opt-in-public-notes.md)）: ① 利用規約とプライバシーポリシーの改定を画面で知らせる（改定日 2026-10-07、適用日 2026-10-10。動作は変えない）→ ② 適用日以降に機能をマージしてデプロイし、デプロイの前後で参加者のデータの件数が変わらないことを確かめる。適用日は CEO の選択待ち（A 10/10・B 10/14）
+- [ ] ひとことメモを、本人が「みんなに見せる」を選んだものだけ「みんな」に出す（[#17](https://github.com/mizuki-majima/try_something_new/issues/17)、[ADR 0007](docs/decisions/0007-opt-in-public-notes.md)）: ① 利用規約とプライバシーポリシーの改定を画面で知らせる（改定日 2026-10-08、適用日 2026-10-11。動作は変えない）→ ② 適用日以降に機能をマージしてデプロイし、デプロイの前後で参加者のデータの件数が変わらないことを確かめる。適用日は 2026-10-08 に CEO が選んだ（3日前の告知）
 
 ## Next
 

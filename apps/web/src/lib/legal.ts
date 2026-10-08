@@ -5,13 +5,14 @@
  * #17 (ADR 0007): the revision that lets an owner show a chosen day note in 「みんな」. The Terms
  * (「規約の変更」) promise to show the new text and the day it takes effect on screen before that day,
  * so this notice ships first (no behaviour change) and the feature is deployed on or after
- * EFFECTIVE_ON. The effective date is pending the CEO's choice (A 2026-10-10 / B 2026-10-14).
+ * EFFECTIVE_ON. The CEO chose 3 days' notice (2026-10-08), counted from the day the notice reached
+ * production.
  */
 import { addDays, type DateStr } from "@thirty/shared";
 
 export const ENACTED_ON: DateStr = "2026-10-06";
-export const REVISED_ON: DateStr = "2026-10-07";
-export const EFFECTIVE_ON: DateStr = "2026-10-10";
+export const REVISED_ON: DateStr = "2026-10-08";
+export const EFFECTIVE_ON: DateStr = "2026-10-11";
 
 /** The notice band goes away by itself this many days after EFFECTIVE_ON. */
 export const NOTICE_DAYS = 14;

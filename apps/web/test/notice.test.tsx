@@ -57,12 +57,12 @@ afterEach(() => {
 
 describe("the legal dates", () => {
   it("are written once, revised before they apply, with at least 3 days' notice", () => {
-    expect(REVISED_ON).toBe("2026-10-07");
-    // Pending the CEO: A 2026-10-10 / B 2026-10-14 (ADR 0007). Change EFFECTIVE_ON in lib/legal.ts only.
-    expect(["2026-10-10", "2026-10-14"]).toContain(EFFECTIVE_ON);
+    expect(REVISED_ON).toBe("2026-10-08");
+    // The CEO chose 3 days' notice from the day the notice reached production (ADR 0007).
+    expect(EFFECTIVE_ON).toBe("2026-10-11");
     expect(diffDays(REVISED_ON, EFFECTIVE_ON)).toBeGreaterThanOrEqual(3);
     expect(NOTICE_HIDDEN_FROM).toBe(addDays(EFFECTIVE_ON, 14));
-    expect([ENACTED, REVISED, EFFECTIVE]).toEqual(["2026年10月6日", "2026年10月7日", jpFullDate(EFFECTIVE_ON)]);
+    expect([ENACTED, REVISED, EFFECTIVE]).toEqual(["2026年10月6日", "2026年10月8日", jpFullDate(EFFECTIVE_ON)]);
     expect(jpFullDate("2026-10-14")).toBe("2026年10月14日");
     expect(jpFullDate("2027-01-05")).toBe("2027年1月5日");
   });

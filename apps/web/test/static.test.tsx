@@ -7,7 +7,7 @@ import { Layout } from "../src/components/Layout";
 import { ToastProvider } from "../src/components/Toast";
 import { resumeText } from "../src/components/OfflineBanner";
 import { createAppStore, type AppActions, type AppSnapshot, type AppStore } from "../src/lib/appStore";
-import { EFFECTIVE } from "../src/lib/legal";
+import { EFFECTIVE, REVISED } from "../src/lib/legal";
 import { clearSession, getToken } from "../src/lib/session";
 import { AppProvider } from "../src/lib/store";
 import AboutPage from "../src/pages/AboutPage";
@@ -82,8 +82,8 @@ describe("TermsPage", () => {
   it("#17: dates the revision (改定日・適用日) and says, from that day, only day notes their owner chose are public", () => {
     renderPage(<TermsPage />);
     const text = document.body.textContent ?? "";
-    expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 2026年10月7日（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
-    expect(text).toContain(`2026年10月6日 制定 ／ 2026年10月7日 改定（${EFFECTIVE}から適用）`);
+    expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 ${REVISED}（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
+    expect(text).toContain(`2026年10月6日 制定 ／ ${REVISED} 改定（${EFFECTIVE}から適用）`);
 
     const notice = screen.getByRole("region", { name: "改定のお知らせ" });
     expect(notice.textContent).toBe(
@@ -149,8 +149,8 @@ describe("PrivacyPage", () => {
   it("#17: dates the revision and says what is stored and public for a day note its owner chose to show", () => {
     renderPage(<PrivacyPage />);
     const text = document.body.textContent ?? "";
-    expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 2026年10月7日（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
-    expect(text).toContain(`2026年10月6日 制定 ／ 2026年10月7日 改定（${EFFECTIVE}から適用）`);
+    expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 ${REVISED}（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
+    expect(text).toContain(`2026年10月6日 制定 ／ ${REVISED} 改定（${EFFECTIVE}から適用）`);
 
     const notice = screen.getByRole("region", { name: "改定のお知らせ" });
     expect(notice.textContent).toBe(
