@@ -24,6 +24,7 @@ import type { DbDeps, Deps } from "../ports";
 import { excerpt } from "../share-page";
 import { challengeKey, reportKey, reporterKey, reportListGsi1, authorPk, userPk } from "./keys";
 import { cohortProjection, getChallengeItem, getChallengeOwner, toChallenge } from "./challenges";
+import { consentedNotes } from "./notes";
 import {
   deleteRecipeAndStories,
   deleteStoryItem,
@@ -48,6 +49,8 @@ export const MAX_REPORT_REASONS = 10;
 /** Items returned by GET /api/admin/reports. */
 export const MAX_LISTED_REPORTS = 100;
 const PREVIEW_LENGTH = 60;
+/** A member's preview also carries the day notes the owner chose to show (#17). */
+const MEMBER_PREVIEW_LENGTH = 200;
 
 export type Target = {
   type: ReportTargetType;
@@ -94,7 +97,10 @@ export async function resolveTarget(deps: D, type: ReportTargetType, rawId: stri
   }
 }
 
-/** Short text for the admin list. */
+/**
+ * Short text for the admin list. A member's shows the day notes the owner chose to show, even while
+ * moderation hides it (so the moderator reads what was reported before a restore), and never the others.
+ */
 export function targetPreview(t: Target): string {
   const s = (v: unknown) => (typeof v === "string" ? v : "");
   const i = t.item;
@@ -105,8 +111,10 @@ export function targetPreview(t: Target): string {
       return excerpt(s(i.body), PREVIEW_LENGTH);
     case "share":
       return excerpt(`${s(i.nickname)}「${s(i.title)}」 ${s(i.reflection)}`, PREVIEW_LENGTH);
-    case "member":
-      return excerpt(`${s(i.nickname)}「${s(i.title)}」`, PREVIEW_LENGTH);
+    case "member": {
+      const notes = consentedNotes(i).map((n) => `${n.day}日目：${n.note}`);
+      return excerpt(`${s(i.nickname)}「${s(i.title)}」${notes.length ? ` ${notes.join(" ／ ")}` : ""}`, MEMBER_PREVIEW_LENGTH);
+    }
   }
 }
 

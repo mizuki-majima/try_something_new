@@ -456,6 +456,29 @@ describe("ownership", () => {
     expect((await patch(other, "nosuchchallenge1", { title: "x" })).status).toBe(404);
     expect((await patch(other, "BAD!", { title: "x" })).status).toBe(400);
   });
+
+  it("answers 404 on the visibility route too (#17): someone else cannot show or hide a note, and never sees it", async () => {
+    const owner = await api.createSession("持ち主");
+    const other = await api.createSession("他人");
+    const c = await create(owner);
+    await stamp(owner, c.id, 1, { note: "本人のメモ" });
+    const visibility = (s: SessionResponse, id: string, body: unknown) =>
+      api.request(`/api/challenges/${id}/stamps/1/visibility`, { method: "PUT", token: s.token, body });
+
+    const responses = [
+      await visibility(other, c.id, { show: true, note: "本人のメモ" }),
+      await visibility(other, c.id, { show: false }),
+      await visibility(other, "nosuchchallenge1", { show: true, note: "本人のメモ" }),
+      await visibility(other, "nosuchchallenge1", { show: false }),
+    ];
+    for (const res of responses) {
+      expect(res.status).toBe(404);
+      expect(JSON.stringify(await res.json())).not.toContain("本人のメモ");
+    }
+    expect((await visibility(other, "BAD!", { show: false })).status).toBe(400);
+    expect((await list(owner)).challenges[0]!.stamps).toEqual({ "1": { at: api.clock.now().getTime(), note: "本人のメモ" } });
+    expect(JSON.stringify(await getItem(`USER#${owner.user.id}`, `CH#${c.id}`))).not.toContain("shownNote");
+  });
 });
 
 describe("stamps", () => {

@@ -222,12 +222,14 @@ function ProfileSection({ user, updateMe, limitedUntil }: ProfileProps) {
         </label>
         <div id="share-explain" className="set-explain">
           <p>
-            <b>表示されるもの：</b>ニックネーム、チャレンジのタイトルと印、印を押した日（30マス）、振り返りの判定、応援の数
+            <b>表示されるもの：</b>ニックネーム、チャレンジのタイトルと印、印を押した日（30マス）、振り返りの判定、応援の数、「みんなに見せる」を選んだひとことメモ
           </p>
           <p>
-            <b>表示されないもの：</b>ひとことメモ、写真、振り返りのひとこと
+            <b>表示されないもの：</b>選んでいないひとことメモ、写真、振り返りのひとこと
           </p>
-          <p className="note">オフにすると、「みんな」の1日組の一覧から消えます。</p>
+          <p className="note">
+            オフにすると、「みんな」の1日組の一覧から消えます（見せていたひとことも表示されなくなります）。オンに戻すと、「みんなに見せる」を選んだひとことも、また表示されます。
+          </p>
         </div>
       </div>
     </Section>
@@ -860,7 +862,9 @@ function BackupSection({ app }: { app: AppContextValue }) {
       </div>
       <div className="set-block">
         <h3 className="set-sub">読み込み</h3>
-        <p className="note">書き出したファイルを、いまのアカウントに追加します。同じチャレンジは、新しいほうの記録を残します。</p>
+        <p className="note">
+          書き出したファイルを、いまのアカウントに追加します。同じチャレンジは、新しいほうの記録を残します。読み込んだひとことメモは、すべて「自分だけ」に戻ります。
+        </p>
         <input
           ref={fileRef}
           type="file"

@@ -237,6 +237,19 @@
   line-height: 1;
   transform: rotate(-6deg);
 }
+/* A note shown in 「みんな」 (#17). */
+.lp-note-tag {
+  flex: none;
+  margin-left: auto;
+  padding: 0 7px;
+  border: 2px solid var(--ink, #111);
+  border-radius: 6px;
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
 .lp-note-text {
   white-space: pre-wrap;
 }

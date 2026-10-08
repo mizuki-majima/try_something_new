@@ -63,6 +63,7 @@ function fakeStore(over: Partial<AppSnapshot> = {}) {
     hasSession: true,
     sessionInvalid: false,
     pending: 0,
+    stillShown: [],
     syncStatus: "synced",
     lastSyncError: null,
     lastSyncedAt: null,
@@ -150,7 +151,10 @@ describe("SettingsPage — profile and reminder", () => {
     renderSettings(store);
     const toggle = screen.getByRole("checkbox", { name: "みんなに進捗を表示する" });
     expect((toggle as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByText(/ひとことメモ、写真、振り返りのひとこと/)).toBeTruthy();
+    // #17: a day note is shown only when its owner chose to show it.
+    expect(screen.getByText(/応援の数、「みんなに見せる」を選んだひとことメモ$/)).toBeTruthy();
+    expect(screen.getByText(/^選んでいないひとことメモ、写真、振り返りのひとこと$/)).toBeTruthy();
+    expect(screen.getByText(/見せていたひとことも表示されなくなります/)).toBeTruthy();
     fireEvent.click(toggle);
     expect(actions.updateMe).toHaveBeenCalledWith({ shareProgress: false });
   });
@@ -338,6 +342,12 @@ describe("SettingsPage — backup import", () => {
     });
     expect(await screen.findByText("「30日だけ」のバックアップファイルではないようです。")).toBeTruthy();
     expect(fetchMock.mock.calls.some(([u]) => String(u) === API.meImport)).toBe(false);
+  });
+
+  it("#17: says imported day notes all go back to 「自分だけ」", () => {
+    const { store } = fakeStore();
+    renderSettings(store);
+    expect(screen.getByText(/読み込んだひとことメモは、すべて「自分だけ」に戻ります。/)).toBeTruthy();
   });
 });
 

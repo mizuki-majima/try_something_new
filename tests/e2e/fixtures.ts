@@ -13,9 +13,12 @@ import {
   todayIn,
   type BackupFile,
   type Challenge,
+  type ChallengeCreate,
   type ChallengeListResponse,
+  type ChallengeResponse,
   type CohortResponse,
   type ImportResponse,
+  type MemberNotesResponse,
   type MeResponse,
   type SessionResponse,
 } from "@thirty/shared";
@@ -96,6 +99,19 @@ export function pastChallenge(opts: { title: string; seal: string; recipeId: str
   };
 }
 
+/**
+ * Create a challenge the way the app does (POST /api/challenges): it is not imported, so it is listed in
+ * 「みんな」 like any other. For a start date the screens do not offer (the API takes up to 7 days back, D4).
+ */
+export async function createChallenge(
+  request: APIRequestContext,
+  token: string,
+  input: Omit<ChallengeCreate, "id">,
+): Promise<Challenge> {
+  const res = await request.post(API.challenges, { data: { id: newId(), ...input }, headers: auth(token) });
+  return (await json<ChallengeResponse>(res)).challenge;
+}
+
 export async function getChallenges(request: APIRequestContext, token: string): Promise<Challenge[]> {
   return (await json<ChallengeListResponse>(await request.get(API.challenges, { headers: auth(token) }))).challenges;
 }
@@ -107,6 +123,16 @@ export async function getMe(request: APIRequestContext, token: string): Promise<
 /** The public cohort list, as an anonymous visitor sees it. */
 export async function getCohort(request: APIRequestContext, month: string): Promise<CohortResponse> {
   return json<CohortResponse>(await request.get(API.cohort(month)));
+}
+
+/**
+ * The day notes a member shows (#17), as an anonymous visitor reads them in 「詳しく見る」.
+ * null when the API answers 404 (not listed now: progress off, hidden, deleted).
+ */
+export async function getMemberNotes(request: APIRequestContext, challengeId: string): Promise<MemberNotesResponse | null> {
+  const res = await request.get(API.memberNotes(challengeId));
+  if (res.status() === 404) return null;
+  return json<MemberNotesResponse>(res);
 }
 
 export async function cheer(request: APIRequestContext, token: string, challengeId: string) {

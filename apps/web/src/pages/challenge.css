@@ -54,6 +54,11 @@
   background: var(--pink, #ff9ec7);
   color: var(--on-accent, #111);
 }
+/* A note shown in 「みんな」 (#17). */
+.cp-tag-shown {
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111);
+}
 .cp-count {
   flex: none;
   font-family: "Dela Gothic One", var(--font-body, sans-serif);

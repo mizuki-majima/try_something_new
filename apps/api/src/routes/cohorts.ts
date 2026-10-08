@@ -8,12 +8,24 @@ import {
   todayIn,
   type CheerResponse,
   type CohortResponse,
+  type MemberNotesResponse,
   type UpcomingResponse,
 } from "@thirty/shared";
 import { optionalUser, requireUser } from "../auth";
 import { addCheer, getChallengeItem, getChallengeOwner } from "../db/challenges";
-import { cheeredOn, isInCohort, MONTH_RE, putCheerMarker, queryCohort, queryStartingOn, summariseUpcoming, toCohortMember } from "../db/cohorts";
+import {
+  cheeredOn,
+  isInCohort,
+  MONTH_RE,
+  putCheerMarker,
+  queryCohort,
+  queryStartingOn,
+  summariseUpcoming,
+  toCohortMember,
+  visibleNotes,
+} from "../db/cohorts";
 import { enforceQuota } from "../db/rate";
+import { getUser } from "../db/users";
 import { badRequest, conflict, notFound } from "../errors";
 import type { Deps } from "../ports";
 import { viewer, type AppEnv } from "../types";
@@ -26,10 +38,11 @@ export const COHORT_MESSAGES = {
 } as const;
 
 /**
- * Cohorts "1日組" and cheers (FR-8, FR-9).
- *   GET  /api/cohorts/upcoming     → UpcomingResponse (optionalUser)
- *   GET  /api/cohorts/:month       → CohortResponse (optionalUser)
- *   POST /api/cheers/:challengeId  → CheerResponse (requireUser)
+ * Cohorts "1日組", the day notes members show, and cheers (FR-8, FR-9, #17).
+ *   GET  /api/cohorts/upcoming            → UpcomingResponse (optionalUser)
+ *   GET  /api/cohorts/:month              → CohortResponse (optionalUser)
+ *   GET  /api/members/:challengeId/notes  → MemberNotesResponse (public)
+ *   POST /api/cheers/:challengeId         → CheerResponse (requireUser)
  *
  * "Today" is the viewer's calendar day (Asia/Tokyo for anonymous visitors).
  */
@@ -58,6 +71,22 @@ export function cohortsRoutes(deps: Deps) {
         )
       : new Set<string>();
     return c.json<CohortResponse>({ month, members: items.map((i) => toCohortMember(i, me?.id, cheered)) });
+  });
+
+  // Read on every open of a member's details, never cached (/api is no-store). Strongly consistent
+  // reads of the challenge and of the owner's shareProgress: an un-share, turning progress off, a
+  // moderator's hide or a deleted account applies to the very next request, whatever gsi1 still holds
+  // (it is eventually consistent, and syncUserProjection may give up). Every refusal is the same 404.
+  r.get(API.memberNotes(":challengeId"), async (c) => {
+    const chId = parseWith(IdSchema, c.req.param("challengeId"));
+    const owner = await getChallengeOwner(deps, chId);
+    if (owner === undefined) throw notFound();
+    const [item, user] = await Promise.all([
+      getChallengeItem(deps, owner, chId, { consistent: true }),
+      getUser(deps, owner, { consistent: true }),
+    ]);
+    if (!item || user?.shareProgress !== true || !isInCohort(item)) throw notFound();
+    return c.json<MemberNotesResponse>({ challengeId: chId, notes: visibleNotes(item) });
   });
 
   r.post(API.cheer(":challengeId"), requireUser(deps), async (c) => {

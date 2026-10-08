@@ -20,6 +20,7 @@ import {
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TextField } from "../components/Field";
 import { Grid30 } from "../components/Grid30";
+import { NoteShareSwitch, useShownNoteEdit, useUnstampedNoteToast } from "../components/NoteShareSwitch";
 import { Seal } from "../components/Seal";
 import { ErrorState, Loading } from "../components/States";
 import { useToast } from "../components/Toast";
@@ -27,7 +28,8 @@ import { StartChallengeSheet, type StartPreset } from "../features/start/StartCh
 import { errorMessage, request } from "../lib/api";
 import { isOpen, sortForToday, viewChallenge } from "../lib/challenge";
 import { prefersReducedMotion, usePageTitle } from "../lib/hooks";
-import { useApp, useAppActions } from "../lib/store";
+import { NOTE_SHOWN_UNSTAMP, cleanNote, noteFieldSuffix } from "../lib/noteShare";
+import { useApp, useAppActions, useStillShown, useUser } from "../lib/store";
 import "./today.css";
 
 const TED_TALK_URL = "https://www.ted.com/talks/matt_cutts_try_something_new_for_30_days";
@@ -178,6 +180,7 @@ function vibrate(): void {
 function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: string }) {
   const { stamp, unstamp, updateChallenge } = useAppActions();
   const toast = useToast();
+  const unstamped = useUnstampedNoteToast();
   const titleId = useId();
   const v = viewChallenge(c, today);
   const [fresh, setFresh] = useState<number | null>(null);
@@ -220,8 +223,12 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
       return;
     }
     const r = unstamp(c.id, day);
-    if (!r.ok) toast(r.message, { tone: "error" });
-    else if (v.phase === "active" && day === v.day) focusNext.current = "stamp";
+    if (!r.ok) {
+      toast(r.message, { tone: "error" });
+      return;
+    }
+    unstamped(c.id, day);
+    if (v.phase === "active" && day === v.day) focusNext.current = "stamp";
   }
 
   function toggle(day: number) {
@@ -238,7 +245,10 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
   const canToggle = v.phase === "active" || v.phase === "ended";
   const gridToday = v.phase === "active" ? v.day : v.phase === "ended" ? TOTAL_DAYS : 0;
   const todayNote = v.todayStamped ? (c.stamps[String(v.day)]?.note ?? "") : "";
+  const todayShown = v.todayStamped && c.stamps[String(v.day)]?.shown === true;
   const undoNote = confirmUndo !== null ? (c.stamps[String(confirmUndo)]?.note ?? "") : "";
+  const undoMessage = `この日のひとこと「${undoNote}」も消えます。`;
+  const undoShown = confirmUndo !== null && c.stamps[String(confirmUndo)]?.shown === true;
 
   return (
     <article className={`td-card td-${v.phase}${fresh !== null ? " is-thud" : ""}`} aria-labelledby={titleId}>
@@ -295,7 +305,7 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
                 </button>
               </div>
             </div>
-            <DayNoteInput challengeId={c.id} day={v.day} note={todayNote} />
+            <DayNoteInput challengeId={c.id} day={v.day} note={todayNote} isShown={todayShown} />
           </div>
         )}
         {v.phase === "waiting" && (
@@ -332,7 +342,16 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
       <ConfirmDialog
         open={confirmUndo !== null}
         title={`${confirmUndo ?? ""}日目の印を取り消しますか？`}
-        message={`この日のひとこと「${undoNote}」も消えます。`}
+        message={
+          undoShown ? (
+            <>
+              <p>{undoMessage}</p>
+              <p>{NOTE_SHOWN_UNSTAMP}</p>
+            </>
+          ) : (
+            undoMessage
+          )
+        }
         confirmLabel="取り消す"
         cancelLabel="そのままにする"
         danger
@@ -347,27 +366,37 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
   );
 }
 
-/** One-line ひとこと for today's stamp. Saves on blur and on Enter (not while an IME is composing). */
-function DayNoteInput({ challengeId, day, note }: { challengeId: string; day: number; note: string }) {
+/**
+ * One-line ひとこと for today's stamp. Saves on blur and on Enter (not while an IME is composing).
+ * `isShown`: the note is shown in 「みんな」 (#17); saving another text makes it private again.
+ */
+function DayNoteInput({ challengeId, day, note, isShown }: { challengeId: string; day: number; note: string; isShown: boolean }) {
   const { setNote } = useAppActions();
   const toast = useToast();
+  const shownNoteEdit = useShownNoteEdit();
+  // The server still shows the old text (an edit is queued): another edit is an edit of a shown note too.
+  const stillShown = useStillShown(challengeId, day);
+  const progressOn = useUser()?.shareProgress !== false;
   const [draft, setDraft] = useState(note);
-  const [shown, setShown] = useState(note);
+  const [synced, setSynced] = useState(note);
   const [saved, setSaved] = useState(false);
-  if (note !== shown) {
+  if (note !== synced) {
     // The stored note changed (saved, or synced from elsewhere): show it.
-    setShown(note);
+    setSynced(note);
     setDraft(note);
   }
 
-  function save() {
-    if (draft === note) return;
+  /** False when the draft could not be saved (the toast says why). */
+  function save(): boolean {
+    if (draft === note) return true;
     const r = setNote(challengeId, day, draft);
     if (!r.ok) {
       toast(r.message, { tone: "error" });
-      return;
+      return false;
     }
     setSaved(true);
+    if ((isShown || stillShown) && cleanNote(draft) !== note) shownNoteEdit.edited(challengeId, day);
+    return true;
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -379,13 +408,13 @@ function DayNoteInput({ challengeId, day, note }: { challengeId: string; day: nu
   return (
     <div className="td-note">
       <TextField
-        label="きょうのひとこと（自分だけに見えます）"
+        label={`きょうのひとこと${noteFieldSuffix(isShown, progressOn)}`}
         value={draft}
         onChange={(value) => {
           setDraft(value);
           setSaved(false);
         }}
-        onBlur={save}
+        onBlur={() => save()}
         onKeyDown={onKeyDown}
         max={LIMITS.note}
         placeholder="例：朝の光がきれいだった"
@@ -395,6 +424,15 @@ function DayNoteInput({ challengeId, day, note }: { challengeId: string; day: nu
       <p className="td-saved" role="status" aria-live="polite">
         {saved ? "保存しました" : ""}
       </p>
+      <NoteShareSwitch
+        challengeId={challengeId}
+        day={day}
+        note={note}
+        shown={isShown}
+        draft={draft}
+        onSaveDraft={save}
+        resetAt={shownNoteEdit.resetAt}
+      />
     </div>
   );
 }

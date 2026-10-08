@@ -13,7 +13,8 @@ import { usePageTitle } from "../lib/hooks";
 import { useApp } from "../lib/store";
 import "./log.css";
 
-type NoteItem = { key: string; date: string; day: number; note: string; at: number; challenge: Challenge };
+/** `shown`: the owner shows this note in 「みんな」 (#17). */
+type NoteItem = { key: string; date: string; day: number; note: string; at: number; shown: boolean; challenge: Challenge };
 
 const NOTES_PAGE = 30;
 
@@ -23,7 +24,7 @@ function noteTimeline(challenges: readonly Challenge[]): NoteItem[] {
     for (const day of stampedDays(c)) {
       const s = c.stamps[String(day)];
       if (!s?.note) continue;
-      out.push({ key: `${c.id}:${day}`, date: addDays(c.startDate, day - 1), day, note: s.note, at: s.at, challenge: c });
+      out.push({ key: `${c.id}:${day}`, date: addDays(c.startDate, day - 1), day, note: s.note, at: s.at, shown: s.shown === true, challenge: c });
     }
   }
   return out.sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at);
@@ -150,6 +151,7 @@ export default function LogPage() {
                       <span>
                         {n.challenge.title}・{n.day}日目
                       </span>
+                      {n.shown && <span className="lp-note-tag">みんな</span>}
                     </span>
                     <span className="lp-note-text">{n.note}</span>
                   </Link>

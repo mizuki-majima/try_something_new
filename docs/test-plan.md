@@ -1,6 +1,6 @@
 # Test Plan — 30日だけ
 
-Owner: AI QA ／ 対象: SPEC v1.3 ／ 最終更新: 2026-10-07
+Owner: AI QA ／ 対象: SPEC v1.5 ／ 最終更新: 2026-10-08
 
 方針: MVP では Critical User Flow（CUF）を最優先。網羅より「CUF が壊れたら必ず CI が赤になる」こと。次に過去の不具合の回帰、最後にエッジケース。課金される外部 API はどのテストからも呼ばない（このサービスには AI も課金 API も無い。[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
@@ -23,6 +23,7 @@ Owner: AI QA ／ 対象: SPEC v1.3 ／ 最終更新: 2026-10-07
 - Service Worker は既定で `block`（キャッシュが手順の間に挟まらないように）。PWA のオフライン表示を確かめる 1 件だけ `allow`
 - テストごとに別の `x-viewer-ip` ヘッダを送る（本番では CloudFront Function が付ける）。API のセッション作成は IP ごと 1時間 20件までなので、並列実行やリトライで枠を取り合わないようにするため
 - 過去に始めたチャレンジ（CUF-2 の「30日前」）は、実 API の `POST /api/session` → `POST /api/me/import`（バックアップの読み込み。過去のチャレンジを作れる正規の手段）で用意し、トークンを `localStorage['thirty-days.token']` に入れてからアプリを開く
+- 1日組に出したまま2日分の印が要るとき（CUF-3 のひとことを見せる流れ。「昨日から」）は、`POST /api/session` → `POST /api/challenges`（開始日は今日の7日前まで受け付ける。D4。`fixtures.ts` の `createChallenge`）で用意する。読み込んだチャレンジは本人が書き込むまで1日組に出ず、ひとことも見せられないため、import は使わない
 - 画面に出たものがサーバに保存されたかは、同じオリジンの API（`GET /api/challenges` など）で確かめる。セレクタは role / label / 文言（SPEC の文言）を使い、CSS セレクタや固定の待ち時間は使わない
 - CI: `retries: 1`、`workers: 2`、失敗時は `playwright-report/`（HTML）と初回リトライのトレースを artifact に残す
 
@@ -41,7 +42,7 @@ npx playwright show-report               # 前回の HTML レポート
 
 | ファイル | テスト | SPEC |
 |---|---|---|
-| `cuf1-start-and-stamp.spec.ts` | 初回ヒーロー → レシピ一覧 →「毎日1枚、写真を撮る」→ 今日から・ニックネーム →「30日、始める」→ カード（印「写」・1日目・0/30）→「きょう（1日目）の分を押す」→ 1/30・ひとこと保存 → 再読み込みで残る → API にも印・ひとこと・ニックネーム | CUF-1 1〜5 |
+| `cuf1-start-and-stamp.spec.ts` | 初回ヒーロー → レシピ一覧 →「毎日1枚、写真を撮る」→ 今日から・ニックネーム →「30日、始める」→ カード（印「写」・1日目・0/30）→「きょう（1日目）の分を押す」→ 1/30・ひとこと保存 → 再読み込みで残る → API にも印・ひとこと・ニックネーム → ひとことは既定で自分だけ（`shown` なし・「みんなに見せる」はオフ・一覧の JSON に文面なし・`GET /api/members/:id/notes` は空。#17） | CUF-1 1〜5 |
 | `cuf1-offline-stamp.spec.ts` | オフラインで押す →「オフライン・あとで同期」・送信待ち1件・サーバは未保存 → 復帰で「同期済み」とサーバ保存 | CUF-1 E |
 | 同上 | API が 503 の間に押す → 画面に残り「オフライン・あとで同期」→ API 復旧後の再送で保存 | CUF-1 E |
 | 同上 | Service Worker あり: 一度開いたあとオフラインで再読み込み（SW から配信）→「きょう」と公式レシピが開け、オフラインの印が復帰後に同期 | FR-20 |
@@ -49,7 +50,8 @@ npx playwright show-report               # 前回の HTML レポート
 | 同上 | 画像アップロードが 500 → エラー表示、公開リンクは出ない、「画像を保存」で 1200×630 の PNG が保存でき「Xで共有」も使える | CUF-2 E |
 | `rate-limit-429.spec.ts` | API Gateway のステージのスロットル（`Retry-After` なしの 429）を新しいチャレンジの作成が受けても、作成とその間に押した印が残り、あとで両方送られる（R9） | Error Handling 429, CUF-1 |
 | 同上 | アカウント作成（`POST /api/session`）の 429 の間、理由と再開の目安が帯で見え、チャレンジは残ってあとで同期される（R7・R10） | Error Handling 429 |
-| `cuf3-cohort-cheer.spec.ts` | A が今月開始（公開は既定 ON）→ 別ブラウザの B が「みんな」→ 今月の組に A のニックネーム・印・タイトル・ミニ30マス（カードのボタンが1行の高さ）→「詳しく見る」で A の30マス（1日目に印）とメモ非公開の注記、Esc で閉じる →「応援」で 0→1・「応援済み」で押せない（再読み込み後も）・API の2回目は 409 → A が設定で「みんなに進捗を表示する」を OFF → B の再読み込みで A が消える | CUF-3 1〜4 |
+| `cuf3-cohort-cheer.spec.ts` | A が今月開始（公開は既定 ON）→ 別ブラウザの B が「みんな」→ 今月の組に A のニックネーム・印・タイトル・ミニ30マス（カードのボタンが1行の高さ）→「詳しく見る」で A の30マス（1日目に印）と「ひとことは、本人が「みんなに見せる」を選んだものだけ…」の注記（ひとことの欄なし）、Esc で閉じる →「応援」で 0→1・「応援済み」で押せない（再読み込み後も）・API の2回目は 409 → A が設定で「みんなに進捗を表示する」を OFF → B の再読み込みで A が消え、ひとことの API も 404 | CUF-3 1〜4 |
+| 同上 | ひとことを見せる（#17）: 昨日開始の A が2日目（きょう）に NOTE2、1日目（チャレンジ詳細）に NOTE1 → どちらも一覧の JSON・`/api/members/:id/notes`・B の「詳しく見る」に出ない → A が1日目の「みんなに見せる」→ 確認のシート（「1日目」と NOTE1 のプレビュー・注意・同意の一文）→「見せる」→ 欄の名前が「（みんなに見せています）」、メモ一覧に「みんな」→ API は1日目だけ、一覧は `shownNoteCount: 1` で文面なし → B の再読み込みでカードに「ひとこと 1」、「詳しく見る」に「1日目」NOTE1 だけ → A が書き換える →「書き換えたので「自分だけ」に戻しました。…」の通知・欄の名前が「（自分だけに見えます）」・スイッチがオフ・API は空・B が再読み込みせずに開き直すと何も出ない → A が見せ直して戻す（確認なし、「自分だけに戻しました」）→ API はすぐ空・B も何も出ない → 見せ直してから書き換え、保存せずにすぐスイッチを押す（欄から出るときに保存される。サーバが受け付けるまでスイッチはオンのままで、押すとすぐ戻す。確認のシートは出ない）→ API は空 → 見せ直して進捗公開 OFF → API は 404・A の画面は「いまは誰にも見えていません」・B の一覧から A が消える。NOTE2 はどこにも出ない | CUF-3 4〜6 |
 | `smoke.spec.ts` | `/` `/recipes` `/recipes/photo` `/recipes/new` `/gacha` `/together` `/log` `/settings` `/about` `/terms` `/privacy` `/contact` `/admin` と未知のパス（404 画面）が、コンソールエラーなし・横スクロールなしで開く（14 件） | SPEC UI |
 | 同上 | ガチャを1回まわして結果と「これを30日やる」、ひらめき提案で3案と「いまは AI を使わず、ルールで選んでいます」、残り回数 | FR-12, FR-13 |
 | 同上 | `/s/<存在しないID>` がサーバ生成の HTML 404（「カードが見つかりません」） | FR-7 |
@@ -88,10 +90,13 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 |---|---|---|---|
 | 1 A が今月開始・進捗公開 ON | `apps/web/test/start.test.tsx` | `apps/api/test/challenges.test.ts` "projects into next month's cohort for a reservation, and not at all when progress is private" | `cuf3-cohort-cheer` |
 | 2 B の「みんな」に A（ニックネーム・印・ミニ30マス） | `apps/web/test/together.test.tsx` "lists this month's members with 1日組, counts and cheer states" | `apps/api/test/cohorts.test.ts` "shows A to B without notes or ids, counts one cheer per day, and hides A when A turns sharing off" | `cuf3-cohort-cheer` |
-| 2b B が A の「詳しく見る」（同じ公開情報だけ。#16） | `apps/web/test/together.test.tsx` "TogetherPage member detail"（開閉・追加の通信なし・レシピのリンクなし・応援後もフォーカスがシート内・途中で区切った人）, "member detail helpers" | —（API は変えていない） | `cuf3-cohort-cheer`（シートの30マスと注記、カードのボタンの高さ） |
+| 2b B が A の「詳しく見る」（同じ公開情報だけ。#16） | `apps/web/test/together.test.tsx` "TogetherPage member detail"（開閉・追加の通信なし・レシピのリンクなし・応援後もフォーカスがシート内・途中で区切った人）, "member detail helpers" | —（#16 では API を変えていない。ひとことは下の 5・6） | `cuf3-cohort-cheer`（シートの30マスと注記・ひとことの欄なし、カードのボタンの高さ） |
 | 3 「応援」で +1、同じ日は2回目不可 | `apps/web/test/together.test.tsx` "cheers optimistically…", "409: already cheered today…" | `apps/api/test/cohorts.test.ts`（同上）, "refuses cheering one's own challenge, unknown or hidden ones, and anonymous cheers" | `cuf3-cohort-cheer`（画面 + API 409） |
-| 4 A が公開 OFF → B の一覧から消える | `apps/web/test/settings.test.tsx` "toggles shareProgress and explains what is shown" | `apps/api/test/me.test.ts` "rewrites the nickname on challenges and toggles the cohort projection" | `cuf3-cohort-cheer` |
+| 4 A が公開 OFF → B の一覧から消える（見せていたひとことも 404） | `apps/web/test/settings.test.tsx` "toggles shareProgress and explains what is shown"; `apps/web/test/today.test.tsx` "a note shown before progress was turned off is seen by nobody now…", "progress turned off here but not sent yet: the note is still seen…" | `apps/api/test/me.test.ts` "rewrites the nickname on challenges and toggles the cohort projection"; `apps/api/test/note-visibility.test.ts` "(i) shareProgress off: 404 at once, even while gsi1 still lists the challenge…" | `cuf3-cohort-cheer`（2件とも） |
+| 5 A がある日のひとことを「みんなに見せる」→ B の「詳しく見る」にその日だけ（#17） | `apps/web/test/today.test.tsx` "saves a draft first and asks with the exact cleaned text…", "the label and the switch change only when the server confirms…"; `apps/web/test/appStore.test.ts` "is not optimistic…", "sends a note saved a moment ago first…", "sends 「みんなに表示」 turned on (still queued) before showing…"; `apps/web/test/together.test.tsx` "the card shows how many notes are shown (1–30), never the text…", "「詳しく見る」 fetches the shown notes on every open…", "cleans the notes response…"; `packages/shared/test/schemas.test.ts` "day notes shown in みんな (#17)" | `apps/api/test/note-visibility.test.ts` "(a) keeps every note private by default…", "(c) shows exactly the day the owner chose…", "(d) refuses a stale note (409)…", "(g) counts only a real private → shown change…", "(r) the visibility route decides from strong reads…"; `apps/api/test/cohorts.test.ts` "counts the notes a member shows (shownNoteCount…)" | `cuf3-cohort-cheer`（2件目） |
+| 6 書き換える・「みんなに見せる」をオフ → B が次に開いたときには出ない | `apps/web/test/outbox.test.ts` "applyOp and a note shown in 「みんな」 (#17)"; `apps/web/test/today.test.tsx` "saving another text offline: private here, and it says the old text is seen until it is sent…", "saving another text online says it is private once the server has the edit", "on %s, editing a shown note and then pressing the switch to hide it never asks to show the new text", "on %s, a click with no press seen (a screen reader's) right after saving made the note private never asks…", "while an edit of a shown note cannot be sent yet, the switch stays on and turning it off takes the old text back at once", "turning it off keeps the switch enabled and focused…"; `apps/web/test/appStore.test.ts` "makes a note private at once, even while a write for the challenge is stuck in the queue", "an edit and an edit back made offline still make a shown note private…", "after an edit of a shown note, says whether the server has it…", "counts 「みんなに表示」 turned on in the queue…"; `apps/web/test/together.test.tsx` "a 404 (not listed any more) or a malformed answer shows nothing" | `apps/api/test/note-visibility.test.ts` "(e) any change of the text makes it private again…", "(f) a re-stamp read before an un-share and written after it never puts the choice back", "(g) stopping is never refused…", "(p) a stale consent is not revived by typing its old text again" | `cuf3-cohort-cheer`（2件目） |
 | E 一覧の取得に失敗 | `apps/web/test/together.test.tsx` "shows an error with retry, and the empty state" | — | —（Unit で十分） |
+| E 「詳しく見る」のひとことの取得に失敗 | `apps/web/test/together.test.tsx` "while loading says so; an error offers 「もう一度」" | — | —（Unit で十分） |
 
 ## Edge cases
 
@@ -107,7 +112,11 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 | 公開カードの HTML エスケープ、存在しない・非表示カードは 404 | `apps/api/test/shares.test.ts` "escapes every interpolated value", "is a 404 HTML page…"; E2E `smoke` |
 | 共有画像の検証（PNG・1200×630・600KB） | `apps/api/test/shares.test.ts` "png checks" |
 | 自分への応援・非表示への応援・日をまたいだ再応援 | `apps/api/test/cohorts.test.ts` |
-| 公開レスポンスに ひとことメモ・ユーザー ID を含めない | `apps/api/test/cohorts.test.ts` "…without notes or ids" |
+| 公開レスポンスに 見せる選択のないひとことメモ・ユーザー ID を含めない。一覧には文面を入れない（数だけ） | `apps/api/test/cohorts.test.ts` "…without notes or ids", "counts the notes a member shows (shownNoteCount…) and never puts note text in the list"；`apps/api/test/note-visibility.test.ts` "(a)", "(b) never shows a note stored without the visibility route…", "(o) the member route answers at most 30 notes…"；E2E `cuf1-start-and-stamp`, `cuf3-cohort-cheer` |
+| 見せたひとこと（#17）: 書き換え・消す・印の取り消しで「自分だけ」に戻る、`{}` の再送と同じ文面は残す、戻したあとの古い再送で戻らない、古い同意は昔の文面に書き戻しても戻らない。端末の送信待ちも同じ決まりで、違う文面の書き換えはまとめない（書き換えて元に戻しても、サーバは間の文面を受け取る）。送信待ちのあいだは「前のひとことが見えています」と出し（送信待ちの進捗公開のオンが先に送られるときも。つながっていれば「オフにすると、すぐ見えなくなります。」も）、スイッチはオンのままで、オフにするとすぐ戻る。送信待ちのあいだにもう一度書き換えても、見せているひとことの書き換えとして扱う。印の取り消しは、つながっていれば送信待ちを待たずにすぐ戻し、戻せなかったときだけ通知で伝える。「戻しました」はサーバが受け付けてから。「見せる」の返事はその日の状態だけを取り込み、先に届いた書き換えの返事を古い文面で上書きしない | `apps/api/test/note-visibility.test.ts` "(e)", "(f)", "(p)"；`apps/web/test/outbox.test.ts` "keeps two different texts of one day's note as two writes…", "applyOp and a note shown in 「みんな」 (#17)"；`apps/web/test/appStore.test.ts` "an edit and an edit back made offline…", "after an edit of a shown note, says whether the server has it…", "counts 「みんなに表示」 turned on in the queue…"；`apps/web/test/today.test.tsx` "saving another text offline…", "while an edit of a shown note cannot be sent yet…", "on %s, editing again while the first edit of a shown note waits…", "on %s, undoing the stamp of a shown note offline…", "on %s, undoing the stamp of a shown note online takes the note back at once…", "undoing the stamp of a shown note online says nothing more…"；`apps/web/test/appStore.test.ts` "takes only the day's choice from a visibility answer…" |
+| 見せたひとこと: 1人1日30回（戻すのは数えず断らない。本当に変わったときだけ数え、途中で文面が変われば戻す）、見せる書き込みは `updatedAt`・一覧の並び・ニックネーム・`imported` を変えない | `apps/api/test/note-visibility.test.ts` "(g)", "(h) the visibility write leaves updatedAt…"；`apps/web/test/appStore.test.ts` "explains the server's refusals: 400, 409, the daily limit (429)…" |
+| 見せたひとこと: 非表示・自動非表示ですぐ 404、復元で同じものが戻る、削除は戻らない。管理画面の member の表示は見せたものだけ。アカウント削除で残らない。ほかの人は見せる・戻すができない（404、本文に文面なし） | `apps/api/test/note-visibility.test.ts` "(j)", "(l)", "(m)", "(n)"；`apps/api/test/admin.test.ts` "a member's preview carries the day notes the owner shows…"；`apps/api/test/challenges.test.ts` "answers 404 on the visibility route too (#17)…" |
+| 見せたひとこと: 書き出しは `shown: true`（version 1 のまま）、読み込みは選択を引き継がない（自分の ID・別の ID・`shownNote` を書き足したファイルでも）。ログに `shownNote` を出さない | `apps/api/test/note-visibility.test.ts` "(k) an import never carries a choice…"；`apps/api/test/me.test.ts` "exports `shown: true`…"；`apps/api/test/config.test.ts` "drops a shown note's stored consent (shownNote)…"；`apps/web/test/settings.test.tsx` "#17: says imported day notes all go back to 「自分だけ」" |
 | 通報3件（作成24時間以上・チャレンジあり・2つ以上のネットワーク）で自動非表示・管理画面の削除／復元 | `apps/api/test/reports.test.ts`, `apps/api/test/admin.test.ts`, `apps/web/test/admin.test.tsx` |
 | ひらめき提案の上限（1日10回）と失敗時の表示 | `apps/api/test/suggestions.test.ts`, `apps/web/test/gacha.test.tsx` |
 | Push の宛先制限（SSRF）、404/410 の登録削除 | `apps/api/test/push.test.ts`, `apps/api/test/reminder.test.ts` |
@@ -125,7 +134,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 | 進捗公開のオフは上限に数えず断らない（ニックネームと一緒でも）。オンとニックネームは数える。Web は上限中もオフを送れる（R13） | `apps/api/test/me.test.ts` "turning sharing off never uses…", "a rename sent together with turning sharing off…"；`apps/web/test/appStore.test.ts` "R13…", `apps/web/test/settings.test.tsx` "R1/R13…" |
 | 読み込みで長すぎるひとことだけを落とし、印とチャレンジは残す（`notesDropped`）。保存する大きさの上限のエラーは「あと N 文字」（R14） | `apps/api/test/me.test.ts` "drops only a note…", `packages/shared/test/schemas.test.ts` "says how many characters to remove…", `apps/api/test/challenges.test.ts`, `apps/web/test/settings.test.tsx` "R14…" |
 | 読み込みの上限 1000・書き込み 100（テーブルと GSI）。一覧と書き出しは200件より多く読まない、作成も合計200件まで。PILOT の集計は必要な項目だけ・1ページ500件・20秒で打ち切り `partial`（R15）。アラームのメトリクスの数と deploy.md の費用の記載が一致（R16） | `infra/test/stack.test.ts`；`apps/api/test/challenges.test.ts` "never reads more than 200…", "refuses a create once…"；`apps/api/test/pilot.test.ts`；`apps/web/test/admin.test.tsx` "R15…" |
-| 規約・プライバシーポリシーの改定のお知らせ（#17、ADR 0007）: 両方のページに制定日・改定日・適用日と「改定のお知らせ」、変わる文はどれも「（適用日）から」で、適用日の前も後も正しい。ほかの画面の上の「お知らせ」の帯は閉じられ、閉じたことは適用日ごとに保存（保存できなくても表示は壊れない）、適用日の14日後から出ない、規約とプライバシーポリシーのページには出ない | `apps/web/test/notice.test.tsx`；`apps/web/test/static.test.tsx`（利用規約・プライバシーポリシーの #17 の文と日付）；`tap-targets.spec.ts`（360px の帯） |
+| 規約・プライバシーポリシーの改定のお知らせ（#17、ADR 0007）: 両方のページに制定日・改定日・適用日と「改定のお知らせ」、変わる文はどれも「（適用日）から」で、適用日の前も後も正しい。ほかの画面の上の「お知らせ」の帯は閉じられ、閉じたことは適用日ごとに保存（保存できなくても表示は壊れない）、適用日の14日後から出ない、規約とプライバシーポリシーのページには出ない。ページの上の「改定のお知らせ」も適用日の14日後から出ない（日付の欄は残る） | `apps/web/test/notice.test.tsx`；`apps/web/test/static.test.tsx`（利用規約・プライバシーポリシーの #17 の文と日付、14日後のお知らせ）；`tap-targets.spec.ts`（360px の帯） |
 
 ## Live smoke（手動）と品質ルーブリック
 
@@ -148,7 +157,8 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - [ ] CUF-2: 30日前に始めたチャレンジを用意する（設定 → バックアップの読み込みで、開始日を30日前にしたバックアップ JSON を読み込む。形は `tests/e2e/fixtures.ts` の `pastChallenge`）→ 振り返る → 続ける → カード → リンクを作って共有 → 別のブラウザ（シークレット）で `/s/<id>` を開く
 - [ ] OGP: `/s/<id>` を LINE（自分だけのトーク）と X の投稿画面に貼り、画像つきのカードが出る。`og:image` が `https://<CloudFront ドメイン>/media/share/<id>.png`。トップの URL を貼っても画像が出る
 - [ ] 通報: `/s/<id>` の「このカードを通報する」→ お問い合わせ画面の通報フォーム → 送ると管理画面の通報一覧に出る。管理画面で「非表示」→（キャッシュの5分以内に）`/s/<id>` は 404、`/media/share/<id>.png` は 403（S3 は無いキーに 403 を返す。CloudFront には一覧の権限を与えていないため。404 でもよい）。「復元」で両方戻る。`/s/<id>` の下にフッター（このサービスについて・利用規約・プライバシーポリシー・お問い合わせ）
-- [ ] CUF-3: 端末 A で今月開始、端末 B（別アカウント）の「みんな」に A が出る →「詳しく見る」で A の30マスが出る（メモ・写真は出ない）→ 応援 → 応援済み → A が設定で公開 OFF → B の再読み込みで消える
+- [ ] CUF-3: 端末 A で今月開始、端末 B（別アカウント）の「みんな」に A が出る →「詳しく見る」で A の30マスが出る（見せていないひとこと・写真は出ない）→ 応援 → 応援済み → A が設定で公開 OFF → B の再読み込みで消える
+- [ ] CUF-3 のひとこと（#17。参加者ではなく専用のテストアカウントで）: A がある日のひとことを「みんなに見せる」→ アカウントなしの `GET <SiteUrl>/api/members/<chId>/notes` にその日だけが出て、応答ヘッダが `Cache-Control: no-store` → A が「みんなに見せる」をオフ → 次の要求で `notes: []` → 見せ直してからひとことを書き換える → `notes: []`。dynalite と本物の DynamoDB で違いうる入れ子の条件（`attribute_not_exists(stamps.N.shownNote)`、無い入れ子の属性の REMOVE）と `Cache-Control: no-store` を、これで本物で確かめる（強い整合の読み込みは手作業でも見分けられない。API のテストで固定している）。リリース前後で管理画面の統計の人数が変わらない。最後にテストアカウントを「すべてのデータを削除」で消す
 
 **Web Push（FR-14）**
 
@@ -192,6 +202,9 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - **Web Push** は自動テストできない（Unit と Integration はモック）。iOS はホーム画面アプリでしか動かない
 - **レート制限のキー**: API は `x-viewer-ip`（無ければ `x-forwarded-for`、それも無ければ共通の "unknown"）で数える。E2E はテストごとに別の値を送る。ローカルの `npm run dev` では全員が "unknown" になり、セッション作成が1時間 20件で止まる
 - **Service Worker の更新**（新しい版への切り替え、古いタブのチャンク再読み込み）は自動テストしていない
+- **見せたひとこと（#17）の DynamoDB の差**: 入れ子の属性の条件（`attribute_not_exists(stamps.N.shownNote)`、`stamps.N.note = :note`）と、無い入れ子の属性の REMOVE は dynalite と本物で違いうるので、リリース後の Live smoke（専用のテストアカウント）で確かめる。`GET /api/members/:id/notes` と `PUT .../visibility` の強い整合の読み込み（ConsistentRead。見せられなかった理由を返す読み直しも）は、dynalite でも手作業の smoke でも違いが見えないので、API のテストが送る GetCommand を見て固定している（`apps/api/test/note-visibility.test.ts` "(q)", "(r)"）
+- **古いタブ・古い PWA**: 古い版は見せる・戻すのルートを呼ばない。古い版でひとことを書き換えると API が「自分だけ」に戻すので、公開は増えない（API のテストで固定）。ただし古い版の画面は、見せたひとことについて事実と違う説明を出し続ける: ひとことの欄の「（自分だけに見えます）」（別の端末で見せたひとことにも出る）、「みんな」の「詳しく見る」の「ひとことメモと写真は、本人だけが見られます。」、「みんな」の説明の「ひとことは表示されません。」、設定の「表示されないもの：ひとことメモ…」。タブやアプリを読み込み直すまで続く（Service Worker の登録はページを読み込み直さず、古いハッシュ付きファイルも消さないので、古い版はそのまま動く）。データは出ない。和らげるのは「お知らせ」の帯（閉じなければ 2026-10-24 まで、適用日から見せられるようになると書いている）で、1段目より前の版には帯も無い。自動テストはしていない
+- **持ち主の画面は、チャレンジが「みんな」に出ているかを知らない**（#17。既知の制約、コードは変えない）: 本人向けの応答に「1日組に出ているか」が無いので、読み込んだままのチャレンジや、管理・通報で1日組から外したチャレンジでも「みんなに見せる」をオンにできてしまい、API が 409（「この記録は「みんな」に表示されていないため、見せられません。」）で断る。見せたあとに管理・通報で外されたチャレンジのひとことは、誰にも見えていないのに「（みんなに見せています）」「「みんな」で誰でも見られます。」のまま。どちらも公開を実際より多く言う側で、何も漏れない（公開するかは API が読むたびに決める）。直すなら、本人向けの応答に `unlisted` を足してスイッチの説明を変える
 
 ## Not tested（意図的）
 

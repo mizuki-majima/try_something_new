@@ -10,6 +10,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TextAreaField, TextField } from "../components/Field";
 import { Grid30 } from "../components/Grid30";
 import { CalendarIcon, CameraIcon, ChevronLeftIcon, DownloadIcon, EditIcon, TrashIcon } from "../components/Icons";
+import { NoteShareSwitch, useShownNoteEdit, useUnstampedNoteToast } from "../components/NoteShareSwitch";
 import { Seal } from "../components/Seal";
 import { Sheet } from "../components/Sheet";
 import { EmptyState, Loading } from "../components/States";
@@ -19,8 +20,9 @@ import { SealField } from "../features/start/SealField";
 import { downloadIcs, googleCalendarUrl, reminderSchedule, type ReminderEvent } from "../lib/calendar";
 import { viewChallenge, type ChallengeView } from "../lib/challenge";
 import { usePageTitle } from "../lib/hooks";
+import { NOTE_SHOWN_UNSTAMP, cleanNote, noteFieldSuffix } from "../lib/noteShare";
 import { canStorePhotos, deleteChallengePhotos, deletePhoto, getPhotoUrl, listPhotoDays, photoErrorMessage, savePhoto } from "../lib/photos";
-import { useApp, useAppActions } from "../lib/store";
+import { useApp, useAppActions, useStillShown, useUser } from "../lib/store";
 import "./challenge.css";
 
 export default function ChallengePage() {
@@ -74,7 +76,9 @@ function ChallengeDetail({ c, today }: { c: Challenge; today: string }) {
   }, [c.id, photoVersion]);
 
   const gridToday = v.phase === "active" ? v.day : v.phase === "ended" ? TOTAL_DAYS : v.maxDay;
-  const notes = v.stampedDays.map((d) => ({ day: d, note: c.stamps[String(d)]?.note ?? "" })).filter((n) => n.note);
+  const notes = v.stampedDays
+    .map((d) => ({ day: d, note: c.stamps[String(d)]?.note ?? "", shown: c.stamps[String(d)]?.shown === true }))
+    .filter((n) => n.note);
   const photoSet = new Set(photoDays);
 
   /** Open a day. From the notes list (far below the card) focus moves to the panel; from the grid it only scrolls. */
@@ -205,6 +209,7 @@ function ChallengeDetail({ c, today }: { c: Challenge; today: string }) {
                 <button type="button" className="cp-note" onClick={() => selectDay(n.day, true)}>
                   <b>{n.day}日目</b>
                   <span>{n.note}</span>
+                  {n.shown && <span className="cp-tag cp-tag-shown">みんな</span>}
                   {photoSet.has(n.day) && <span className="cp-tag">写真</span>}
                 </button>
               </li>
@@ -254,26 +259,39 @@ type DayPanelProps = {
 function DayPanel({ ref, c, v, day, hasPhoto, onPhotosChanged }: DayPanelProps) {
   const { stamp, unstamp, setNote } = useAppActions();
   const toast = useToast();
+  const shownNoteEdit = useShownNoteEdit();
+  const unstamped = useUnstampedNoteToast();
+  const progressOn = useUser()?.shareProgress !== false;
   const headId = useId();
   const stampData = c.stamps[String(day)];
   const stamped = Boolean(stampData);
   const note = stampData?.note ?? "";
+  // Shown in 「みんな」 (#17): saving another text makes it private again. The server may still show
+  // the old text while an edit is queued: another edit is an edit of a shown note too.
+  const isShown = stampData?.shown === true;
+  const stillShown = useStillShown(c.id, day);
   const done = c.status === "done";
   const canStamp = (v.phase === "active" || v.phase === "ended") && day <= v.maxDay;
   const [draft, setDraft] = useState(note);
-  const [shown, setShown] = useState(note);
+  const [synced, setSynced] = useState(note);
   const [saved, setSaved] = useState(false);
   const [confirmUndo, setConfirmUndo] = useState(false);
-  if (note !== shown) {
-    setShown(note);
+  if (note !== synced) {
+    setSynced(note);
     setDraft(note);
   }
 
-  function saveNote() {
-    if (draft === note) return;
+  /** False when the draft could not be saved (the toast says why). */
+  function saveNote(): boolean {
+    if (draft === note) return true;
     const r = setNote(c.id, day, draft);
-    if (!r.ok) toast(r.message, { tone: "error" });
-    else setSaved(true);
+    if (!r.ok) {
+      toast(r.message, { tone: "error" });
+      return false;
+    }
+    setSaved(true);
+    if ((isShown || stillShown) && cleanNote(draft) !== note) shownNoteEdit.edited(c.id, day);
+    return true;
   }
 
   function toggle(confirmed = false) {
@@ -284,6 +302,7 @@ function DayPanel({ ref, c, v, day, hasPhoto, onPhotosChanged }: DayPanelProps) 
       }
       const r = unstamp(c.id, day);
       if (!r.ok) toast(r.message, { tone: "error" });
+      else unstamped(c.id, day);
     } else {
       const r = stamp(c.id, day);
       if (!r.ok) toast(r.message, { tone: "error" });
@@ -304,13 +323,13 @@ function DayPanel({ ref, c, v, day, hasPhoto, onPhotosChanged }: DayPanelProps) 
       {stamped && !done && (
         <div className="cp-day-note">
           <TextAreaField
-            label="この日のひとこと（自分だけに見えます）"
+            label={`この日のひとこと${noteFieldSuffix(isShown, progressOn)}`}
             value={draft}
             onChange={(value) => {
               setDraft(value);
               setSaved(false);
             }}
-            onBlur={saveNote}
+            onBlur={() => saveNote()}
             max={LIMITS.note}
             rows={2}
             placeholder="例：駅まで遠回りした"
@@ -320,14 +339,33 @@ function DayPanel({ ref, c, v, day, hasPhoto, onPhotosChanged }: DayPanelProps) 
               {saved ? "保存しました" : ""}
             </span>
             {draft !== note && (
-              <button type="button" className="btn sm" onClick={saveNote}>
+              <button type="button" className="btn sm" onClick={() => saveNote()}>
                 保存
               </button>
             )}
           </div>
+          <NoteShareSwitch
+            challengeId={c.id}
+            day={day}
+            note={note}
+            shown={isShown}
+            draft={draft}
+            onSaveDraft={saveNote}
+            resetAt={shownNoteEdit.resetAt}
+          />
         </div>
       )}
-      {stamped && done && (note ? <p className="cp-quote-sm">{note}</p> : <p className="note">ひとことはありません。</p>)}
+      {stamped &&
+        done &&
+        (note ? (
+          // Reflected: the note stays as it is, but whether it is shown can still change (both ways).
+          <div className="cp-day-note">
+            <p className="cp-quote-sm">{note}</p>
+            <NoteShareSwitch challengeId={c.id} day={day} note={note} shown={isShown} />
+          </div>
+        ) : (
+          <p className="note">ひとことはありません。</p>
+        ))}
       {!stamped && !done && canStamp && <p className="note">印を押すと、ひとことを残せます。</p>}
 
       <DayPhoto challengeId={c.id} day={day} hasPhoto={hasPhoto} onChange={onPhotosChanged} />
@@ -342,7 +380,16 @@ function DayPanel({ ref, c, v, day, hasPhoto, onPhotosChanged }: DayPanelProps) 
       <ConfirmDialog
         open={confirmUndo}
         title={`${day}日目の印を取り消しますか？`}
-        message={`この日のひとこと「${note}」も消えます。`}
+        message={
+          isShown ? (
+            <>
+              <p>{`この日のひとこと「${note}」も消えます。`}</p>
+              <p>{NOTE_SHOWN_UNSTAMP}</p>
+            </>
+          ) : (
+            `この日のひとこと「${note}」も消えます。`
+          )
+        }
         confirmLabel="取り消す"
         cancelLabel="そのままにする"
         danger

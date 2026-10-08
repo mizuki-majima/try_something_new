@@ -74,7 +74,7 @@ export function isValidSeal(s: string): boolean {
   return true;
 }
 
-/** Public text must not carry links (spam). Private notes may. */
+/** Public text must not carry links (spam). Private notes may; a note shown in みんな may not. */
 const JOINERS_RE = new RegExp("[" + hex(0x200c) + hex(0x200d) + "]", "g");
 
 export function containsUrl(s: string): boolean {

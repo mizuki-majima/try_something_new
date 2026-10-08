@@ -1,0 +1,28 @@
+/* Day notes a member shows in 「みんな」 (#17): the details sheet, and the preview before showing one. */
+.mn-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mn-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: var(--border-thin, 2px) solid var(--ink, #111);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface, #fff);
+  color: var(--ink, #111);
+}
+.mn-day {
+  font-family: var(--font-display, "Dela Gothic One", sans-serif);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.mn-text {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}

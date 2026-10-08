@@ -24,7 +24,9 @@ import {
   type BackupFile,
   type Challenge,
   type ChallengeListResponse,
+  type ChallengeResponse,
   type MeResponse,
+  type NoteVisibility,
   type User,
   type Verdict,
 } from "@thirty/shared";
@@ -35,6 +37,8 @@ import {
   applyPending,
   drain,
   enqueue,
+  hasPendingFor,
+  hasPendingMe,
   isLongRateLimit,
   opRequest,
   retryDelayMs,
@@ -45,6 +49,7 @@ import {
   type OutboxItem,
   type OutboxOp,
 } from "./outbox";
+import { NOTE_SHOW_ERRORS, noteShowErrorMessage, notShowableReason } from "./noteShare";
 import { clearAllPhotos } from "./photos";
 import { invalidateRecipes } from "./recipes";
 import {
@@ -103,6 +108,14 @@ export type AppSnapshot = {
   sessionInvalid: boolean;
   /** Writes waiting in the outbox. */
   pending: number;
+  /**
+   * Day notes (`<challengeId>#<day>`) the server still shows in 「みんな」 although this device has
+   * already made them private (#17): the edit, cleared note, undone stamp or 「みんなに表示」 turned off
+   * that does it is still queued (offline, or waiting to retry). Also a note the server will show on
+   * the way: 「みんなに表示」 turned on is queued before the edit. The screen must not say they are
+   * private yet.
+   */
+  stillShown: readonly string[];
   syncStatus: SyncStatus;
   lastSyncError: string | null;
   lastSyncedAt: number | null;
@@ -135,6 +148,25 @@ export type AppActions = {
   updateChallenge(challengeId: string, patch: { title?: string; seal?: string; startDate?: string }): ActionResult;
   deleteChallenge(challengeId: string): ActionResult;
   updateMe(patch: MePatchBody): ActionResult;
+  /**
+   * Show the day's note in 「みんな」, or make it private again (#17). Online only and never optimistic:
+   * to show, queued writes for the challenge are sent first (making it private never waits for them),
+   * and the view changes when the server confirms.
+   * `seen` is the text the owner confirmed: showing is refused when the saved note is another one.
+   * Works on reflected challenges too.
+   */
+  setNoteShown(challengeId: string, day: number, show: boolean, seen?: string): Promise<ActionResult>;
+  /**
+   * After a write that makes a shown note private (#17): setNote saved another text, or unstamp. Send
+   * the queue now, then say where the note stands. "private": nothing shows the old text any more;
+   * "queued": the write still waits to be sent (offline, or a retry) and the server still shows the
+   * old text (AppSnapshot.stillShown); "kept": the write was refused and the note is shown as before
+   * (the queue's own notice says why).
+   * `withdraw` (an undone stamp: the owner chose to remove the note): while the server still shows it
+   * and the device is online, also make it private at once (setNoteShown, beside the queue), so a
+   * write stuck in a retry does not keep it public.
+   */
+  afterShownNoteEdit(challengeId: string, day: number, opts?: { withdraw?: boolean }): Promise<"private" | "queued" | "kept">;
   /** Refetch user + challenges from the server (no-op without a session or offline). */
   refresh(): Promise<void>;
   /** Send queued writes now. Await this before calls that need them on the server (e.g. creating a share link). */
@@ -164,6 +196,7 @@ export type AppStore = {
 type Persisted = { v: 1; base: LocalState; pendingNickname: string | null };
 
 const EMPTY: LocalState = { user: null, challenges: [] };
+const NONE: readonly string[] = [];
 const REFRESH_STALE_MS = 60_000;
 const TODAY_TICK_MS = 30_000;
 const LOCK_NAME = "thirty-days-outbox";
@@ -269,6 +302,28 @@ export function createAppStore(): AppStore {
   const tz = () => (view.user?.tz && isValidTimeZone(view.user.tz) ? view.user.tz : deviceTimeZone());
   let today = todayIn(tz());
 
+  /**
+   * AppSnapshot.stillShown: seen in 「みんな」 in the server's copy (base) or on the way while the queue
+   * is sent in order (「みんなに表示」 turned on goes out before an edit queued after it), and no longer
+   * in the view.
+   */
+  function stillShown(): readonly string[] {
+    // No write adds `shown`: only a note shown in base can be seen on the way.
+    if (pending === 0 || !base.challenges.some((c) => Object.values(c.stamps).some((s) => s.shown === true))) return NONE;
+    const seen = (s: LocalState) =>
+      s.user?.shareProgress === false
+        ? []
+        : s.challenges.flatMap((c) => Object.entries(c.stamps).flatMap(([day, st]) => (st.shown === true ? [`${c.id}#${day}`] : [])));
+    const keys = new Set<string>();
+    let s = base;
+    for (const item of loadOutbox()) {
+      for (const key of seen(s)) keys.add(key);
+      s = applyOp(s, item.op, item.at);
+    }
+    for (const key of seen(view)) keys.delete(key);
+    return keys.size > 0 ? [...keys] : NONE;
+  }
+
   function syncStatus(): SyncStatus {
     if (isSessionInvalid()) return "error";
     if (!online) return "offline";
@@ -290,6 +345,7 @@ export function createAppStore(): AppStore {
       hasSession: getToken() !== null,
       sessionInvalid: isSessionInvalid(),
       pending,
+      stillShown: stillShown(),
       syncStatus: syncStatus(),
       lastSyncError,
       lastSyncedAt,
@@ -396,17 +452,44 @@ export function createAppStore(): AppStore {
     }, ms);
   }
 
+  /**
+   * Take the server's copy of a challenge into base: the response to a sent write. A refresh in
+   * flight keeps it (`touched`) instead of an older list.
+   */
+  function acceptServerChallenge(c: Challenge): void {
+    if (touched) touched.add(c.id);
+    const exists = base.challenges.some((x) => x.id === c.id);
+    base = { ...base, challenges: exists ? base.challenges.map((x) => (x.id === c.id ? c : x)) : [...base.challenges, c] };
+  }
+
+  /**
+   * Take the answer to a note visibility change into base: only that day's `shown`. The rest of the
+   * server's copy can be older than base's (a stamp PUT sent beside it may be answered first), and
+   * taking all of it would bring an old note back. Shown only for the text base has: a newer text
+   * there was made private by the server.
+   */
+  function acceptShown(c: Challenge, day: number): void {
+    const mine = base.challenges.find((x) => x.id === c.id);
+    if (!mine) {
+      acceptServerChallenge(c);
+      return;
+    }
+    if (touched) touched.add(c.id);
+    const key = String(day);
+    const prev = mine.stamps[key];
+    if (!prev) return;
+    const server = c.stamps[key];
+    const shown = server?.shown === true && server.note === prev.note;
+    const stamp = { at: prev.at, ...(prev.note ? { note: prev.note } : {}), ...(shown ? { shown: true } : {}) };
+    base = { ...base, challenges: base.challenges.map((x) => (x === mine ? { ...x, stamps: { ...x.stamps, [key]: stamp } } : x)) };
+  }
+
   function onSent(item: OutboxItem, response: unknown): void {
     if (touched) touched.add(targetOf(item.op) ?? "@me");
     if (isProfileChange(item.op)) clearProfileLimit();
-    let next = applyOp(base, item.op, item.at);
-    if (hasResponseChallenge(response)) {
-      const c = response.challenge;
-      const exists = next.challenges.some((x) => x.id === c.id);
-      next = { ...next, challenges: exists ? next.challenges.map((x) => (x.id === c.id ? c : x)) : [...next.challenges, c] };
-    }
-    if (item.op.kind === "me.patch" && hasResponseUser(response)) next = { ...next, user: response.user };
-    base = next;
+    base = applyOp(base, item.op, item.at);
+    if (hasResponseChallenge(response)) acceptServerChallenge(response.challenge);
+    if (item.op.kind === "me.patch" && hasResponseUser(response)) base = { ...base, user: response.user };
     persist();
   }
 
@@ -664,6 +747,60 @@ export function createAppStore(): AppStore {
       }
       mutate({ kind: "me.patch", body: parsed.data });
       return ok();
+    },
+
+    async setNoteShown(challengeId, day, show, seen) {
+      // From the view, not findOpen: a reflected challenge can still show or hide its notes.
+      const find = () => view.challenges.find((x) => x.id === challengeId);
+      const c = find();
+      if (!c) return fail("チャレンジが見つかりませんでした。");
+      if (show) {
+        const reason = notShowableReason(c.stamps[String(day)]?.note ?? "");
+        if (reason) return fail(reason);
+        if (view.user?.shareProgress === false) return fail(NOTE_SHOW_ERRORS.progressOff);
+      }
+      if (!browserOnline()) return fail(NOTE_SHOW_ERRORS.offline);
+      // To show, the server must already hold what the owner sees: the challenge, a note saved a
+      // moment ago and 「みんなに表示」 turned on. Stopping waits for nothing (a write stuck in the queue
+      // must not keep a note public): a queued write sent after it cannot show the note again (the API
+      // checks), so the order does not matter.
+      const waiting = () => {
+        const items = loadOutbox();
+        return hasPendingFor(items, challengeId) || hasPendingMe(items);
+      };
+      if (show && waiting()) {
+        await flush();
+        if (waiting()) return fail(NOTE_SHOW_ERRORS.pending);
+      }
+      let body: NoteVisibility = { show: false };
+      if (show) {
+        // The server's copy now (nothing is queued for it): the API refuses any other text.
+        const note = find()?.stamps[String(day)]?.note ?? "";
+        if (!note) return fail(NOTE_SHOW_ERRORS.noteMissing);
+        if (seen !== undefined && note !== seen) return fail(NOTE_SHOW_ERRORS.noteChanged);
+        body = { show: true, note };
+      }
+      try {
+        const res = await request<ChallengeResponse>("PUT", API.noteVisibility(challengeId, day), { body, auth: "required" });
+        if (!hasResponseChallenge(res) || res.challenge.id !== challengeId) return fail(NOTE_SHOW_ERRORS.unavailable);
+        acceptShown(res.challenge, day);
+        persist();
+        recompute();
+        return ok();
+      } catch (err) {
+        // This device may be behind (the note changed elsewhere, progress turned off): catch up.
+        if (err instanceof ApiClientError && [400, 404, 409].includes(err.status)) void refresh();
+        return fail(noteShowErrorMessage(err));
+      }
+    },
+
+    async afterShownNoteEdit(challengeId, day, { withdraw = false } = {}) {
+      const key = `${challengeId}#${day}`;
+      // Taking it back skips the queue; the API answers even when the undone stamp arrives first.
+      const hide = withdraw && browserOnline() && stillShown().includes(key) ? actions.setNoteShown(challengeId, day, false) : null;
+      await Promise.all([flush(), hide]);
+      if (stillShown().includes(key)) return "queued";
+      return view.challenges.find((x) => x.id === challengeId)?.stamps[String(day)]?.shown === true ? "kept" : "private";
     },
 
     refresh,

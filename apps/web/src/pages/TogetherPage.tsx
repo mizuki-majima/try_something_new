@@ -2,18 +2,23 @@
  * /together — みんなの30日 (SPEC FR-8, FR-9, CUF-3). Tabs: 今月の組 / 次の1日組 / 先月の組.
  * A month tab lists GET /api/cohorts/:month (nickname, seal, title, stamped days, cheers);
  * "応援" is optimistic (+1, once a day). 次の1日組 shows GET /api/cohorts/upcoming.
- * 「詳しく見る」 opens one member's details in a sheet, from the same public data (no extra request).
- * Only nickname, seal, title and stamped days are public; the daily notes never are.
+ * 「詳しく見る」 opens one member's details in a sheet, from the same public data; only when the member
+ * shows day notes (shownNoteCount, #17) does it fetch them, on every open (GET /api/members/:id/notes).
+ * Public: nickname, seal, title, stamped days, and the day notes their owner chose to show. The list
+ * itself never carries note text, and notes nobody chose to show are never sent at all.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
   API,
+  LIMITS,
   TOTAL_DAYS,
   VERDICTS,
   addDays,
+  containsUrl,
   dayIndex,
   diffDays,
+  graphemeLength,
   isFirstOfMonth,
   jpDate,
   jpPeriod,
@@ -22,10 +27,13 @@ import {
   type CheerResponse,
   type CohortMember,
   type CohortResponse,
+  type MemberNote,
+  type MemberNotesResponse,
   type UpcomingResponse,
 } from "@thirty/shared";
 import { Grid30 } from "../components/Grid30";
 import { HeartIcon } from "../components/Icons";
+import { MemberNoteList } from "../components/MemberNotes";
 import { MiniGrid30 } from "../components/MiniGrid30";
 import { ReportButton } from "../components/ReportButton";
 import { Seal } from "../components/Seal";
@@ -123,10 +131,44 @@ function useRemote<T>(path: string, parse: (raw: unknown) => T) {
   return { data: current?.data, error: current?.error ?? null, loading: current === null, reload, update };
 }
 
+const isDayCount = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= TOTAL_DAYS;
+
+/** shownNoteCount (#17) is kept only as a count of days (1–30); anything else means no notes are shown. */
+function withNoteCount(m: CohortMember): CohortMember {
+  const { shownNoteCount, ...rest } = m;
+  return isDayCount(shownNoteCount) ? { ...rest, shownNoteCount } : rest;
+}
+
 const parseCohort = (raw: unknown): CohortMember[] => {
   const members = (raw as CohortResponse | null)?.members;
-  return sortMembers(Array.isArray(members) ? members.filter(isMemberLike) : []);
+  return sortMembers(Array.isArray(members) ? members.filter(isMemberLike).map(withNoteCount) : []);
 };
+
+/**
+ * GET /api/members/:id/notes, cleaned before anything is drawn: notes of this challenge only, on a day
+ * the card shows as stamped, 1–LIMITS.note characters without a URL (the public-text rules), one per
+ * day, by day. Anything else is left out, and a response of another shape is no notes at all.
+ */
+export function parseMemberNotes(raw: unknown, challengeId: string, stampDays: readonly number[]): MemberNote[] {
+  const r = raw as Partial<MemberNotesResponse> | null;
+  if (!r || typeof r !== "object" || r.challengeId !== challengeId || !Array.isArray(r.notes)) return [];
+  const stamped = new Set(stampDays);
+  const byDay = new Map<number, string>();
+  for (const item of r.notes as unknown[]) {
+    const { day, note } = (item && typeof item === "object" ? item : {}) as Partial<MemberNote>;
+    if (!isDayCount(day) || !stamped.has(day) || byDay.has(day)) continue;
+    if (typeof note !== "string" || containsUrl(note)) continue;
+    const n = graphemeLength(note);
+    if (n >= 1 && n <= LIMITS.note) byDay.set(day, note);
+  }
+  return [...byDay].sort(([a], [b]) => a - b).map(([day, note]) => ({ day, note }));
+}
+
+/** The API's own answer that this challenge shows no note (well formed and empty, not a list left out). */
+export function answeredNoNotes(raw: unknown, challengeId: string): boolean {
+  const r = raw as Partial<MemberNotesResponse> | null;
+  return !!r && typeof r === "object" && r.challengeId === challengeId && Array.isArray(r.notes) && r.notes.length === 0;
+}
 
 /** count / byRecipe count reservations (one person may have several); peopleCount, when the API sends it, counts people. */
 const parseUpcoming = (raw: unknown): UpcomingResponse | null => {
@@ -199,7 +241,7 @@ export default function TogetherPage() {
 
       <div className="tg-privacy">
         <p>
-          一覧に出るのは、<b>ニックネーム・印・タイトル・押した日</b>だけ。ひとことは表示されません。
+          一覧に出るのは、<b>ニックネーム・印・タイトル・押した日・判定・応援の数</b>と、本人が「みんなに見せる」を選んだひとことの数。そのひとことは「詳しく見る」で読めます。ほかのひとことと写真は表示されません。
         </p>
         {user && !user.shareProgress ? (
           <p>
@@ -355,6 +397,7 @@ function MemberCard({
   const verdict = m.done && m.verdict && m.verdict in VERDICTS ? m.verdict : null;
   const nickname = m.nickname || "名無し";
   const disabled = m.isMine || m.cheeredToday || busy;
+  const notes = m.shownNoteCount ?? 0;
   return (
     <li className={m.isMine ? "person me tg-member" : "person tg-member"} data-testid="member">
       <Seal char={m.seal} size="lg" />
@@ -379,6 +422,13 @@ function MemberCard({
           {running && m.stampDays.includes(day) && <span className="pill today">きょう済</span>}
           {!m.done && day > TOTAL_DAYS && <span className="pill">振り返り待ち</span>}
           {verdict && <span className={`badge ${verdict}`}>{VERDICTS[verdict].label}</span>}
+          {/* How many, never the text: that is read in 「詳しく見る」. */}
+          {notes > 0 && (
+            <span className="pill tg-notes-pill" data-testid="notes-pill">
+              <span aria-hidden="true">ひとこと {notes}</span>
+              <span className="sr-only">（本人が見せているひとこと {notes}件）</span>
+            </span>
+          )}
         </div>
         <div className="row between gap fw tg-actions">
           <button
@@ -488,15 +538,80 @@ function MemberDetailSheet({
             {m.cheeredToday ? "応援済み" : "応援"}
             <span className="tg-cheer-n">{m.cheers}</span>
           </button>
-          {m.isMine && (
+          {m.isMine ? (
             <Link to={`/c/${m.challengeId}`} className="btn sm ghost tg-open" onClick={onClose}>
               自分の記録を開く
             </Link>
+          ) : (
+            <ReportButton targetType="member" targetId={m.challengeId} subject={`${nickname}さんの表示`} />
           )}
         </div>
-        <p className="note">ひとことメモと写真は、本人だけが見られます。</p>
+        <MemberNotesSection member={m} />
+        <p className="note">ひとことは、本人が「みんなに見せる」を選んだものだけ表示しています。写真は本人だけが見られます。</p>
       </div>
     </Sheet>
+  );
+}
+
+type NotesEntry = { key: string; raw?: unknown; error?: string; gone?: boolean };
+
+/**
+ * The member's shown notes, fetched each time the sheet opens and never cached, so turning one back to
+ * 「自分だけ」 (or progress off, a moderator's hide) applies to the very next look. A 404 means the
+ * member is not listed any more: nothing to show, not an error.
+ */
+function useMemberNotes(challengeId: string, enabled: boolean) {
+  const [attempt, setAttempt] = useState(0);
+  const [entry, setEntry] = useState<NotesEntry | null>(null);
+  const key = `${challengeId}#${attempt}`;
+  useEffect(() => {
+    if (!enabled) return;
+    const ctrl = new AbortController();
+    let alive = true;
+    request<unknown>("GET", API.memberNotes(challengeId), { signal: ctrl.signal, auth: "none" }).then(
+      (raw) => {
+        if (alive) setEntry({ key, raw });
+      },
+      (err: unknown) => {
+        if (!alive) return;
+        setEntry(err instanceof ApiClientError && err.status === 404 ? { key, gone: true } : { key, error: errorMessage(err) });
+      },
+    );
+    return () => {
+      alive = false;
+      ctrl.abort();
+    };
+  }, [challengeId, key, enabled]);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const current = enabled && entry?.key === key ? entry : null;
+  return { current, loading: enabled && current === null, retry };
+}
+
+/**
+ * 「本人が見せているひとこと」 in the details sheet (#17): plain text, by day. Your own card always asks
+ * the API: the list (gsi1, read once per visit) can lag behind a note you just showed, so "nothing
+ * shown" is said only when the strongly consistent read answered no notes.
+ */
+function MemberNotesSection({ member: m }: { member: CohortMember }) {
+  const headId = useId();
+  const { current, loading, retry } = useMemberNotes(m.challengeId, m.isMine || (m.shownNoteCount ?? 0) > 0);
+  const notes = current?.raw !== undefined ? parseMemberNotes(current.raw, m.challengeId, m.stampDays) : [];
+
+  let body: ReactNode = null;
+  if (loading) body = <Loading inline label="ひとことを読み込んでいます…" />;
+  else if (current?.error) body = <ErrorState title="ひとことを読み込めませんでした。" message={current.error} onRetry={retry} retryLabel="もう一度" />;
+  else if (notes.length > 0) body = <MemberNoteList notes={notes} />;
+  else if (m.isMine && current?.raw !== undefined && answeredNoNotes(current.raw, m.challengeId)) {
+    body = <p className="note">いま「みんな」に見せているひとことはありません。「自分の記録を開く」から日を選ぶと、日ごとに「みんなに見せる」を選べます。</p>;
+  }
+  if (!body) return null;
+  return (
+    <section className="tg-notes" aria-labelledby={headId} data-testid="member-notes">
+      <h3 className="tg-notes-h" id={headId}>
+        本人が見せているひとこと
+      </h3>
+      {body}
+    </section>
   );
 }
 
