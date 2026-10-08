@@ -26,6 +26,7 @@ import { Seal } from "../components/Seal";
 import { ErrorState, Loading } from "../components/States";
 import { useToast } from "../components/Toast";
 import { StartChallengeSheet, type StartPreset } from "../features/start/StartChallengeSheet";
+import { StartTodayConfirm } from "../features/start/StartTodayConfirm";
 import { errorMessage, request } from "../lib/api";
 import { isOpen, sortForToday, viewChallenge } from "../lib/challenge";
 import { prefersReducedMotion, usePageTitle } from "../lib/hooks";
@@ -186,6 +187,10 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
   const v = viewChallenge(c, today);
   const [fresh, setFresh] = useState<number | null>(null);
   const [confirmUndo, setConfirmUndo] = useState<number | null>(null);
+  // 「今日から始める」 on a reservation asks first: it leaves the reserved day's group (#21).
+  const [confirmStart, setConfirmStart] = useState(false);
+  // Past midnight on the start day (or synced from another device) it is no reservation any more.
+  if (confirmStart && v.phase !== "waiting") setConfirmStart(false);
   const doneRef = useRef<HTMLParagraphElement>(null);
   const stampRef = useRef<HTMLButtonElement>(null);
   const focusNext = useRef<"done" | "stamp" | null>(null);
@@ -238,9 +243,15 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
   }
 
   function startToday() {
+    setConfirmStart(false);
     const r = updateChallenge(c.id, { startDate: today });
-    if (!r.ok) toast(r.message, { tone: "error" });
-    else toast("今日から始めました。1日目の分を押しましょう");
+    if (!r.ok) {
+      toast(r.message, { tone: "error" });
+      return;
+    }
+    // The button that opened the dialog is gone: today's stamp button takes the focus.
+    focusNext.current = "stamp";
+    toast("今日から始めました。1日目の分を押しましょう");
   }
 
   const canToggle = v.phase === "active" || v.phase === "ended";
@@ -318,7 +329,7 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
                 あと{v.daysUntilStart}日。{v.firstOfMonth ? "同じ日に始める仲間と並びます。" : ""}
               </span>
             </p>
-            <button type="button" className="btn" onClick={startToday}>
+            <button type="button" className="btn" onClick={() => setConfirmStart(true)}>
               今日から始める
             </button>
           </div>
@@ -363,6 +374,13 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
           if (day !== null) doUnstamp(day, true);
         }}
         onCancel={() => setConfirmUndo(null)}
+      />
+      <StartTodayConfirm
+        open={confirmStart}
+        reservedStart={c.startDate}
+        today={today}
+        onConfirm={startToday}
+        onCancel={() => setConfirmStart(false)}
       />
     </article>
   );
