@@ -43,8 +43,11 @@
   --shadow-float: 0 12px 32px rgba(28, 27, 25, 0.16); /* floating sheets and toasts only */
   --toast-bg: var(--ink);
   --toast-fg: var(--bg); /* 12.21 */
-  --toast-border: transparent;
+  --toast-border: var(--float-border);
+  /* Floating sheets, dialogs and toasts: a shadow in light, a 1px --line border in the dark. */
+  --float-border: transparent;
   --rule-faint: rgba(52, 49, 44, 0.06); /* ruled-paper lines (hero, empty states) */
+  --photo-filter: none; /* photos and card images: dimmed a little in the dark */
 
   /* ---- lines, shadows, shapes ---- */
   --border: 1px;
@@ -139,8 +142,9 @@
     --shadow-float: 0 0 #0000; /* no shadows in the dark: a 1px --line border instead */
     --toast-bg: #2e2c29; /* 10.69, with a 1px --line border (3.36) */
     --toast-fg: var(--ink);
-    --toast-border: var(--line);
+    --float-border: var(--line);
     --rule-faint: rgba(230, 225, 216, 0.05);
+    --photo-filter: brightness(0.92);
     color-scheme: dark;
   }
 }
@@ -172,8 +176,9 @@
   --shadow-float: 0 0 #0000;
   --toast-bg: #2e2c29;
   --toast-fg: var(--ink);
-  --toast-border: var(--line);
+  --float-border: var(--line);
   --rule-faint: rgba(230, 225, 216, 0.05);
+  --photo-filter: brightness(0.92);
   color-scheme: dark;
 }
 

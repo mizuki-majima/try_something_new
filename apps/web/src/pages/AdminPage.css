@@ -1,4 +1,4 @@
-/* 管理 — page-only styles. Tokens from docs/design.md, each with a fallback. */
+/* 管理 — page-only styles. 「白いノート」 (docs/design.md); admin text stays in the device font. */
 
 .adm {
   display: grid;
@@ -24,7 +24,7 @@
   max-width: 28rem;
 }
 
-/* Tabs: bordered blocks, the selected one is yellow. */
+/* Tabs: outlined blocks; the selected one is soft green with a 2px green ring. */
 .adm-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -33,20 +33,20 @@
 .adm-tab {
   min-height: 44px;
   padding: 6px 16px;
-  border: var(--border, 3px) solid var(--ink, #111111);
+  border: var(--border-ctl) solid var(--line);
   border-radius: 10px;
-  background: var(--surface, #ffffff);
-  color: var(--ink, #111111);
+  background: var(--surface);
+  color: var(--ink);
   font-weight: 700;
   cursor: pointer;
 }
 .adm-tab[aria-selected="true"] {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111111);
-  box-shadow: 3px 3px 0 var(--ink, #111111);
+  border: var(--border-strong) solid var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .adm-tab:focus-visible {
-  outline: 3px solid var(--blue, #6c8cff);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
 
@@ -54,7 +54,7 @@
   outline: none;
 }
 .adm-panel:focus-visible {
-  outline: 3px dashed var(--blue, #6c8cff);
+  outline: 2px dashed var(--accent-ink);
   outline-offset: 6px;
 }
 
@@ -80,7 +80,7 @@
 .adm-sub {
   margin: 0 0 8px;
   font-size: 15px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .adm-card {
@@ -112,10 +112,9 @@
   display: grid;
   gap: 2px;
   padding: 10px 12px;
-  border: var(--border, 3px) solid var(--ink, #111111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #ffffff);
-  box-shadow: 3px 3px 0 var(--ink, #111111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 .adm-tile-n {
   font-family: var(--font-num);
@@ -127,7 +126,7 @@
 .adm-tile-l {
   font-size: 12px;
   font-weight: 700;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 
 .adm-table-wrap {
@@ -141,41 +140,44 @@
 .adm-table th,
 .adm-table td {
   padding: 8px;
-  border-bottom: 2px solid color-mix(in srgb, var(--ink, #111111) 20%, transparent);
+  border-bottom: 1px solid var(--rule);
   text-align: left;
   vertical-align: top;
 }
 .adm-table thead th {
   font-size: 12px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
 }
 .adm-table td small {
   display: block;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 12px;
 }
 
 .adm-judge {
   display: inline-block;
   padding: 1px 8px;
-  border: 2px solid var(--ink, #111111);
+  border: 1px solid transparent;
   border-radius: 6px;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   white-space: nowrap;
-  color: var(--on-accent, #111111);
-  transform: rotate(-2deg);
+  color: var(--ink);
 }
 .adm-judge.pass {
-  background: var(--mint, #3ddc97);
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .adm-judge.fail {
+  border-color: var(--shu-ink);
   background: var(--shu-soft);
   color: var(--shu-ink);
 }
 .adm-judge.na {
-  background: var(--gray, var(--soft, #e6e1d3));
-  color: var(--ink, #111111);
+  border-color: var(--line);
+  background: var(--gray-soft);
+  color: var(--ink);
 }
 
 .adm-two {
@@ -199,7 +201,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 4px 0;
-  border-bottom: 2px dotted color-mix(in srgb, var(--ink, #111111) 30%, transparent);
+  border-bottom: 1px dotted var(--rule);
 }
 .adm-kv dt {
   font-weight: 700;
@@ -235,24 +237,25 @@
 .adm-type,
 .adm-status {
   padding: 1px 8px;
-  border: 2px solid var(--ink, #111111);
+  border: 1px solid var(--rule);
   border-radius: 6px;
   font-size: 12px;
-  font-weight: 900;
-  color: var(--on-accent, #111111);
+  font-weight: 700;
+  color: var(--ink);
 }
 .adm-type {
-  background: var(--blue, #6c8cff);
+  background: var(--mist);
 }
 .adm-status.published {
-  background: var(--mint, #3ddc97);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .adm-status.hidden {
-  background: var(--yellow, #ffd43b);
+  background: var(--sand);
+  color: var(--amber-ink);
 }
 .adm-status.deleted {
-  background: var(--gray, var(--soft, #e6e1d3));
-  color: var(--ink, #111111);
+  background: var(--gray-soft);
 }
 .adm-count {
   margin-left: auto;
@@ -271,9 +274,8 @@
   gap: 4px;
   margin: 0;
   padding: 8px 10px 8px 1.6em;
-  border: 2px solid var(--ink, #111111);
   border-radius: 8px;
-  background: var(--bg, var(--paper, #fff4d6));
+  background: var(--bg-2);
   font-size: 13px;
   white-space: pre-wrap;
 }
@@ -309,8 +311,9 @@
   }
 }
 .adm-feat.on {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111111);
+  border: var(--border-strong) solid var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .adm-contact {

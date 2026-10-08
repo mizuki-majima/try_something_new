@@ -1,7 +1,7 @@
 /*
  * このサービスについて・利用規約・プライバシーポリシー・お問い合わせ.
- * Long text: a readable measure, generous line height, numbered sticker headings.
- * Tokens from docs/design.md, each with a fallback.
+ * Long text: a readable measure, generous line height, handwritten numbered headings.
+ * 「白いノート」 (docs/design.md).
  */
 
 .info-page {
@@ -19,9 +19,15 @@
 .info-title {
   margin: 0;
   font-family: var(--font-hand);
-  font-size: clamp(26px, 7vw, 36px);
+  font-size: 26px;
   font-weight: 600;
-  line-height: 1.25;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+@media (min-width: 760px) {
+  .info-title {
+    font-size: 30px;
+  }
 }
 .info-title:focus {
   outline: none;
@@ -31,25 +37,23 @@
   justify-self: start;
   margin: 0;
   padding: 2px 10px;
-  border: 2px solid var(--ink, #111111);
   /* Not a pill: with 改定日 and 適用日 the line wraps on phones. */
-  border-radius: var(--radius-sm, 8px);
-  background: var(--surface, #ffffff);
-  font-size: 12px;
-  font-weight: 700;
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.7;
 }
 
-/* 改定のお知らせ (a revision announced before it takes effect): a mint card under the dates. */
+/* 改定のお知らせ (a revision announced before it takes effect): a soft green box under the dates. */
 .info-notice {
   display: grid;
   gap: 6px;
   padding: 12px 14px;
-  border: var(--border, 3px) solid var(--ink, #111111);
-  border-radius: var(--radius, 12px);
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111111);
-  box-shadow: var(--shadow-sm, 3px 3px 0 var(--ink, #111111));
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--ink);
   font-size: 15px;
   line-height: 1.8;
 }
@@ -63,7 +67,7 @@
   margin: 0;
 }
 .info-notice a {
-  color: var(--on-accent, #111111);
+  color: inherit;
   font-weight: 700;
 }
 
@@ -74,14 +78,13 @@
   line-height: 1.85;
 }
 
-/* Table of contents: a bordered card with numbered links. */
+/* Table of contents: a white card with numbered links. */
 .info-toc {
   padding: 14px 16px;
-  border: var(--border, 3px) solid var(--ink, #111111);
-  border-radius: var(--radius, 12px);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111111);
-  box-shadow: var(--shadow, 5px 5px 0 var(--ink, #111111));
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
 }
 .info-toc-title {
   margin: 0 0 6px;
@@ -101,20 +104,20 @@
   }
 }
 .info-toc li {
-  font-weight: 700;
+  font-weight: 600;
+}
+.info-toc li::marker {
+  color: var(--muted);
 }
 .info-toc a {
   display: inline-block;
   padding: 6px 0;
-  color: var(--on-accent, #111111);
-  text-underline-offset: 3px;
-  text-decoration-thickness: 2px;
 }
 
 .info-sec {
   display: grid;
   gap: 10px;
-  scroll-margin-top: calc(var(--header-h, 56px) + 16px);
+  scroll-margin-top: calc(var(--header-h) + 16px);
 }
 
 .info-h {
@@ -123,25 +126,25 @@
   gap: 10px;
   margin: 0;
   font-family: var(--font-hand);
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 600;
+  letter-spacing: 0.04em;
   line-height: 1.4;
 }
+/* The section number: a green ring. */
 .info-num {
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 34px;
-  height: 34px;
-  border: var(--border, 3px) solid var(--ink, #111111);
-  border-radius: 8px;
-  background: var(--blue, #6c8cff);
-  color: var(--on-accent, #111111);
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--accent-ink);
+  border-radius: 50%;
+  color: var(--accent-ink);
   font-family: var(--font-num);
   font-weight: 700;
   font-size: 15px;
-  transform: rotate(-4deg);
-  box-shadow: 2px 2px 0 var(--ink, #111111);
+  letter-spacing: 0;
 }
 
 .info-body {
@@ -158,7 +161,7 @@
   padding-left: 1.4em;
 }
 .info-body li::marker {
-  color: var(--shu, #ff4b2b);
+  color: var(--accent-ink);
 }
 .info-body a,
 .about-a a {
@@ -167,9 +170,9 @@
 
 .info-table-wrap {
   overflow-x: auto;
-  border: var(--border, 3px) solid var(--ink, #111111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #ffffff);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 .info-table {
   width: 100%;
@@ -180,7 +183,7 @@
 .info-table th,
 .info-table td {
   padding: 8px 12px;
-  border-bottom: 2px solid color-mix(in srgb, var(--ink, #111111) 20%, transparent);
+  border-bottom: 1px solid var(--rule);
   text-align: left;
   vertical-align: top;
 }
@@ -195,7 +198,7 @@
 }
 .info-table tbody th {
   width: 9em;
-  font-weight: 900;
+  font-weight: 700;
   white-space: nowrap;
 }
 /* Phones: each row becomes a small block (label above its text). */
@@ -213,7 +216,7 @@
   }
   .info-table tr {
     padding: 8px 12px;
-    border-bottom: 2px solid color-mix(in srgb, var(--ink, #111111) 20%, transparent);
+    border-bottom: 1px solid var(--rule);
   }
   .info-table tr:last-child {
     border-bottom: 0;
@@ -228,7 +231,8 @@
 
 .info-foot {
   padding-top: 12px;
-  border-top: var(--border, 3px) solid var(--ink, #111111);
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
   font-size: 13px;
   text-align: right;
 }
@@ -243,26 +247,24 @@
   align-items: center;
   min-height: 44px;
   padding: 6px 14px;
-  border: 2px solid var(--ink, #111111);
-  border-radius: 999px;
-  background: var(--surface, #ffffff);
-  color: var(--ink, #111111);
+  border: var(--border-ctl) solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
 }
-.info-more a:hover {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111111);
+@media (hover: hover) {
+  .info-more a:hover {
+    background: var(--bg-2);
+  }
 }
 
 /* ---------- このサービスについて ---------- */
 
 .about-hero {
   justify-items: start;
-}
-.about-seal {
-  transform: rotate(-8deg);
 }
 
 .about-steps {
@@ -282,23 +284,11 @@
   display: grid;
   gap: 6px;
   justify-items: start;
-  padding: 16px 14px 14px;
-  border: var(--border, 3px) solid var(--ink, #111111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #ffffff);
-  box-shadow: var(--shadow, 5px 5px 0 var(--ink, #111111));
-}
-.about-step:nth-child(1) {
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111111);
-}
-.about-step:nth-child(2) {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111111);
-}
-.about-step:nth-child(3) {
-  background: var(--pink, #ff9ec7);
-  color: var(--on-accent, #111111);
+  padding: 18px 14px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
 }
 .about-step b {
   font-family: var(--font-display);
@@ -308,30 +298,31 @@
 .about-step p {
   margin: 0;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.75;
 }
+/* The step number: handwritten in a green ring over the card's top edge. */
 .about-step-n {
   position: absolute;
-  top: -12px;
+  top: -14px;
   right: 12px;
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border: var(--border, 3px) solid var(--ink, #111111);
+  width: 30px;
+  height: 30px;
+  border: 1.5px solid var(--accent-ink);
   border-radius: 50%;
-  background: var(--surface, #ffffff);
-  color: var(--ink, #111111);
+  background: var(--surface);
+  color: var(--accent-ink);
   font-family: var(--font-hand);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .about-credit {
   padding: 12px 14px;
-  border: 2px solid var(--ink, #111111);
+  border: 1px solid var(--rule);
   border-radius: 10px;
-  background: var(--surface, #ffffff);
+  background: var(--surface);
 }
 
 .about-faq {
@@ -339,12 +330,9 @@
   gap: 10px;
 }
 .about-qa {
-  border: var(--border, 3px) solid var(--ink, #111111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #ffffff);
-}
-.about-qa[open] {
-  box-shadow: 4px 4px 0 var(--ink, #111111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand-sm);
+  background: var(--surface);
 }
 .about-qa summary {
   display: flex;
@@ -352,7 +340,7 @@
   gap: 10px;
   min-height: 48px;
   padding: 10px 14px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
   list-style: none;
 }
@@ -366,10 +354,9 @@
   flex: none;
   width: 28px;
   height: 28px;
-  border: 2px solid var(--ink, #111111);
   border-radius: 6px;
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111111);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-family: var(--font-num);
   font-weight: 700;
   font-size: 14px;
@@ -377,6 +364,7 @@
 .about-qa summary::after {
   content: "+";
   margin-left: auto;
+  color: var(--muted);
   font-family: var(--font-num);
   font-weight: 700;
   font-size: 20px;
@@ -386,7 +374,7 @@
   content: "−";
 }
 .about-qa summary:focus-visible {
-  outline: 3px solid var(--blue, #6c8cff);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
   border-radius: 8px;
 }
@@ -404,16 +392,15 @@
 .contact-report {
   margin: 0;
   padding: 10px 12px;
-  border: 2px solid var(--ink, #111111);
   border-radius: 10px;
-  background: var(--pink, #ff9ec7);
-  color: var(--on-accent, #111111);
+  background: var(--shu-soft);
+  color: var(--ink);
   font-size: 14px;
   font-weight: 700;
 }
 .contact-report a {
   margin-left: 6px;
-  color: var(--on-accent, #111111);
+  color: var(--shu-ink);
 }
 
 .contact-form textarea {
@@ -425,10 +412,9 @@
   gap: 12px;
   justify-items: center;
   padding: 28px 16px;
-  border: var(--border, 3px) solid var(--ink, #111111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #ffffff);
-  box-shadow: var(--shadow, 5px 5px 0 var(--ink, #111111));
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
   text-align: center;
 }
 .contact-done-actions {

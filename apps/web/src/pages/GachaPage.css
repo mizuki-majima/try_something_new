@@ -1,5 +1,5 @@
 /*
- * ガチャ (FR-12) + ひらめき提案 (FR-13). NEO-BRUTALISM; tokens with fallbacks.
+ * ガチャ (FR-12) + ひらめき提案 (FR-13). 「白いノート」 (docs/design.md).
  * Base classes (.gf, .gl, .slot, .gres, .aibox) come from components.css.
  */
 .g-filters {
@@ -11,7 +11,7 @@
   gap: 12px;
 }
 
-/* The slot window; the title in the device's font at 700. */
+/* The slot window: a white card; the title in the device's font at 700. No shaking while it draws. */
 .g-slot {
   display: flex;
   align-items: center;
@@ -20,52 +20,33 @@
   min-height: 84px;
   margin: 0;
   padding: 14px 16px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: var(--shadow-lg, 6px 6px 0 var(--ink, #111));
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+  color: var(--ink);
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: clamp(18px, 5.2vw, 26px);
-  line-height: 1.3;
+  font-size: clamp(18px, 5.2vw, 24px);
+  line-height: 1.35;
   text-align: center;
   overflow: hidden;
 }
 .g-slot.spin {
-  color: var(--on-accent, #111);
+  background: var(--bg-2);
+  color: var(--muted);
 }
-.g-slot.spin .g-slot-title,
-.g-slot.spin .seal {
-  animation: g-tick 90ms linear infinite;
-}
-.g-slot.landed {
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
-  animation: g-land 260ms cubic-bezier(0.2, 1.6, 0.4, 1);
+/* The result appears with a short fade. */
+.g-slot.landed,
+.g-result {
+  animation: fade 200ms ease-out;
 }
 .g-slot-idle {
+  color: var(--muted);
   font-size: 0.8em;
 }
 .g-slot-title {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-@keyframes g-tick {
-  from {
-    transform: translateY(-6px);
-  }
-  to {
-    transform: translateY(6px);
-  }
-}
-@keyframes g-land {
-  0% {
-    transform: scale(0.94) rotate(-1deg);
-  }
-  100% {
-    transform: none;
-  }
 }
 
 .g-spin {
@@ -77,14 +58,14 @@
 
 .g-relax {
   padding: 8px 12px;
-  border: var(--border-thin, 2px) dashed var(--ink, #111);
-  border-radius: var(--radius-sm, 8px);
-  background: var(--surface, #fff);
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  font-size: 14px;
 }
 
+/* The genre's soft colour along the top edge. */
 .g-result {
-  border-top: 12px solid var(--cat, var(--ink, #111));
+  border-top: 6px solid var(--cat, var(--rule));
 }
 .g-result .rhead,
 .g-suggestion .rhead {
@@ -94,9 +75,10 @@
 .g-sug-title {
   margin: 4px 0 4px;
   font-family: var(--font-hand);
-  font-size: clamp(18px, 5vw, 22px);
+  font-size: 20px;
   font-weight: 600;
-  line-height: 1.3;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
 }
 /* Primary CTA on its own row on phones (and in the narrow suggestion cards); one row on wide screens. */
 .g-actions {
@@ -124,23 +106,28 @@
 }
 .g-ideas-title {
   font-family: var(--font-hand);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
 }
-/* The fixed "no AI" note: a sticker, so it is never mistaken for fine print. */
+@media (min-width: 760px) {
+  .g-ideas-title {
+    font-size: 22px;
+  }
+}
+/* The fixed "no AI" note: a small green label, so it is never mistaken for fine print. */
 .g-norule {
   display: inline-flex;
   align-items: center;
   justify-self: start;
   gap: 6px;
   padding: 2px 10px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-pill, 999px);
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
-  font-size: 12px;
+  border: 1px solid var(--accent-ink);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 13px;
+  line-height: 1.6;
   font-weight: 700;
-  transform: rotate(-1.5deg);
 }
 .g-norule svg {
   width: 16px;
@@ -151,10 +138,9 @@
 }
 .g-limit {
   padding: 10px 12px;
-  border: var(--border-thin, 2px) solid var(--ink, #111);
-  border-radius: var(--radius-sm, 8px);
-  background: var(--gray, #e6e1d3);
-  color: var(--ink, #111);
+  border-radius: var(--radius-sm);
+  background: var(--gray-soft);
+  color: var(--ink);
   font-weight: 700;
 }
 .g-suggestions {
@@ -173,13 +159,12 @@
   display: grid;
   gap: 10px;
   align-content: start;
-  border-top: 10px solid var(--cat, var(--ink, #111));
+  border-top: 6px solid var(--cat, var(--rule));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .g-slot.spin .g-slot-title,
-  .g-slot.spin .seal,
-  .g-slot.landed {
+  .g-slot.landed,
+  .g-result {
     animation: none;
   }
 }

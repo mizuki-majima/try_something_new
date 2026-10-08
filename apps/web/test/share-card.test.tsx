@@ -156,7 +156,7 @@ describe("computeCardLayout", () => {
   it("puts the verdict sticker on the seal and the label in its colour", () => {
     const l = computeCardLayout(shareCardData(challenge({ verdict: "modify" })), measure);
     expect(l.sticker?.label).toBe("形を変える");
-    expect(l.sticker?.color.toLowerCase()).toBe("#6c8cff");
+    expect(l.sticker?.color.toLowerCase()).toBe("#52637a");
   });
 
   it("falls back to the verdict description without a ひとこと", () => {

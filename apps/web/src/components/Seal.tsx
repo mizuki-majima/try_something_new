@@ -1,10 +1,10 @@
-/** The 朱 seal: one ink character on a vermilion disc with an ink ring and hard shadow, tilted -6deg. */
+/** The 朱 seal: a 朱 ring with one handwritten 朱 character, no fill, tilted -4deg (components.css .seal). */
 export type SealSize = "sm" | "md" | "lg" | "xl";
 
 type Props = {
   char: string;
   size?: SealSize;
-  /** For use on the 朱 primary button (a yellow seal with an ink ring). */
+  /** For use on the green primary button (ring and character in the button's text colour). */
   inverse?: boolean;
   /** Accessible name (e.g. "印「写」"). Without it the seal is decorative. */
   label?: string;

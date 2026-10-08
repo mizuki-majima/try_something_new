@@ -1,18 +1,18 @@
 /* ReportButton: a quiet text button (it should never compete with the content it sits under). */
 .report-btn {
-  min-width: var(--tap, 44px);
+  min-width: var(--tap);
   justify-content: center;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .report-btn:hover {
-  color: var(--shu-ink, #c42b0e);
+  color: var(--shu-ink);
 }
 .report-done {
   display: inline-flex;
   align-items: center;
-  min-height: var(--tap, 44px);
-  color: var(--muted, #4a4a4a);
+  min-height: var(--tap);
+  color: var(--muted);
   font-size: 13px;
 }

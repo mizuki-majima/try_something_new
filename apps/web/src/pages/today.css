@@ -1,6 +1,7 @@
 /*
- * きょう (TodayPage). 「白いノート」 per docs/design.md: handwritten headings and seals (--font-hand),
- * labels and buttons in the device's font (--font-display, 700).
+ * きょう (TodayPage). 「白いノート」 per docs/design.md: handwritten headings, seals and big numbers
+ * (--font-hand), labels and buttons in the device's font (--font-display, 700), white cards with a
+ * 1px --rule line, no offset shadows, no tilt except the seals.
  */
 
 .td-page {
@@ -10,96 +11,94 @@
 
 .td-date {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 12px;
+  gap: 4px 12px;
   font-family: var(--font-hand);
   font-size: 26px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 .td-date span {
-  padding: 0 8px;
-  border: 2px solid var(--ink, #111);
-  border-radius: 6px;
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
+  color: var(--muted);
+  font-family: var(--font-body);
   font-size: 14px;
-  line-height: 1.7;
-  transform: rotate(-2deg);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+@media (min-width: 760px) {
+  .td-date {
+    font-size: 30px;
+  }
 }
 
 .td-list {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 
 /* ---------- hero ---------- */
+/* A white page of a notebook: ruled lines, the 卅 seal in the corner. */
 .td-hero {
   position: relative;
   padding: 26px 18px 22px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: 16px;
-  background: var(--surface, #fff);
-  box-shadow: 6px 6px 0 var(--ink, #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background-color: var(--surface);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--rule-faint) 31px 32px);
 }
 /* The 卅 seal: a 朱 ring over the hero's corner (paper inside, so the card's edge does not show through). */
 .td-hero-seal {
   position: absolute;
-  top: -16px;
-  right: -6px;
+  top: -14px;
+  right: -4px;
   display: grid;
   place-items: center;
-  width: 70px;
-  height: 70px;
+  width: 60px;
+  height: 60px;
   border: 1.75px solid var(--shu);
   border-radius: 50%;
   background: var(--surface);
   color: var(--shu);
   font-family: var(--font-hand);
   font-weight: 600;
-  font-size: 35px;
+  font-size: 30px;
   line-height: 1;
   transform: rotate(-4deg);
 }
 .td-hero-kicker {
-  display: inline-block;
-  margin-right: 64px;
-  padding: 2px 10px;
-  border: 2px solid var(--ink, #111);
-  border-radius: 6px;
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
-  font-size: 13px;
+  margin-right: 60px;
+  color: var(--accent-ink);
+  font-size: 14px;
   font-weight: 700;
-  transform: rotate(-2deg);
+  letter-spacing: 0.04em;
 }
 .td-hero-h {
-  margin: 16px 0 14px;
+  margin: 12px 0 14px;
   font-family: var(--font-hand);
-  font-size: clamp(29px, 8.2vw, 50px);
+  font-size: 30px;
   font-weight: 600;
-  line-height: 1.32;
-  letter-spacing: 0.01em;
+  line-height: 1.45;
+  letter-spacing: 0.04em;
+}
+@media (min-width: 760px) {
+  .td-hero-h {
+    font-size: 38px;
+  }
 }
 /* Break the headline between phrases only. */
 .td-ph {
   display: inline-block;
 }
+/* 「30日」: a soft green highlighter under the lower part of the word. */
 .td-hero-h mark {
-  display: inline-block;
-  padding: 0 0.12em;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: 8px;
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-  box-shadow: 3px 3px 0 var(--ink, #111);
-  line-height: 1.15;
-  transform: rotate(-3deg);
+  padding: 0 0.04em;
+  background: linear-gradient(transparent 58%, var(--accent-soft) 58%, var(--accent-soft) 90%, transparent 90%);
+  color: inherit;
 }
 .td-hero-sub {
   max-width: 34em;
-  font-size: 15.5px;
-  font-weight: 700;
+  font-size: 16px;
 }
 .td-ctas {
   display: grid;
@@ -111,10 +110,6 @@
   font-size: 17px;
   font-weight: 700;
 }
-.td-cta-yellow {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-}
 @media (min-width: 560px) {
   .td-hero {
     padding: 32px 28px 26px;
@@ -124,9 +119,10 @@
   }
 }
 
+/* Three steps: a handwritten number in a green ring, then the words. */
 .td-steps {
   display: grid;
-  gap: 12px;
+  gap: 4px;
   margin: 26px 0 0;
   padding: 0;
   list-style: none;
@@ -135,11 +131,11 @@
   position: relative;
   display: grid;
   gap: 2px;
-  min-height: 64px;
-  padding: 12px 14px 12px 64px;
-  border: 2px solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
+  min-height: 56px;
+  padding: 10px 4px 10px 52px;
+}
+.td-step + .td-step {
+  border-top: 1px solid var(--rule);
 }
 .td-step b {
   font-family: var(--font-display);
@@ -147,58 +143,56 @@
   font-weight: 700;
 }
 .td-step small {
-  color: var(--muted, #4a4a4a);
-  font-size: 13px;
+  color: var(--muted);
+  font-size: 14px;
 }
 .td-step-n {
   position: absolute;
-  top: 12px;
-  left: 12px;
+  top: 10px;
+  left: 4px;
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: 8px;
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid var(--accent-ink);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent-ink);
   font-family: var(--font-hand);
   font-weight: 600;
   font-size: 20px;
   line-height: 1;
-  transform: rotate(-5deg);
-}
-.td-step-2 .td-step-n {
-  background: var(--blue, #6c8cff);
-  transform: rotate(4deg);
-}
-.td-step-3 .td-step-n {
-  background: var(--pink, #ff9ec7);
-  transform: rotate(-3deg);
 }
 @media (min-width: 560px) {
   .td-steps {
     grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .td-step + .td-step {
+    border-top: 0;
   }
 }
 .td-credit {
   margin-top: 20px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 13px;
 }
 .td-credit a {
-  color: var(--ink, #111);
-  font-weight: 700;
-  text-decoration-thickness: 2px;
+  color: var(--accent-ink);
 }
 
 /* ---------- challenge card ---------- */
 .td-card {
   padding: 16px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--surface, #fff);
-  box-shadow: 6px 6px 0 var(--ink, #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
+}
+/* Around 360px: 14px padding and a 1px border keep each of the 30 cells about 46px. */
+@media (max-width: 400px) {
+  .td-card {
+    padding: 14px;
+  }
 }
 @media (min-width: 560px) {
   .td-card {
@@ -218,7 +212,7 @@
   font-family: var(--font-hand);
   font-size: 18px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 .td-meta {
   display: flex;
@@ -226,29 +220,30 @@
   align-items: center;
   gap: 4px 8px;
   margin-top: 4px;
-  color: var(--muted, #4a4a4a);
-  font-size: 12.5px;
+  color: var(--muted);
+  font-size: 13px;
 }
 .td-tag {
   display: inline-block;
-  padding: 0 7px;
-  border: 2px solid var(--ink, #111);
-  border-radius: 6px;
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  color: var(--ink);
   font-size: 12px;
   font-weight: 700;
-  line-height: 1.6;
+  line-height: 1.7;
   white-space: nowrap;
-  transform: rotate(-2deg);
 }
 .td-tag-day {
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .td-tag-first {
-  background: var(--pink, #ff9ec7);
-  color: var(--on-accent, #111);
+  border-color: transparent;
+  background: var(--shu-soft);
+  color: var(--shu-ink);
 }
 .td-count {
   flex: none;
@@ -259,11 +254,11 @@
 }
 .td-count b {
   font-size: 34px;
-  font-weight: 400;
+  font-weight: 600;
 }
 .td-count small {
   margin-left: 2px;
-  color: var(--muted, #4a4a4a);
+  color: var(--muted);
   font-size: 16px;
 }
 .td-grid {
@@ -277,7 +272,7 @@
 .btn.td-stamp {
   gap: 10px;
   padding-inline: 12px;
-  font-size: clamp(15px, 4.1vw, 20px);
+  font-size: clamp(15px, 4.1vw, 18px);
   letter-spacing: 0;
   line-height: 1.3;
 }
@@ -285,20 +280,13 @@
   text-wrap: balance;
 }
 
-/* After stamping. */
+/* After stamping: the sunken paper, the seal and a handwritten line. */
 .td-done {
   display: grid;
   gap: 10px;
   padding: 12px 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--yellow, #ffd43b);
-  color: var(--on-accent, #111);
-}
-.td-done label,
-.td-done .counter,
-.td-done .field-hint {
-  color: var(--on-accent, #111);
+  border-radius: var(--radius);
+  background: var(--bg-2);
 }
 .td-done-row {
   display: flex;
@@ -309,15 +297,15 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border: 1.75px solid var(--shu);
   border-radius: 50%;
   background: transparent;
   color: var(--shu);
   font-family: var(--font-hand);
   font-weight: 600;
-  font-size: 26px;
+  font-size: 24px;
   line-height: 1;
   transform: rotate(-4deg);
 }
@@ -334,18 +322,14 @@
   font-family: var(--font-hand);
   font-weight: 600;
   font-size: 18px;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 .td-done-text:focus {
   outline: none;
 }
 .td-done-text:focus-visible {
-  outline: 3px solid var(--ink, #111);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
-}
-.td-done .td-undo {
-  color: var(--on-accent, #111);
-  font-weight: 700;
 }
 .td-note {
   display: grid;
@@ -353,51 +337,16 @@
 }
 .td-saved {
   min-height: 1.2em;
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
 }
+/* Just pressed: the seal settles (the shared 200ms stampIn), the words fade in. */
 .td-done.is-fresh .td-done-seal {
-  animation: td-don 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  animation: stampIn 200ms ease-out both;
 }
 .td-done.is-fresh .td-done-text {
-  animation: td-rise 0.35s ease-out 0.18s both;
-}
-.td-card.is-thud {
-  animation: td-thud 0.3s ease-out 0.16s;
-}
-@keyframes td-don {
-  0% {
-    opacity: 0;
-    transform: scale(2.6) rotate(-28deg);
-  }
-  55% {
-    opacity: 1;
-    transform: scale(0.88) rotate(-8deg);
-  }
-  78% {
-    transform: scale(1.07) rotate(-8deg);
-  }
-  100% {
-    transform: rotate(-8deg);
-  }
-}
-@keyframes td-rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-@keyframes td-thud {
-  0%,
-  100% {
-    transform: none;
-  }
-  35% {
-    transform: translate(2px, 3px);
-  }
-  65% {
-    transform: translate(-1px, -1px);
-  }
+  animation: fade 200ms ease-out 80ms both;
 }
 
 /* Waiting / ended. */
@@ -408,8 +357,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border: var(--border, 3px) dashed var(--ink, #111);
-  border-radius: var(--radius, 12px);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
 }
 .td-wait p {
   display: grid;
@@ -421,30 +370,32 @@
   font-weight: 700;
 }
 .td-wait span {
-  color: var(--muted, #4a4a4a);
-  font-size: 13px;
+  color: var(--muted);
+  font-size: 14px;
 }
 .td-end {
   display: grid;
   gap: 10px;
   padding: 14px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--mint, #3ddc97);
-  color: var(--on-accent, #111);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
 }
 .td-end-h {
-  font-family: var(--font-display);
-  font-weight: 700;
+  font-family: var(--font-hand);
+  font-weight: 600;
   font-size: 20px;
+  letter-spacing: 0.04em;
 }
 
+/* Quiet links under the card, after a thin line. */
 .td-foot {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 4px 16px;
-  margin-top: 10px;
+  gap: 0 16px;
+  margin-top: 12px;
+  padding-top: 2px;
+  border-top: 1px solid var(--rule);
 }
 .td-foot a,
 .td-history a,
@@ -452,20 +403,20 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: var(--ink, #111);
-  font-weight: 700;
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 600;
   text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 /* ---------- more / teaser / history ---------- */
 .td-more {
   display: grid;
   gap: 10px;
-  padding: 14px;
-  border: var(--border, 3px) dashed var(--ink, #111);
-  border-radius: var(--radius, 12px);
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
 }
 .td-more-h {
   font-family: var(--font-display);
@@ -478,33 +429,19 @@
   gap: 10px;
 }
 
+/* 「次の1日組」: a plain white card. */
 .td-teaser {
   display: grid;
   gap: 14px;
-  margin-top: 6px;
   padding: 16px;
-  border: var(--border, 3px) solid var(--ink, #111);
-  border-radius: var(--radius, 12px);
-  background: var(--pink, #ff9ec7);
-  color: var(--on-accent, #111);
-  box-shadow: 5px 5px 0 var(--ink, #111);
-}
-.td-teaser .linkbtn,
-.td-teaser-link {
-  color: var(--on-accent, #111);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-hand);
+  background: var(--surface);
 }
 .td-teaser-h {
-  display: inline-block;
-  justify-self: start;
-  padding: 1px 10px;
-  border: 2px solid var(--on-accent, #111);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--ink);
   font-family: var(--font-hand);
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
-  transform: rotate(-3deg);
 }
 .td-teaser-text {
   display: grid;
@@ -515,16 +452,17 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-  margin-top: 6px;
+  margin-top: 2px;
   font-weight: 700;
 }
 .td-teaser-date b {
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 .td-teaser-left {
+  color: var(--muted);
   font-size: 14px;
 }
 .td-teaser-meta {
@@ -541,23 +479,15 @@
   font-size: 18px;
   font-weight: 700;
 }
-.td-teaser-meta .td-tag-first {
-  background: var(--surface);
-  color: var(--ink);
-  border-color: var(--ink);
-}
 .td-teaser-note {
-  font-size: 13px;
+  color: var(--muted);
+  font-size: 14px;
 }
 .td-teaser-btns {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 16px;
-}
-.td-teaser-btn {
-  background: var(--surface, #fff);
-  color: var(--ink, #111);
 }
 @media (min-width: 560px) {
   .td-teaser {
@@ -582,7 +512,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .td-card.is-thud,
   .td-done.is-fresh .td-done-seal,
   .td-done.is-fresh .td-done-text {
     animation: none;
