@@ -1,9 +1,24 @@
 /**
- * Smoke: every screen in SPEC "UI" loads at the project's viewport with no console errors and no
- * horizontal scrolling; unknown paths get the 404 page; /s/<unknown> is the server's HTML 404.
+ * Smoke: every screen in SPEC "UI" loads at the project's viewport with no console errors, no
+ * horizontal scrolling and no handwriting below 17px (#20); unknown paths get the 404 page;
+ * /s/<unknown> is the server's HTML 404.
  */
 import type { Page } from "@playwright/test";
-import { createSession, expect, syncStatus, test, uniqueNickname, useToken, watchRequests } from "./fixtures";
+import {
+  addDays,
+  createChallenge,
+  createSession,
+  expect,
+  importChallenges,
+  menuLink,
+  pastChallenge,
+  syncStatus,
+  test,
+  today,
+  uniqueNickname,
+  useToken,
+  watchRequests,
+} from "./fixtures";
 
 type Route = { path: string; heading: string | RegExp };
 
@@ -34,6 +49,26 @@ function watchErrors(page: Page): string[] {
   return errors;
 }
 
+/**
+ * Visible text set in the handwriting font (Klee One) below 17px. docs/design.md: handwriting only at
+ * 17px and up; seal characters (in their rings, any size) are the one exception.
+ */
+async function smallHandwriting(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.textContent?.trim();
+      const el = node.parentElement;
+      if (!text || !el || el.closest('.seal, .st, [class*="seal"], .sr-only') || !el.checkVisibility()) continue;
+      const style = getComputedStyle(el);
+      const size = parseFloat(style.fontSize);
+      if (style.fontFamily.replace(/["']/g, "").startsWith("Klee One") && size < 17) out.push(`<${el.tagName.toLowerCase()} class="${el.className}"> ${size}px 「${text.slice(0, 16)}」`);
+    }
+    return out;
+  });
+}
+
 /** Pixels the page can be scrolled sideways (0 = fits the viewport). */
 async function horizontalOverflow(page: Page): Promise<number> {
   await page.evaluate(() => document.fonts.ready);
@@ -50,9 +85,28 @@ for (const route of ROUTES) {
     await settled();
     await expect(page.getByRole("main").getByRole("status").filter({ hasText: /読み込んでいます|確認しています/ })).toHaveCount(0);
     expect(await horizontalOverflow(page), "horizontal overflow in px").toBeLessThanOrEqual(0);
+    expect(await smallHandwriting(page), "handwriting below 17px").toEqual([]);
     expect(errors).toEqual([]);
   });
 }
+
+test("with an account (cards, notes, every 設定 section): no handwriting below 17px except seals (#20)", async ({ page, request }) => {
+  const nickname = uniqueNickname("K");
+  const { token } = await createSession(request, nickname);
+  const active = await createChallenge(request, token, { recipeId: "photo", title: "毎日1枚、写真を撮る", seal: "写", startDate: addDays(today(), -5) });
+  const done = pastChallenge({ title: "寝る前に日記を書く", seal: "記", recipeId: null, startDate: addDays(today(), -60), stampedDays: [1, 2, 3, 5, 8] });
+  done.stamps["3"] = { ...done.stamps["3"]!, note: "少しずつ慣れてきた" };
+  const ended = pastChallenge({ title: "朝に白湯を飲む", seal: "湯", recipeId: null, startDate: addDays(today(), -30), stampedDays: [1, 2, 4] });
+  await importChallenges(request, token, nickname, [{ ...done, status: "done", verdict: "continue", reflection: "続ける", finishedAt: done.updatedAt, finishedDay: 30 }, ended]);
+  await useToken(page, token);
+  for (const path of ["/", `/c/${active.id}`, `/c/${done.id}`, `/c/${ended.id}/reflect`, "/log", "/settings", "/together"]) {
+    const settled = watchRequests(page);
+    await page.goto(path);
+    await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
+    await settled();
+    expect(await smallHandwriting(page), `handwriting below 17px on ${path}`).toEqual([]);
+  }
+});
 
 test("the menu has four tabs: きょう / えらぶ / みんな / 記録 (#20)", async ({ page }) => {
   await page.goto("/");
@@ -70,10 +124,11 @@ test("the menu has four tabs: きょう / えらぶ / みんな / 記録 (#20)",
   }
   await expect(menu.getByRole("link", { name: "きょう", exact: true })).toHaveAttribute("aria-current", "page");
 
-  // えらぶ is current on both of its pages.
+  // えらぶ is current on both of its pages; on ガチャ it links to /gacha itself (a tap keeps the page).
   await page.goto("/gacha");
   await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "次の30日ガチャ" })).toBeVisible();
   await expect(menu.getByRole("link", { name: "えらぶ", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(menu.getByRole("link", { name: "えらぶ", exact: true })).toHaveAttribute("href", "/gacha");
 });
 
 test.describe("at 360px", () => {
@@ -98,6 +153,26 @@ test.describe("at 360px", () => {
   });
 });
 
+test.describe("a manual 「ダーク」 on a phone in light mode (#20)", () => {
+  test.use({ colorScheme: "light" });
+
+  test("is on <html> before the app's scripts run (/theme-boot.js): no paper-white first frame", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("thirty-days.theme", "dark");
+      // "interactive" comes after the whole document is parsed, before any deferred or module script.
+      document.addEventListener("readystatechange", () => {
+        if (document.readyState !== "interactive") return;
+        const metas = [...document.querySelectorAll('meta[name="theme-color"]')].map((m) => m.getAttribute("content"));
+        (window as unknown as { __boot: unknown }).__boot = { theme: document.documentElement.dataset.theme ?? null, metas };
+      });
+    });
+    await page.goto("/");
+    await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { __boot: unknown }).__boot)).toEqual({ theme: "dark", metas: ["#1c1b19", "#1c1b19"] });
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(28, 27, 25)");
+  });
+});
+
 test("/gacha: one roll shows a result, ひらめき提案 shows 3 ideas and the no-AI note", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/gacha");
@@ -118,6 +193,13 @@ test("/gacha: one roll shows a result, ひらめき提案 shows 3 ideas and the 
   }
   await expect(ideas.getByText(/今日はあと \d+ 回/)).toBeVisible();
   expect(await horizontalOverflow(page), "horizontal overflow in px").toBeLessThanOrEqual(0);
+
+  // Tapping the current tab えらぶ stays on ガチャ and keeps the roll and the ideas (#20).
+  const title = await result.getByRole("heading", { level: 2 }).textContent();
+  await menuLink(page, "えらぶ").click();
+  await expect(page).toHaveURL(/\/gacha$/);
+  await expect(result.getByRole("heading", { level: 2 })).toHaveText(title!);
+  await expect(ideas.getByTestId("suggestion")).toHaveCount(3);
   expect(errors).toEqual([]);
 });
 

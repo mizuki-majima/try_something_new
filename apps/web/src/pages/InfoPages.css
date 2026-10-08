@@ -315,7 +315,8 @@
   color: var(--accent-ink);
   font-family: var(--font-hand);
   font-weight: 600;
-  font-size: 15px;
+  font-size: 17px; /* handwriting only at 17px and up */
+  line-height: 1;
 }
 
 .about-credit {

@@ -275,7 +275,7 @@
 .td-count small {
   margin-left: 2px;
   color: var(--muted);
-  font-size: 16px;
+  font-size: 17px; /* handwriting only at 17px and up */
 }
 .td-grid {
   margin: 16px auto 0;

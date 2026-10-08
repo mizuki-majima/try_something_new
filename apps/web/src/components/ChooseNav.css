@@ -54,9 +54,14 @@
 .choose-nav a:focus-visible {
   outline-offset: -4px;
 }
+/*
+ * Forced colours drop the fill and the inset ring: the current page is bold and underlined instead,
+ * which leaves the outline to keyboard focus (an outline here would hide the focus ring).
+ */
 @media (forced-colors: active) {
   .choose-nav a[aria-current="page"] {
-    outline: 2px solid Highlight;
-    outline-offset: -4px;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 5px;
   }
 }

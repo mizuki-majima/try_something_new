@@ -7,8 +7,9 @@
  * Dark mode follows the OS unless the user picked a theme (data-theme on <html>, lib/theme.ts).
  *
  * Contrast (WCAG 2.x; text 4.5:1, UI borders and graphics 3:1) is listed next to each value.
- * --line is for the borders of controls (3:1); --rule is decoration only and never the only
- * boundary of a control. --shu is the seal's ring and character (a graphic): coloured TEXT uses
+ * --line is for the borders of controls (3:1): buttons, chips, fields. --rule is for decoration and
+ * the edges of cards; a whole-card link or a list row button (its own text names it) may have only a
+ * --rule edge, so with more contrast --rule turns to ink as well. --shu is the seal's ring and character (a graphic): coloured TEXT uses
  * --shu-ink / --accent-ink / --amber-ink / --slate. Never put --ink text on a --shu fill.
  */
 :root {
@@ -19,7 +20,7 @@
   --ink: #34312c; /* text: bg 12.21 / surface 12.95 / bg-2 11.38 / soft fills 10.45–10.92 */
   --muted: #6b655c; /* secondary text: bg 5.44 / surface 5.77 / bg-2 5.07 / accent-soft 4.86 / shu-soft 4.65 */
   --line: #8c8579; /* control borders only: surface 3.65 / bg 3.45 / bg-2 3.21 / accent-soft 3.08 */
-  --rule: #e2ddd3; /* decorative lines only (1.28) */
+  --rule: #e2ddd3; /* decoration and card edges (1.28); ink with more contrast */
 
   /* ---- accents ---- */
   --accent: #4a6b4e; /* primary button fill: --on-primary 5.99 */
@@ -183,23 +184,27 @@
 }
 
 /*
- * More contrast (OS setting): control borders in ink, thicker, and darker secondary text.
- * After the dark blocks, with the same selectors, so it wins in both themes.
+ * More contrast (OS setting): control borders in ink, thicker, darker secondary text, and every
+ * --rule line (card edges, dividers) in ink too, so the whole-card links (レシピ, 記録, メモ) keep a
+ * visible edge. After the dark blocks, with the same selectors, so it wins in both themes.
  */
 @media (prefers-contrast: more) {
   :root {
     --line: var(--ink);
+    --rule: var(--line);
     --border-ctl: 2px;
     --muted: #4f4a43; /* bg 8.27 */
   }
   :root[data-theme="dark"] {
     --line: var(--ink);
+    --rule: var(--line);
     --muted: #cfc9be; /* bg 10.45 */
   }
 }
 @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --line: var(--ink);
+    --rule: var(--line);
     --muted: #cfc9be;
   }
 }

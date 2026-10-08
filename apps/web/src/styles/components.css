@@ -476,9 +476,13 @@ main.wrap:focus {
 .cell.locked.clickable {
   cursor: pointer;
 }
+/*
+ * The day shown below the card: an ink ring inside the border (a box-shadow, so the green border of
+ * today stays visible and the outline is left to the keyboard focus ring). Forced colours drop
+ * box-shadows: see the forced-colours block at the end.
+ */
 .cell.selected {
-  outline: 2px solid var(--ink);
-  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px var(--ink);
 }
 /* Hover only on cells that are buttons (a read-only card's cells are not); nothing lifts. */
 @media (hover: hover) {
@@ -842,7 +846,10 @@ select {
   color: var(--muted);
   opacity: 1;
 }
-/* Focus: a green border and a soft green halo. */
+/*
+ * Focus: the green focus ring (base.css :focus-visible) plus a green border and a soft green halo.
+ * The ring is the cue that does not depend on colour; mouse and touch focus on a <select> skip it.
+ */
 input[type="text"]:focus,
 input[type="search"]:focus,
 input[type="number"]:focus,
@@ -855,7 +862,6 @@ input[type="tel"]:focus,
 input:not([type]):focus,
 textarea:focus,
 select:focus {
-  outline: none;
   border-color: var(--accent-ink);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -2006,7 +2012,12 @@ legend {
   }
 }
 
-/* ---------- forced colours (Windows high contrast): keep the selected / today states visible ---------- */
+/*
+ * ---------- forced colours (Windows high contrast) ----------
+ * Fills and box-shadows are dropped, so the selected / today states get an outline (and the selected
+ * day a double border). Keyboard focus must still show on top of them: the focus rules come last,
+ * with the same specificity, and draw a thicker ring further out.
+ */
 @media (forced-colors: active) {
   .chip.on,
   .chip[aria-checked="true"],
@@ -2018,7 +2029,18 @@ legend {
     outline: 2px solid Highlight;
     outline-offset: 1px;
   }
+  .cell.selected {
+    border-style: double;
+    border-width: 4px;
+  }
   .tabbar a[aria-current="page"]::before {
     background: Highlight;
+  }
+  .chip:focus-visible,
+  .verdict:focus-visible,
+  .radio:has(input:focus-visible),
+  .cell:focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: 3px;
   }
 }

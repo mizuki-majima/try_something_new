@@ -86,10 +86,13 @@
   background: var(--accent-ink);
 }
 
+/* Sub-headings (h3) and the 「テーマ」 label: the device font at 700 (handwriting is for 17px and up). */
 .set-sub {
   margin: 0;
+  font-family: var(--font-body);
   font-size: 15px;
   font-weight: 700;
+  letter-spacing: 0.02em;
   color: var(--ink);
 }
 

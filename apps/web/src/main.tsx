@@ -13,6 +13,8 @@ import { startPushResync } from "./lib/push";
 import { AppProvider } from "./lib/store";
 import { applyTheme, getThemePref } from "./lib/theme";
 
+// /theme-boot.js (index.html) already applied a manual choice before the first paint; the app's own
+// applyTheme stays the source of truth (and the only one that runs when the choice changes).
 applyTheme(getThemePref());
 void loadFonts();
 startPushResync(); // re-register this device's push subscription (endpoints rotate)

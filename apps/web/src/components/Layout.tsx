@@ -6,7 +6,8 @@
  *
  * Four tabs (#20): きょう / えらぶ (レシピ and ガチャ, see ChooseNav) / みんな / 記録. Which one is
  * current comes from activeTab(): a challenge page belongs to 記録 once the challenge is done, else to
- * きょう, so a reload or a link from a calendar event marks the same tab.
+ * きょう, so a reload or a link from a calendar event marks the same tab. On ガチャ, えらぶ links to
+ * /gacha itself (tabTarget), so tapping the current tab keeps the page and its result.
  */
 import { Suspense, useEffect, useRef, type ComponentType, type RefObject } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
@@ -22,7 +23,7 @@ import { ToastHost } from "./Toast";
 
 export type TabId = "today" | "choose" | "together" | "log";
 
-type Tab = { id: TabId; to: string; label: string; Icon: ComponentType };
+export type Tab = { id: TabId; to: string; label: string; Icon: ComponentType };
 
 /** The app menu: the phone tab bar and the desktop top nav (both named 「メニュー」). */
 export const TABS: readonly Tab[] = [
@@ -52,6 +53,16 @@ export function activeTab(pathname: string, challenges: readonly Pick<Challenge,
   if (p === "/together") return "together";
   if (p === "/log") return "log";
   return null;
+}
+
+/**
+ * Where a tab's link goes from `pathname`. On ガチャ, えらぶ (the current tab) stays on /gacha: a tap
+ * on it is then a same-page navigation that keeps the roll and the ひらめき提案 ideas, like the old
+ * ガチャ tab did. Everywhere else it opens the recipe list.
+ */
+export function tabTarget(tab: Tab, pathname: string): string {
+  if (tab.id === "choose" && pathname.replace(/\/+$/, "") === "/gacha") return "/gacha";
+  return tab.to;
 }
 
 const SYNC_TEXT = {
@@ -168,7 +179,7 @@ export function Layout() {
           </Link>
           <nav className="nav" aria-label="メニュー">
             {TABS.map((t) => (
-              <Link key={t.id} to={t.to} aria-current={current === t.id ? "page" : undefined}>
+              <Link key={t.id} to={tabTarget(t, pathname)} aria-current={current === t.id ? "page" : undefined}>
                 {t.label}
               </Link>
             ))}
@@ -196,10 +207,10 @@ export function Layout() {
       </main>
       <SiteFooter />
       <nav className="tabbar" aria-label="メニュー">
-        {TABS.map(({ id, to, label, Icon }) => (
-          <Link key={id} to={to} aria-current={current === id ? "page" : undefined}>
-            <Icon />
-            <span>{label}</span>
+        {TABS.map((t) => (
+          <Link key={t.id} to={tabTarget(t, pathname)} aria-current={current === t.id ? "page" : undefined}>
+            <t.Icon />
+            <span>{t.label}</span>
           </Link>
         ))}
       </nav>

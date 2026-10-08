@@ -98,10 +98,15 @@
   outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
+/* Forced colours: the chosen one gets an outline; keyboard focus (after it) a thicker ring further out. */
 @media (forced-colors: active) {
   .st-radio:has(input:checked) {
     outline: 2px solid Highlight;
     outline-offset: 1px;
+  }
+  .st-radio:has(input:focus-visible) {
+    outline: 3px solid CanvasText;
+    outline-offset: 3px;
   }
 }
 

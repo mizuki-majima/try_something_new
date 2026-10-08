@@ -1,14 +1,15 @@
 /**
  * The app menu after #20: four tabs (きょう / えらぶ / みんな / 記録) in the phone tab bar and the desktop
- * nav, which tab is current (activeTab, from the path and the challenge's state), the header link
- * 「設定」 with visible text, and the 「えらびかた」 switch between レシピ and ガチャ.
+ * nav, which tab is current (activeTab, from the path and the challenge's state), where えらぶ goes
+ * (tabTarget: /gacha while on ガチャ), the header link 「設定」 with visible text, and the 「えらびかた」
+ * switch between レシピ and ガチャ.
  */
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it } from "vitest";
 import type { Challenge } from "@thirty/shared";
 import { ChooseNav } from "../src/components/ChooseNav";
-import { Layout, TABS, activeTab } from "../src/components/Layout";
+import { Layout, TABS, activeTab, tabTarget, type TabId } from "../src/components/Layout";
 import { ToastProvider } from "../src/components/Toast";
 import { createAppStore, type AppSnapshot, type AppStore } from "../src/lib/appStore";
 import { AppProvider } from "../src/lib/store";
@@ -87,6 +88,22 @@ describe("menu (tab bar and top nav)", () => {
     }
   });
 
+  it("on ガチャ, えらぶ links to /gacha itself: a tap keeps the page (and its roll); elsewhere it opens /recipes", () => {
+    for (const path of ["/gacha", "/gacha/"]) {
+      const { unmount } = renderLayout(path);
+      for (const nav of menus()) {
+        expect(within(nav).getByRole("link", { name: "えらぶ" }).getAttribute("href"), path).toBe("/gacha");
+        expect(current(nav), path).toEqual(["えらぶ"]);
+      }
+      unmount();
+    }
+    for (const path of ["/recipes", "/recipes/photo", "/recipes/new", "/together", "/settings"]) {
+      const { unmount } = renderLayout(path);
+      for (const nav of menus()) expect(within(nav).getByRole("link", { name: "えらぶ" }).getAttribute("href"), path).toBe("/recipes");
+      unmount();
+    }
+  });
+
   it("marks えらぶ on the recipe pages and on ガチャ (old URLs still open their pages)", () => {
     for (const path of ["/recipes", "/recipes/photo", "/recipes/new", "/gacha"]) {
       const { unmount } = renderLayout(path);
@@ -108,6 +125,22 @@ describe("menu (tab bar and top nav)", () => {
     renderLayout("/settings");
     for (const nav of menus()) expect(current(nav)).toEqual([]);
     expect(screen.getByRole("link", { name: "設定" }).getAttribute("aria-current")).toBe("page");
+  });
+});
+
+describe("tabTarget", () => {
+  const tab = (id: TabId) => TABS.find((t) => t.id === id)!;
+  it.each([
+    ["choose", "/gacha", "/gacha"],
+    ["choose", "/gacha/", "/gacha"],
+    ["choose", "/recipes", "/recipes"],
+    ["choose", "/recipes/photo", "/recipes"],
+    ["choose", "/", "/recipes"],
+    ["today", "/gacha", "/"],
+    ["together", "/gacha", "/together"],
+    ["log", "/gacha", "/log"],
+  ] as const)("%s on %s → %s", (id, path, href) => {
+    expect(tabTarget(tab(id), path)).toBe(href);
   });
 });
 

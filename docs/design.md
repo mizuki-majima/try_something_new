@@ -17,7 +17,7 @@
 
 ## トークン（`apps/web/src/styles/tokens.css`）
 
-ダークは同じ値を2か所に書く: `@media (prefers-color-scheme: dark) :root:not([data-theme="light"])`（端末がダークで、手動でライトを選んでいない）と `:root[data-theme="dark"]`（手動でダーク）。2つは必ず同じにする。`prefers-contrast: more` はその後ろで両方のテーマに効く（`--line` を墨に、`--border-ctl` を 2px、`--muted` をライト `#4F4A43`・ダーク `#CFC9BE`）。
+ダークは同じ値を2か所に書く: `@media (prefers-color-scheme: dark) :root:not([data-theme="light"])`（端末がダークで、手動でライトを選んでいない）と `:root[data-theme="dark"]`（手動でダーク）。2つは必ず同じにする。`prefers-contrast: more` はその後ろで両方のテーマに効く（`--line` と `--rule` を墨に、`--border-ctl` を 2px、`--muted` をライト `#4F4A43`・ダーク `#CFC9BE`）。`--rule` も墨にするのは、カード全体のリンク（レシピ・記録のカード、メモの行、設定のリンク）の縁を見えるようにするため。
 
 | トークン | ライト | ダーク | 用途 |
 |---|---|---|---|
@@ -27,7 +27,7 @@
 | `--ink` | `#34312C` | `#E6E1D8` | 文字 |
 | `--muted` | `#6B655C` | `#A9A398` | 補足の文字 |
 | `--line` | `#8C8579` | `#827C72` | **部品の枠だけ**（3:1）。ダークの `--accent-soft` の上では 2.84 なので、選択状態の枠には `--accent-ink` |
-| `--rule` | `#E2DDD3` | `#3A3834` | **飾りの線だけ**。部品の境界をこれだけで示さない |
+| `--rule` | `#E2DDD3` | `#3A3834` | **飾りの線とカードの縁**（1.28 / 1.47）。ボタン・チップ・入力の境界をこれだけで示さない。カード全体のリンクや一覧の行のボタン（自分の文字で何か分かるもの）は `--rule` の縁だけのことがあるので、`prefers-contrast: more` では墨にする |
 | `--accent` | `#4A6B4E` | `#3E5A44` | 主ボタンの塗り（文字は `--on-primary`） |
 | `--accent-hover` | `#3F5E43` | `#46654C` | 主ボタンの hover |
 | `--accent-ink` | `#3F6B4A` | `#9CC3A0` | 緑の文字・リンク・選択の枠・フォーカス・タブの印 |
@@ -63,7 +63,7 @@
 
 古い名前は別名として残している（ページの CSS は名前を変えずに動く）。新しいコードでは使わない: `--yellow` `--mint`→`--accent-soft`、`--blue`→`--mist`、`--pink`→`--shu-soft`、`--lilac`→`--lavender`、`--gray`→`--gray-soft`、`--on-accent`→`--ink`、`--link` `--mint-ink` `--ai` `--wakaba`→`--accent-ink`、`--amber`→`--amber-ink`、`--danger`→`--shu-ink`、`--shu-fill`→`--shu-soft`、`--on-shu`→`--shu-ink`、`--paper` `--soft`→`--bg`、`--r`→`--radius`。`--grid` と `--hatch` は透明。
 
-**予備値は付けない**（`var(--x, #hex)` と書かない。前は「必ず付ける」決まりだったが、値が二重になり古い色が残るのでやめた）。代わりに、使うトークンがどこかで宣言されていること、`tokens.css` の外に生の `#hex` を書かないことを確かめる（#20 では grep の監査で確かめた。自動のテスト `apps/web/test/design-guard.test.ts` はまだ無い）。
+**予備値は付けない**（`var(--x, #hex)` と書かない。前は「必ず付ける」決まりだったが、値が二重になり古い色が残るのでやめた）。代わりに、使うトークンがどこかで宣言されていること、`tokens.css` の外に生の `#hex` を書かないことを `apps/web/test/design-guard.test.ts` で確かめる（ほかに、ダークの2ブロックが同じこと、下のコントラストの表、硬い影・傾き・`::before` の文字が無いこと、`prefers-contrast: more`、フォーカスの輪、手書きの大きさ）。
 
 ジャンル（`.cat-*`）: からだ=`--accent-soft`、あたま=`--mist`、手しごと=`--sand`、人と=`--shu-soft`、やめる=`--lavender`。ジャンル名の文字は必ず出す。
 判定: 続ける=`--accent-soft` に `--accent-ink`、形を変える=`--mist` に `--slate`、やめる=`--gray-soft` に墨（枠は `--line`）。どれも傾けない。
@@ -91,18 +91,18 @@
 
 - **手書き**: Klee One 600（`@fontsource/klee-one` の `600.css` だけ。OFL-1.1。自前で配信し、CSP の `font-src 'self'` のまま）。`--font-hand`
 - **本文**: 端末のフォント（`-apple-system`、Hiragino Sans、Noto Sans JP、Yu Gothic UI、Meiryo、`system-ui`）。`--font-body`。強調のラベルと数字（`--font-display` `--font-num`）も端末のフォントの 700
-- 手書きを使うのは 17px 以上で表示するものだけ: h1〜h3、`.h1` `.h2` `.h3`、ブランド、印の字、30マスの印の字、ページの大きな見出しと数字（きょうの日付・カードの題名・N/30、記録の合計、404 の数字など）
-- 使わないもの: ボタン、チップ、タブ、タグ、入力欄、同期の表示、セルの日付（12px）、管理画面、引き継ぎコード（読み間違えないように）、メモの本文
+- 手書きを使うのは 17px 以上で表示するもの: h1〜h3、`.h1` `.h2` `.h3`、ブランド、ページの大きな見出しと数字（きょうの日付・カードの題名・N/30、記録の合計、404 の数字など）、手順の番号（17px）。**例外は印の字だけ**で、輪の大きさに合わせてどの大きさでも手書き（小さい印 `.seal.sm` は 13px、記録のメモの印は 12px、30マスの印は `min(28px, 5.2vw)` で 320px 幅では約 16.6px）
+- 使わないもの: ボタン、チップ、タブ、タグ、入力欄、同期の表示、セルの日付（12px）、設定の小見出し（`.set-sub`、15px の端末のフォントの 700）、管理画面、引き継ぎコード（読み間違えないように）、メモの本文。h1〜h3 は手書きになるので、17px より小さくする見出しは `font-family: var(--font-body)` に戻す（E2E の `smoke` が画面ごとに確かめる）
 - 本文 16px・行間 1.75・字間 .02em。見出しは字間 .04em。h1 26 / 30px、h2 20 / 22px、h3 17 / 18px（スマホ / 760px 以上）。ヒーローの h1 は 30 / 38px。小さい文字 14px、タブのラベルとセルの日付 12px
 - Klee は 600 の1ウェイトだけ。`font-synthesis: style` のまま（疑似太字は出ない）
 - 日本語の見出しは `word-break: auto-phrase`（文節で折り返す。Chromium のみ）と `text-wrap: balance`
-- 読み込みは `lib/fonts.ts` の `loadFonts()`。`navigator.connection.saveData` か `(prefers-reduced-data: reduce)` のときは何も読み込まない（見出しは端末の丸ゴシックなどで出る）。シェアカードを描くときだけ `loadFonts({ force: true })`。canvas の指定は `FONT_STACKS`（`'600 56px "Klee One"'`）
+- 読み込みは `lib/fonts.ts` の `loadFonts()`。`navigator.connection.saveData` か `(prefers-reduced-data: reduce)` のときは woff2 を読み込まない（見出しは端末の丸ゴシックなどで出る）。ただし2つ例外がある: (1) シェアカードを描くときは `loadFonts({ force: true })` で Klee One を読む（カードの画像に手書きを使うため）。読んだあとは、再読み込みするまでページの見出しも手書きになる。(2) `@font-face` を並べた CSS（`assets/fonts-*.css`、gzip 約 31KB）は Service Worker が最初に入るときに先読みのキャッシュに入れる（woff2 は入れない）。canvas の指定は `FONT_STACKS`（`'600 56px "Klee One"'`）
 
 ## ナビゲーションと画面の並び
 
 | | 中身 |
 |---|---|
-| メニュー | スマホは下のタブバー、760px 以上は上のナビ。どちらも `aria-label="メニュー"` で、同じ4つ: **きょう**（`/`）／**えらぶ**（`/recipes`。レシピとガチャ）／**みんな**（`/together`）／**記録**（`/log`） |
+| メニュー | スマホは下のタブバー、760px 以上は上のナビ。どちらも `aria-label="メニュー"` で、同じ4つ: **きょう**（`/`）／**えらぶ**（`/recipes`。レシピとガチャ）／**みんな**（`/together`）／**記録**（`/log`）。`/gacha` にいるときは えらぶ の行き先も `/gacha` のまま（`tabTarget`。今のタブを押しても同じページで、ガチャの結果とひらめき提案が消えない） |
 | 選択中のタブ | `Layout.tsx` の `activeTab(pathname, challenges)`。`/recipes`・`/recipes/*`・`/gacha` は えらぶ。`/c/:id` と `/c/:id/reflect` は、そのチャレンジが振り返り済み（`done`）なら 記録、ほかは きょう（再読み込みしても、カレンダーの予定から開いても同じ） |
 | 設定 | ヘッダーの右に、歯車と「設定」の文字の 44px の丸い形（名前はちょうど「設定」）。400px 未満は歯車の下に 12px の文字を置く 44×44。設定のページでは `aria-current="page"` |
 | えらびかた | `/recipes` と `/gacha` の h1 の上に `<nav aria-label="えらびかた">`（`ChooseNav.tsx`）: 「レシピ」「ガチャ」の2つで1つの形、各 44px 以上、今のページに `aria-current="page"`。`/recipes/:id` と `/recipes/new` には置かない（「レシピ一覧」の戻るリンク） |
@@ -125,16 +125,17 @@ URL は変えていない。将来パスを変えるときは `<Navigate replace
 | 帯 | 画面の流れの中（`position: static`）、下に 1px の `--rule`。オフライン＝`--gray-soft`、429＝`--sand` に `--amber-ink`、壊れたセッション＝`--shu-soft` に `--shu-ink` のリンク、お知らせ＝`--accent-soft`（閉じるは 44×44） |
 | ボタン `.btn` | 48px 以上（`.sm` 44・`.lg` 56）、`--radius-hand-sm`、`--border-ctl` の `--line`、白。hover は `--bg-2`、押すと `--gray-soft` で 1px 下がる。`.primary` は緑の塗り（ボタンの塗りに朱は使わない）、`.danger` は `--shu-ink` の文字と枠、無効は点線と `--gray-soft` |
 | チップ `.chip` | 44px 以上の丸い形。選択中は `--accent-soft`、2px の `--accent-ink`、CSS で描いた ✓（`content: ""` と枠線。文字の ✓ はアクセシブルな名前に入るので使わない） |
-| 入力 | 48px 以上、`--border-ctl` の `--line`、角丸 10。フォーカスは枠が `--accent-ink` に、`0 0 0 3px var(--accent-soft)` の光。`aria-invalid` は 2px の `--shu-ink` |
+| 入力 | 48px 以上、`--border-ctl` の `--line`、角丸 10。フォーカスはほかの部品と同じ 2px の `--accent-ink` の輪（2px 外）に、枠の `--accent-ink` と `0 0 0 3px var(--accent-soft)` の光を添える（色の変化だけにしない）。`aria-invalid` は 2px の `--shu-ink` |
 | カード `.card` | 白、1px の `--rule`、`--radius-hand`、影なし。`.box` は `--bg-2` の面。`.h3` の前に 12×3px の緑の線 |
 | 印（Seal） | 中は透明、1.75px の `--shu` の輪（sm は 1.5px）、Klee の朱の字、-4deg。26 / 40 / 52 / 64px。`.inv` は主ボタンの上で輪と字を `--on-primary` に |
-| 30マス | 6列、間隔 6px（400px 以下は 4px）。セルは 1px の `--line`、角丸 8、左上に 12px の日付。きょう＝2px の `--accent-ink` と `--accent-soft`、押した日＝`--shu-soft` の上に朱の輪の印、未来＝点線、選択中＝2px の墨の outline。360px でセル一辺 46.3px |
+| 30マス | 6列、間隔 6px（400px 以下は 4px）。セルは 1px の `--line`、角丸 8、左上に 12px の日付。きょう＝2px の `--accent-ink` と `--accent-soft`、押した日＝`--shu-soft` の上に朱の輪の印、未来＝点線、選択中（チャレンジの画面で下に出している日）＝枠の内側に 2px の墨の輪（`box-shadow: inset`。きょうの緑の枠も残り、outline はフォーカスの輪に使う）。360px でセル一辺 46.3px |
 | MiniGrid30 | 1px の `--line` の四角。押した日＝朱の塗り、きょう＝2px の緑の枠 |
 | シート・ダイアログ | 白。スマホは上の角丸 20 と 36×4 の取っ手、PC と中央のダイアログは角丸 16 で、ライトは `--shadow-float`、ダークは 1px の `--line`。200ms のフェードと 8px の上昇 |
 | トースト | `--toast-bg` に `--toast-fg`。ダークは 1px の枠。エラーは左に 4px の `--shu-ink` |
 | 状態 | 読み込み中は文字だけ。空の状態は罫線の上の点線の手描きの箱と Klee の一言とボタン1つ。エラーは `--shu-soft` に `--shu-ink` の見出し |
 | その他 | `.hl` とヒーローの `<mark>` は下側に淡い緑のマーカー。`.person.me` は左に 3px の緑の線。長い注意（`.set-warn` など）は白い箱に 3px の `--amber-ink` の線 |
-| forced-colors | 選択中のチップ・ラジオ・判定・きょうのセル・えらびかたの今のページに `outline: 2px solid Highlight` |
+| フォーカス | `:focus-visible` で 2px の `--accent-ink` の輪を 2px 外に（紙・カード・淡い面の上で、両方のテーマで 3:1 以上）。選択中の見た目に outline を使わない（使うとフォーカスの輪が消える）。えらびかた は外側が切れるので輪を内側に（4px 内） |
+| forced-colors | 塗りと影が消えるので、選択中のチップ・ラジオ・判定・きょうのセルに `outline: 2px solid Highlight`（1px 外）、選択中の日は 4px の二重線の枠、えらびかたの今のページは太字と下線。そのあとに、フォーカスは `outline: 3px solid CanvasText`（3px 外）の規則を置いて、選択中の要素でもフォーカスが分かるようにする |
 
 ## シェア用カード（1200×630。canvas、いつもライト）
 
@@ -189,10 +190,13 @@ URL は変えていない。将来パスを変えるときは `<Navigate replace
 
 テーマの選び方（FR-21）は変えていない: 端末に合わせる（初期値）／ライト／ダーク。`localStorage` の `thirty-days.theme`、`<html>` の `data-theme`。設定の「表示」に「ダークは、暗い部屋でもまぶしくない落ち着いた色です。」。
 
+手動の選択は最初の描画の前に入れる: `index.html` の `<head>` で `/theme-boot.js`（`apps/web/public/`。ブロックする小さな古典的なスクリプト。CSP は `script-src 'self'` のまま、SW の先読みのキャッシュに入る）が `data-theme` と2つの `theme-color` を選んだテーマにする。これが無いと、端末がライトで「ダーク」を選んだ人に、毎回の読み込みで白い画面が一瞬出る。アプリの `applyTheme()`（`main.tsx`）はそのまま残り、選び直したときもこれが動く。ホーム画面から開くときのスプラッシュ（manifest の `background_color`）はライトのまま。
+
 ## サステナビリティ
 
 - フォントは2ファミリー・4ウェイト（Dela Gothic One・Zen Kaku Gothic New 400/700/900）から、1ファミリー・1ウェイト・見出しだけ（Klee One 600）に。本文は端末のフォント
 - 配る woff2: 486 ファイル（5,740,556 B）→ 124 ファイル（3,488,988 B）。フォントの CSS: gzip 122,516 B → 31,546 B。`apps/web/dist`: 7,064,270 B → 4,464,092 B（#20 の3つのコミットのあとのビルドで実測）
-- Save-Data と `prefers-reduced-data` のときはフォントを読まない
+- Save-Data と `prefers-reduced-data` のときは woff2 を読まない（例外: シェアカードを描くときは読み、その後はページの見出しも手書きになる。`@font-face` の CSS は SW が先読みする。上の「書体」）
+- Service Worker のフォントのキャッシュは `fonts-v2`（160 件まで。Klee One 600 は 124 ファイル）。新しい SW が有効になるとき、前のフォントの部分ファイルが入った `fonts`（400 件まで）とその期限の記録を消す（`sw.ts`、`lib/swCaches.ts`）
 - 画像・SVG の飾り・data: URI を足さない（紙の罫線は CSS のグラデーションだけ）。アイコンと OG は同じ枚数と寸法
 - ダークは暗い灰で、真っ黒ではない。目的は夜の見やすさ（OLED の省電力は明るさ 30〜50% で 3〜9% と小さい）

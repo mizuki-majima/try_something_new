@@ -43,6 +43,11 @@ export default tseslint.config(
     },
   },
   {
+    // Classic scripts index.html loads as they are (no bundler): browser globals, no modules.
+    files: ["apps/web/public/**/*.js"],
+    languageOptions: { sourceType: "script", globals: { ...globals.browser } },
+  },
+  {
     files: ["scripts/**/*.{js,mjs}", "apps/api/build.mjs", "**/*.config.{js,ts}"],
     rules: { "no-console": "off" },
   },

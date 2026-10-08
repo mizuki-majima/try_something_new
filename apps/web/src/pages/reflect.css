@@ -85,8 +85,9 @@
   background: var(--gray-soft);
   color: var(--ink);
   font-family: var(--font-hand);
-  font-size: 15px;
+  font-size: 17px; /* handwriting only at 17px and up */
   font-weight: 600;
+  line-height: 1;
 }
 .rf-steps li[aria-current="step"] {
   color: var(--ink);
