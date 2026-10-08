@@ -21,7 +21,7 @@ TED「Try something new for 30 days」（Matt Cutts）の考え方を、誰で�
 
 | 層 | 使っているもの |
 |---|---|
-| Web | React 19 + React Router、Vite、PWA（vite-plugin-pwa、Service Worker）。デザインはネオ・ブルータリズム（[docs/design.md](docs/design.md)） |
+| Web | React 19 + React Router、Vite、PWA（vite-plugin-pwa、Service Worker）。デザインは「白いノート」（手書きの見出し・白ベース・夜にまぶしくないダーク。[docs/design.md](docs/design.md)） |
 | API | Hono（TypeScript）を AWS Lambda（Node.js 22 / arm64）で動かす。入力検証は zod（`packages/shared` のスキーマを Web と共用） |
 | データ | DynamoDB 1テーブル（オンデマンド。費用が増える速さの上限として最大スループットを設定、PITR）。ローカルとテストは dynalite（Java / Docker 不要） |
 | 配信 | CloudFront → S3（Web）／API Gateway HTTP API `ThirtyDaysApi`（`/api/*` `/s/*`）／S3（公開カード画像 `/media/share/*` だけ） |
@@ -66,7 +66,7 @@ docs/              設計・デプロイ・検証計画・意思決定の記録
 | [PRODUCT.md](PRODUCT.md) | 課題・顧客・価値・Phase・作らないもの（Do Not Build） |
 | [SPEC.md](SPEC.md) | 仕様・Critical User Flow・API・データモデル・完了の定義 |
 | [docs/validation-plan.md](docs/validation-plan.md) | PILOT の計画と合格ライン（実施前に固定） |
-| [docs/design.md](docs/design.md) | デザイン（ネオ・ブルータリズム）のトークンと原則 |
+| [docs/design.md](docs/design.md) | デザイン（白いノート）のトークン・コントラスト・部品・画面の並び |
 | [docs/deploy.md](docs/deploy.md) | AWS へのデプロイ・秘密情報と入れ替え・アラーム・費用・ロールバック・片付け |
 | [docs/test-plan.md](docs/test-plan.md) | テスト計画 |
 | [docs/decisions/](docs/decisions/) | 意思決定の記録（ADR） |

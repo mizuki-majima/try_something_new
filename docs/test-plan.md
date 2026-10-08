@@ -1,6 +1,6 @@
 # Test Plan — 30日だけ
 
-Owner: AI QA ／ 対象: SPEC v1.5 ／ 最終更新: 2026-10-08
+Owner: AI QA ／ 対象: SPEC v1.6 ／ 最終更新: 2026-10-08
 
 方針: MVP では Critical User Flow（CUF）を最優先。網羅より「CUF が壊れたら必ず CI が赤になる」こと。次に過去の不具合の回帰、最後にエッジケース。課金される外部 API はどのテストからも呼ばない（このサービスには AI も課金 API も無い。[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
@@ -53,11 +53,13 @@ npx playwright show-report               # 前回の HTML レポート
 | `cuf3-cohort-cheer.spec.ts` | A が今月開始（公開は既定 ON）→ 別ブラウザの B が「みんな」→ 今月の組に A のニックネーム・印・タイトル・ミニ30マス（カードのボタンが1行の高さ）→「詳しく見る」で A の30マス（1日目に印）と「ひとことは、本人が「みんなに見せる」を選んだものだけ…」の注記（ひとことの欄なし）、Esc で閉じる →「応援」で 0→1・「応援済み」で押せない（再読み込み後も）・API の2回目は 409 → A が設定で「みんなに進捗を表示する」を OFF → B の再読み込みで A が消え、ひとことの API も 404 | CUF-3 1〜4 |
 | 同上 | ひとことを見せる（#17）: 昨日開始の A が2日目（きょう）に NOTE2、1日目（チャレンジ詳細）に NOTE1 → どちらも一覧の JSON・`/api/members/:id/notes`・B の「詳しく見る」に出ない → A が1日目の「みんなに見せる」→ 確認のシート（「1日目」と NOTE1 のプレビュー・注意・同意の一文）→「見せる」→ 欄の名前が「（みんなに見せています）」、メモ一覧に「みんな」→ API は1日目だけ、一覧は `shownNoteCount: 1` で文面なし → B の再読み込みでカードに「ひとこと 1」、「詳しく見る」に「1日目」NOTE1 だけ → A が書き換える →「書き換えたので「自分だけ」に戻しました。…」の通知・欄の名前が「（自分だけに見えます）」・スイッチがオフ・API は空・B が再読み込みせずに開き直すと何も出ない → A が見せ直して戻す（確認なし、「自分だけに戻しました」）→ API はすぐ空・B も何も出ない → 見せ直してから書き換え、保存せずにすぐスイッチを押す（欄から出るときに保存される。サーバが受け付けるまでスイッチはオンのままで、押すとすぐ戻す。確認のシートは出ない）→ API は空 → 見せ直して進捗公開 OFF → API は 404・A の画面は「いまは誰にも見えていません」・B の一覧から A が消える。NOTE2 はどこにも出ない | CUF-3 4〜6 |
 | `smoke.spec.ts` | `/` `/recipes` `/recipes/photo` `/recipes/new` `/gacha` `/together` `/log` `/settings` `/about` `/terms` `/privacy` `/contact` `/admin` と未知のパス（404 画面）が、コンソールエラーなし・横スクロールなしで開く（14 件） | SPEC UI |
+| 同上 | メニュー（表示されている方）のリンクが「きょう / えらぶ / みんな / 記録」の4つで、行き先が `/` `/recipes` `/together` `/log`。`/` で きょう、`/gacha` で えらぶ が `aria-current="page"`（#20） | FR-21 |
+| 同上 | 360px・オフライン・一番長い同期の文（「オフライン・あとで同期」）でも、ヘッダーの「設定」が画面の中に収まり、横スクロールがない（#20） | FR-21, NFR |
 | 同上 | ガチャを1回まわして結果と「これを30日やる」、ひらめき提案で3案と「いまは AI を使わず、ルールで選んでいます」、残り回数 | FR-12, FR-13 |
 | 同上 | `/s/<存在しないID>` がサーバ生成の HTML 404（「カードが見つかりません」） | FR-7 |
 | `csp.spec.ts` | 本番の CSP（`infra/lib/edge.ts` の `SITE_CSP`）を付けて主要画面を開き、開始と印まで進めても `securitypolicyviolation` が出ない | Architecture |
 | `pwa-recipe-cache.spec.ts` | Service Worker あり: サーバで消したレシピを、SW のキャッシュから出し続けない | FR-18, FR-20 |
-| `tap-targets.spec.ts` | 360px 幅でチップと30マスが 44px 以上。「お知らせ」の帯（#17）が横にはみ出さず、閉じるボタンが 44px 以上、閉じると本文にフォーカスが移り、再読み込みしても出ない | NFR アクセシビリティ、FR-22 |
+| `tap-targets.spec.ts` | 360px 幅でチップと30マスが 44px 以上。「お知らせ」の帯（#17）が横にはみ出さず、閉じるボタンが 44px 以上、閉じると本文にフォーカスが移り、再読み込みしても出ない。`/recipes` と `/gacha` の「えらびかた」のリンク（レシピ / ガチャ）とヘッダーの「設定」が 44px 以上（#20） | NFR アクセシビリティ、FR-21、FR-22 |
 
 ## CUF のトレーサビリティ
 
@@ -134,6 +136,8 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 | 進捗公開のオフは上限に数えず断らない（ニックネームと一緒でも）。オンとニックネームは数える。Web は上限中もオフを送れる（R13） | `apps/api/test/me.test.ts` "turning sharing off never uses…", "a rename sent together with turning sharing off…"；`apps/web/test/appStore.test.ts` "R13…", `apps/web/test/settings.test.tsx` "R1/R13…" |
 | 読み込みで長すぎるひとことだけを落とし、印とチャレンジは残す（`notesDropped`）。保存する大きさの上限のエラーは「あと N 文字」（R14） | `apps/api/test/me.test.ts` "drops only a note…", `packages/shared/test/schemas.test.ts` "says how many characters to remove…", `apps/api/test/challenges.test.ts`, `apps/web/test/settings.test.tsx` "R14…" |
 | 読み込みの上限 1000・書き込み 100（テーブルと GSI）。一覧と書き出しは200件より多く読まない、作成も合計200件まで。PILOT の集計は必要な項目だけ・1ページ500件・20秒で打ち切り `partial`（R15）。アラームのメトリクスの数と deploy.md の費用の記載が一致（R16） | `infra/test/stack.test.ts`；`apps/api/test/challenges.test.ts` "never reads more than 200…", "refuses a create once…"；`apps/api/test/pilot.test.ts`；`apps/web/test/admin.test.tsx` "R15…" |
+| メニューと画面の並び（#20、ADR 0008）: メニューは2つ（タブバーと上のナビ）とも「きょう / えらぶ / みんな / 記録」。選択中のタブは `activeTab`（`/recipes`・`/recipes/*`・`/gacha` は えらぶ、振り返り済みの `/c/:id`・`/c/:id/reflect` は 記録、ほかの `/c/` は きょう、設定などは無し）。ヘッダーのリンクの名前はちょうど「設定」で、歯車は飾り。「えらびかた」は今のページに `aria-current`。チャレンジの戻るリンクは状態で決まる（振り返り済み →「記録」`/log`、ほか →「きょう」`/`）。記録は「きょう」への1行（未完があるときだけ）→ 終わった30日 → まとめ → メモ。きょうは 次の1日組 →「もうひとつ試す？」（Link・Link・button）の順、ヒーローは レシピ だけが主ボタン、終わったカードに「振り返り待ち」。設定は 表示 が先頭（アカウントあり・なしの両方、ジャンプのリンクも同じ順）とテーマの補足 | `apps/web/test/layout.test.tsx`；`apps/web/test/today.test.tsx` "#20: …"（5件）；`apps/web/test/settings.test.tsx` "SettingsPage — order (#20…)"；`apps/web/test/recipes.test.tsx`・`apps/web/test/gacha.test.tsx`（えらびかた）；E2E `smoke`・`tap-targets` |
+| フォント（#20）: 一度だけ読み込む、Save-Data と `prefers-reduced-data` のときは読まない、シェアカードを描くとき（`force`）は読む、`FONT_STACKS` が tokens.css と同じ。シェアカードの「形を変える」の色は `#52637a` | `apps/web/test/fonts.test.ts`；`apps/web/test/share-card.test.tsx` |
 | 規約・プライバシーポリシーの改定のお知らせ（#17、ADR 0007）: 両方のページに制定日・改定日・適用日と「改定のお知らせ」、変わる文はどれも「（適用日）から」で、適用日の前も後も正しい。ほかの画面の上の「お知らせ」の帯は閉じられ、閉じたことは適用日ごとに保存（保存できなくても表示は壊れない）、適用日の14日後から出ない、規約とプライバシーポリシーのページには出ない。ページの上の「改定のお知らせ」も適用日の14日後から出ない（日付の欄は残る） | `apps/web/test/notice.test.tsx`；`apps/web/test/static.test.tsx`（利用規約・プライバシーポリシーの #17 の文と日付、14日後のお知らせ）；`tap-targets.spec.ts`（360px の帯） |
 
 ## Live smoke（手動）と品質ルーブリック
@@ -152,6 +156,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 **CUF（iPhone Safari と Android Chrome の両方）**
 
 - [ ] CUF-1: 初回のヒーロー → レシピ →「毎日1枚、写真を撮る」→ 今日から・ニックネーム → 1日目を押す → 再読み込みで残る。上部が「同期済み」
+- [ ] 見た目（#20。デプロイの前にも）: 明るさを約 30% にして、ライト・ダーク・端末に合わせる の3つで、きょう（予約中のカード・押したカード）・シート・みんなのタブ・記録・設定・`/s/:id` を見る。ダークに明るい大きな塗りが無く、見出しが手書き（Klee One）で出る。メニューが4つで、えらぶ からレシピとガチャを行き来できる
 - [ ] CUF-1 E: 機内モードで押す →「オフライン・あとで同期」と上部の帯 → 機内モード解除で「同期済み」
 - [ ] PWA: ホーム画面に追加 → 機内モードでアイコンから開き、「きょう」と公式レシピが見える
 - [ ] CUF-2: 30日前に始めたチャレンジを用意する（設定 → バックアップの読み込みで、開始日を30日前にしたバックアップ JSON を読み込む。形は `tests/e2e/fixtures.ts` の `pastChallenge`）→ 振り返る → 続ける → カード → リンクを作って共有 → 別のブラウザ（シークレット）で `/s/<id>` を開く
@@ -210,7 +215,8 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 
 - 課金される外部 API（存在しない。AI は使わない）
 - 負荷・性能（API p95 < 500ms、初回 JS < 250KB gzip）: 自動テストなし。ビルド出力の gzip サイズ（`npm run build -w apps/web`）と CloudWatch のレイテンシで目視確認する
-- 見た目の回帰（スクリーンショット比較）: デザイン変更が続く MVP の間はしない。横スクロールだけ E2E で見る
+- 見た目の回帰（スクリーンショット比較）: デザイン変更が続く MVP の間はしない。横スクロールだけ E2E で見る。#20 では 360px のライトとダークのスクリーンショットを PR に付ける（証拠であって、テストの代わりではない）
+- コントラストとデザインの決まり（ダークの2ブロックが同じ・コントラストの表・宣言のないトークン・生の #hex・硬い影・傾き）の自動テスト（`apps/web/test/design-guard.test.ts`）: まだ無い（#20 の残り）。いまは [docs/design.md](design.md) の計算値と、#20 の grep の監査で確かめた
 - アクセシビリティの自動監査（axe など）: しない。E2E を role / label で書くことで、名前のないボタンなどは間接的に見つかる
 - 管理画面・引き継ぎコード・バックアップ・データ削除・写真メモ（IndexedDB）・レシピ / 体験談の投稿の E2E: CUF ではないので Unit / Integration のみ（データ削除は Live smoke で確認）
 - タイムゾーンが日本以外の E2E: Unit / Integration（`packages/shared/test/`, `apps/api/test/`）で扱う
