@@ -71,4 +71,6 @@ export const KEYS = {
   state: "thirty-days.state.v1",
   outbox: "thirty-days.outbox.v1",
   theme: "thirty-days.theme",
+  /** The notice band of the revised Terms (#17) was closed: holds the effective date it announced. */
+  noticeNoteShow: "thirty-days.notice.note-show.v1",
 } as const;

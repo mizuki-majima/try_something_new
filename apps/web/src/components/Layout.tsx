@@ -1,13 +1,15 @@
 /**
  * App shell: sticky header (brand, desktop nav, sync status, settings), bands for offline, a
- * server-requested wait (429) and a broken session, the page (<Outlet/>), the footer links (about / terms / privacy / contact), the
- * phone tab bar and the toast live region.
+ * server-requested wait (429), a broken session and a notice (お知らせ, e.g. revised Terms), the page
+ * (<Outlet/>), the footer links (about / terms / privacy / contact), the phone tab bar and the toast
+ * live region.
  */
 import { Suspense, useEffect, useRef, type ComponentType, type RefObject } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { useSync } from "../lib/store";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { ArchiveIcon, BookIcon, DiceIcon, PeopleIcon, SettingsIcon, StampIcon } from "./Icons";
+import { NoticeBanner } from "./NoticeBanner";
 import { OfflineBanner, SessionBanner, ThrottleBanner } from "./OfflineBanner";
 import { Seal } from "./Seal";
 import { Loading } from "./States";
@@ -151,6 +153,7 @@ export function Layout() {
       <OfflineBanner />
       <ThrottleBanner />
       <SessionBanner />
+      <NoticeBanner />
       <main id="main" className="wrap" ref={mainRef} tabIndex={-1}>
         <ErrorBoundary key={pathname}>
           <Suspense fallback={<Loading />}>

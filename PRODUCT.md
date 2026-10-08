@@ -5,7 +5,7 @@
 | **Current Phase** | PILOT（2026-10-07 Gate 6 を通過。実機の裏付けがないまま CEO がリスクを受け入れた: [ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md)） |
 | Health | 🟡 YELLOW（実機での CUF の裏付けなし。招待の日と 2026-11-01 に AI PM が本番のログで参加者の操作を確かめる: [#8](https://github.com/mizuki-majima/try_something_new/issues/8)） |
 | Next Gate | [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)（1日組の30日目 2026-11-30 の後に判定） |
-| Last updated | 2026-10-07 |
+| Last updated | 2026-10-08 |
 
 > 趣味のサービス。収益を目的にしないため、Gate 1 の収益・価格の項目と Gate 2（支払意思）は CEO 判断で免除（[ADR 0001](docs/decisions/0001-hobby-service-skip-payment-validation.md)）。
 
@@ -84,7 +84,7 @@ PILOT の **完走率**（30日目または7日目以降の区切りで振り返
 
 ## Current Goal
 
-PILOT: CEO が友人・同僚 10人前後に URL を配り（10月末まで）、**2026-11-01 開始の1日組**を1回走らせる（AI は連絡しない）。30日目（2026-11-30）の後に、管理画面の指標と感想で Gate 7 を判定する（基準は [docs/validation-plan.md](docs/validation-plan.md) のまま変えない）。PILOT 中は機能を足さず、バグと運用だけ直す（例外: 2026-10-07 に CEO の依頼で「みんな」の「詳しく見る」を追加。画面だけで、公開する範囲とデータは変えない: [#16](https://github.com/mizuki-majima/try_something_new/issues/16)）。実機での裏付けがないまま進めたので（[ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md)）、招待の日と 2026-11-01 に参加者の操作が本番に届いているかを AI PM が確かめる（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）。
+PILOT: CEO が友人・同僚 10人前後に URL を配り（10月末まで）、**2026-11-01 開始の1日組**を1回走らせる（AI は連絡しない）。30日目（2026-11-30）の後に、管理画面の指標と感想で Gate 7 を判定する（基準は [docs/validation-plan.md](docs/validation-plan.md) のまま変えない）。PILOT 中は機能を足さず、バグと運用だけ直す（例外: 2026-10-07 に CEO の依頼で「みんな」の「詳しく見る」を追加。画面だけで、公開する範囲とデータは変えない: [#16](https://github.com/mizuki-majima/try_something_new/issues/16)。同じ日に CEO の承認で、本人が「みんなに見せる」を選んだひとことメモだけを「詳しく見る」に出す。公開する範囲と保存するデータ（選んだときのメモの写し）が変わるが、今あるメモは移行せず非公開のまま。利用規約とプライバシーポリシーの改定を先に画面で知らせ、適用日（2026-10-11。2026-10-08 に CEO が選んだ）以降に出す: [#17](https://github.com/mizuki-majima/try_something_new/issues/17)、[ADR 0007](docs/decisions/0007-opt-in-public-notes.md)）。実機での裏付けがないまま進めたので（[ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md)）、招待の日と 2026-11-01 に参加者の操作が本番に届いているかを AI PM が確かめる（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）。
 
 ## Current Risks
 
@@ -92,8 +92,9 @@ PILOT: CEO が友人・同僚 10人前後に URL を配り（10月末まで）�
 |---|---|
 | 作ったが使われない | PILOT の基準を事前に固定。使われなければ機能を足さず PAUSE / KILL を検討 |
 | AWS 費用が想定を超える | サーバーレス・on-demand・AI なし（100人規模で月約 $0.1）。DynamoDB はテーブルと GSI ごとに最大スループットの上限（1時間あたりの速さの上限。テーブルか GSI 1つにつき、上限まで使われて読み込み 約 $0.51/時・書き込み 約 $0.26/時。月の合計の上限ではない。R16）とスロットルのアラーム、書き込みを増やす操作（プロフィール変更・読み込み）に回数の上限（R1）。Budgets で `Project=thirty-days` の費用が月 $10 を超えそうなら通知（費用配分タグは 2026-10-07 に有効化。DynamoDB 以外の荒らしの費用はこれだけが頼り）。API の 5xx とエラーのアラーム。予算とアラームは 2026-10-07 に `ALERT_EMAIL` を付けて作成した（[#6](https://github.com/mizuki-majima/try_something_new/issues/6)）。予算のメールは承認なしで届くが、費用データの反映で数時間遅れる。速く気づけるアラーム（`DynamoThrottles` など）のメールは SNS 経由で、2026-10-07 に CEO が購読を承認した。購読が消えていないかを AI PM がセッションのたびに確かめる |
-| 匿名の投稿による荒らし | 公開テキストは URL 禁止、レート制限（IP は IPv6 なら /56 単位。アカウント作成はネットワーク（IPv4 /16・IPv6 /48）ごとに1時間60件、全体でも1時間2000件で、全体に当たるとアラーム）、バックアップ読み込みの回数・件数の上限と1人ずつの実行、通報3件で自動非表示（作成24時間以上・チャレンジのあるアカウントで、2つ以上のネットワークからの通報だけ）、止めたものは消して（アカウントごと消しても）読み込み直しても戻らない、管理画面 |
-| PILOT の参加者以外に URL が広まる | URL は README にもある。広まっても困らない作り（匿名・URL 禁止・レート制限・通報）だが、参加者以外の利用が目立ったら CEO に報告する |
+| 匿名の投稿による荒らし | 公開テキスト（#17 で本人が「みんなに見せる」を選んだひとことメモも）は URL 禁止、レート制限（IP は IPv6 なら /56 単位。アカウント作成はネットワーク（IPv4 /16・IPv6 /48）ごとに1時間60件、全体でも1時間2000件で、全体に当たるとアラーム）、バックアップ読み込みの回数・件数の上限と1人ずつの実行、通報3件で自動非表示（作成24時間以上・チャレンジのあるアカウントで、2つ以上のネットワークからの通報だけ）、止めたものは消して（アカウントごと消しても）読み込み直しても戻らない、管理画面 |
+| PILOT の参加者以外に URL が広まる | URL は README にもある。広まっても困らない作り（匿名・URL 禁止（見せるひとことメモも）・レート制限・通報）だが、参加者以外の利用が目立ったら CEO に報告する |
+| ひとことメモが本人の思うより広く見られる（#17） | 既定は非公開で、今あるメモは移行せず非公開のまま。見せるのは日ごとに確認のシートを通して選んだときだけで、書き換えると「自分だけ」に戻り、いつでも戻せる。前の版の画面からは公開できない。規約の改定は適用日の前に画面で知らせ、機能は適用日以降に出す（[ADR 0007](docs/decisions/0007-opt-in-public-notes.md)） |
 | iPhone（WebKit）だけで起きる不具合 | 自動テストは Chromium だけで、実機での裏付けはない（CEO がリスクを受け入れた: [ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md)）。招待の日と 2026-11-01 に本番のログで参加者の開始・印・通知の購読が届いているかを確かめ、届いていなければすぐ CEO に報告する（[#8](https://github.com/mizuki-majima/try_something_new/issues/8)）。招待の日（2026-10-07）には開始・印・同期が本番に届いた（端末の種類は不明） |
 | iPhone で Safari で予約した記録がホーム画面アプリに出ない | iPhone は Safari とホーム画面アプリで保存場所が分かれ、通知にはホーム画面アプリが要る。招待文の補足で「通知を使うなら先にホーム画面に追加してそこから予約」「Safari で予約済みなら引き継ぎコードで移す」と案内している。画面での案内は [#15](https://github.com/mizuki-majima/try_something_new/issues/15)（P1。11/1 より前に入れるかを AI PM が判断） |
 | iOS で通知が届かない | ホーム画面追加の案内。カレンダー連携を代替に |
