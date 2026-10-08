@@ -1,6 +1,6 @@
 # Roadmap — 30日だけ
 
-最終更新: 2026-10-07 ／ 現在: **PILOT**（次: [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)）
+最終更新: 2026-10-08 ／ 現在: **PILOT**（次: [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)）
 
 直近の学習を最優先にする。細かい長期計画は書かない。Later は約束ではない。
 

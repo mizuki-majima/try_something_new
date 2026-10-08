@@ -5,7 +5,7 @@
 | **Current Phase** | PILOT（2026-10-07 Gate 6 を通過。実機の裏付けがないまま CEO がリスクを受け入れた: [ADR 0006](docs/decisions/0006-gate6-ceo-risk-acceptance.md)） |
 | Health | 🟡 YELLOW（実機での CUF の裏付けなし。招待の日と 2026-11-01 に AI PM が本番のログで参加者の操作を確かめる: [#8](https://github.com/mizuki-majima/try_something_new/issues/8)） |
 | Next Gate | [Gate 7: PILOT → LIVE](https://github.com/mizuki-majima/try_something_new/issues/5)（1日組の30日目 2026-11-30 の後に判定） |
-| Last updated | 2026-10-07 |
+| Last updated | 2026-10-08 |
 
 > 趣味のサービス。収益を目的にしないため、Gate 1 の収益・価格の項目と Gate 2（支払意思）は CEO 判断で免除（[ADR 0001](docs/decisions/0001-hobby-service-skip-payment-validation.md)）。
 

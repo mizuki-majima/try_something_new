@@ -5,8 +5,8 @@
  * #17 (ADR 0007): the revision that lets an owner show a chosen day note in 「みんな」. The Terms
  * (「規約の変更」) promise to show the new text and the day it takes effect on screen before that day,
  * so this notice ships first (no behaviour change) and the feature is deployed on or after
- * EFFECTIVE_ON. The CEO chose 3 days' notice (2026-10-08), counted from the day the notice reached
- * production.
+ * EFFECTIVE_ON. The CEO chose 3 days' notice (2026-10-08), counted from the day the notice reaches
+ * production (REVISED_ON).
  */
 import { addDays, type DateStr } from "@thirty/shared";
 
