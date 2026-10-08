@@ -136,6 +136,10 @@ describe("GachaPage", () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     renderGacha();
     expect(screen.getByTestId("slot").textContent).toBe(`候補 ${OFFICIAL_RECIPES.length}件`);
+    // #20: 「えらぶ」 holds レシピ and ガチャ; the switch above the h1 marks this page.
+    const choose = screen.getByRole("navigation", { name: "えらびかた" });
+    expect(within(choose).getByRole("link", { name: "ガチャ" }).getAttribute("aria-current")).toBe("page");
+    expect(within(choose).getByRole("link", { name: "レシピ" }).getAttribute("href")).toBe("/recipes");
     fireEvent.click(screen.getByRole("radio", { name: "5分" }));
     fireEvent.click(screen.getByRole("radio", { name: "あたま" }));
     fireEvent.click(screen.getByRole("button", { name: "ガチャを回す" }));

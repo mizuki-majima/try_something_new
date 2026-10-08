@@ -1,29 +1,58 @@
 /**
- * App shell: sticky header (brand, desktop nav, sync status, settings), bands for offline, a
+ * App shell: sticky header (brand, desktop nav, sync status, 「設定」), bands for offline, a
  * server-requested wait (429), a broken session and a notice (お知らせ, e.g. revised Terms), the page
  * (<Outlet/>), the footer links (about / terms / privacy / contact), the phone tab bar and the toast
  * live region.
+ *
+ * Four tabs (#20): きょう / えらぶ (レシピ and ガチャ, see ChooseNav) / みんな / 記録. Which one is
+ * current comes from activeTab(): a challenge page belongs to 記録 once the challenge is done, else to
+ * きょう, so a reload or a link from a calendar event marks the same tab.
  */
 import { Suspense, useEffect, useRef, type ComponentType, type RefObject } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
-import { useSync } from "../lib/store";
+import type { Challenge } from "@thirty/shared";
+import { useChallenges, useSync } from "../lib/store";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { ArchiveIcon, BookIcon, DiceIcon, PeopleIcon, SettingsIcon, StampIcon } from "./Icons";
+import { ArchiveIcon, BookIcon, PeopleIcon, SettingsIcon, StampIcon } from "./Icons";
 import { NoticeBanner } from "./NoticeBanner";
 import { OfflineBanner, SessionBanner, ThrottleBanner } from "./OfflineBanner";
 import { Seal } from "./Seal";
 import { Loading } from "./States";
 import { ToastHost } from "./Toast";
 
-type Tab = { to: string; label: string; Icon: ComponentType; match: (path: string) => boolean };
+export type TabId = "today" | "choose" | "together" | "log";
 
+type Tab = { id: TabId; to: string; label: string; Icon: ComponentType };
+
+/** The app menu: the phone tab bar and the desktop top nav (both named 「メニュー」). */
 export const TABS: readonly Tab[] = [
-  { to: "/", label: "きょう", Icon: StampIcon, match: (p) => p === "/" || p.startsWith("/c/") },
-  { to: "/recipes", label: "レシピ", Icon: BookIcon, match: (p) => p === "/recipes" || p.startsWith("/recipes/") },
-  { to: "/gacha", label: "ガチャ", Icon: DiceIcon, match: (p) => p === "/gacha" },
-  { to: "/together", label: "みんな", Icon: PeopleIcon, match: (p) => p === "/together" },
-  { to: "/log", label: "記録", Icon: ArchiveIcon, match: (p) => p === "/log" },
+  { id: "today", to: "/", label: "きょう", Icon: StampIcon },
+  { id: "choose", to: "/recipes", label: "えらぶ", Icon: BookIcon },
+  { id: "together", to: "/together", label: "みんな", Icon: PeopleIcon },
+  { id: "log", to: "/log", label: "記録", Icon: ArchiveIcon },
 ];
+
+/**
+ * The tab a path belongs to, or null (settings, about, legal pages, 404).
+ * /c/:id and /c/:id/reflect: 記録 when that challenge is done, else きょう (also while it is unknown).
+ */
+export function activeTab(pathname: string, challenges: readonly Pick<Challenge, "id" | "status">[]): TabId | null {
+  const p = pathname.replace(/\/+$/, "") || "/";
+  if (p === "/") return "today";
+  if (p.startsWith("/c/")) {
+    let id = p.slice(3).split("/")[0] ?? "";
+    try {
+      id = decodeURIComponent(id);
+    } catch {
+      // a malformed escape: not a challenge id
+    }
+    return challenges.find((c) => c.id === id)?.status === "done" ? "log" : "today";
+  }
+  if (p === "/recipes" || p.startsWith("/recipes/") || p === "/gacha") return "choose";
+  if (p === "/together") return "together";
+  if (p === "/log") return "log";
+  return null;
+}
 
 const SYNC_TEXT = {
   synced: "同期済み",
@@ -120,6 +149,8 @@ export function SiteFooter() {
 
 export function Layout() {
   const { pathname } = useLocation();
+  const challenges = useChallenges();
+  const current = activeTab(pathname, challenges);
   const mainRef = useRef<HTMLElement>(null);
   useRouteFocus(mainRef);
   useServiceWorkerNavigation();
@@ -137,15 +168,17 @@ export function Layout() {
           </Link>
           <nav className="nav" aria-label="メニュー">
             {TABS.map((t) => (
-              <Link key={t.to} to={t.to} aria-current={t.match(pathname) ? "page" : undefined}>
+              <Link key={t.id} to={t.to} aria-current={current === t.id ? "page" : undefined}>
                 {t.label}
               </Link>
             ))}
           </nav>
           <div className="top-actions">
             <SyncPill />
-            <Link to="/settings" className="iconbtn" aria-label="設定" aria-current={pathname === "/settings" ? "page" : undefined}>
+            {/* Visible text; the gear is decorative, so the link's name is exactly 「設定」. */}
+            <Link to="/settings" className="top-settings" aria-current={pathname === "/settings" ? "page" : undefined}>
               <SettingsIcon />
+              <span>設定</span>
             </Link>
           </div>
         </div>
@@ -163,8 +196,8 @@ export function Layout() {
       </main>
       <SiteFooter />
       <nav className="tabbar" aria-label="メニュー">
-        {TABS.map(({ to, label, Icon, match }) => (
-          <Link key={to} to={to} aria-current={match(pathname) ? "page" : undefined}>
+        {TABS.map(({ id, to, label, Icon }) => (
+          <Link key={id} to={to} aria-current={current === id ? "page" : undefined}>
             <Icon />
             <span>{label}</span>
           </Link>

@@ -101,8 +101,12 @@
 }
 
 /* ---------- ひらめき提案 ---------- */
+/* A plain line between the gacha and ひらめき提案: a different way to pick, not part of the result. */
+.g-sep {
+  margin: 14px 0 0;
+}
 .g-ideas {
-  margin-top: 8px;
+  margin-top: 0;
 }
 .g-ideas-title {
   font-family: var(--font-hand);

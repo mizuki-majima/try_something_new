@@ -33,6 +33,23 @@
 }
 
 /* ---------- list ---------- */
+/* 「＋ レシピを書く」 beside the h1: a quiet green text link (44px tall), not a button. */
+.rp-write {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 2px;
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+.rp-write:hover {
+  text-decoration-thickness: 2px;
+}
 .rp-filters {
   display: grid;
   gap: 12px;

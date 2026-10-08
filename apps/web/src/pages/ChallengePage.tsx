@@ -53,11 +53,17 @@ export default function ChallengePage() {
   return <ChallengeDetail key={c.id} c={c} today={today} />;
 }
 
+/** The back link of /c/:id: a reflected challenge lives in 記録, every other one on きょう (the tab activeTab() marks). */
+export function challengeBackLink(c: Pick<Challenge, "status">): { to: string; label: string } {
+  return c.status === "done" ? { to: "/log", label: "記録" } : { to: "/", label: "きょう" };
+}
+
 function ChallengeDetail({ c, today }: { c: Challenge; today: string }) {
   const { deleteChallenge } = useAppActions();
   const navigate = useNavigate();
   const toast = useToast();
   const v = viewChallenge(c, today);
+  const back = challengeBackLink(c);
   const [selected, setSelected] = useState<number | null>(v.phase === "active" ? v.day : null);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -106,9 +112,10 @@ function ChallengeDetail({ c, today }: { c: Challenge; today: string }) {
 
   return (
     <section className="cp-page" aria-labelledby="cp-title">
-      <Link to="/" className="backlink cp-back">
+      {/* From the challenge's state, not from where it was opened: the same after a reload or from a calendar event (#20). */}
+      <Link to={back.to} className="backlink cp-back">
         <ChevronLeftIcon />
-        きょう
+        {back.label}
       </Link>
 
       <header className="cp-head">

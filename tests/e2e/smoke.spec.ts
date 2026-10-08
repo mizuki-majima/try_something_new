@@ -3,7 +3,7 @@
  * horizontal scrolling; unknown paths get the 404 page; /s/<unknown> is the server's HTML 404.
  */
 import type { Page } from "@playwright/test";
-import { expect, test, watchRequests } from "./fixtures";
+import { createSession, expect, syncStatus, test, uniqueNickname, useToken, watchRequests } from "./fixtures";
 
 type Route = { path: string; heading: string | RegExp };
 
@@ -53,6 +53,50 @@ for (const route of ROUTES) {
     expect(errors).toEqual([]);
   });
 }
+
+test("the menu has four tabs: きょう / えらぶ / みんな / 記録 (#20)", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
+  // Only one menu is displayed (the tab bar on phones, the top nav on desktop).
+  const menu = page.getByRole("navigation", { name: "メニュー" });
+  await expect(menu.getByRole("link")).toHaveText(["きょう", "えらぶ", "みんな", "記録"]);
+  for (const [name, href] of [
+    ["きょう", "/"],
+    ["えらぶ", "/recipes"],
+    ["みんな", "/together"],
+    ["記録", "/log"],
+  ]) {
+    await expect(menu.getByRole("link", { name, exact: true })).toHaveAttribute("href", href!);
+  }
+  await expect(menu.getByRole("link", { name: "きょう", exact: true })).toHaveAttribute("aria-current", "page");
+
+  // えらぶ is current on both of its pages.
+  await page.goto("/gacha");
+  await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "次の30日ガチャ" })).toBeVisible();
+  await expect(menu.getByRole("link", { name: "えらぶ", exact: true })).toHaveAttribute("aria-current", "page");
+});
+
+test.describe("at 360px", () => {
+  test.use({ viewport: { width: 360, height: 740 } });
+
+  test("offline, with the longest sync text, the header fits: no sideways scroll and 「設定」 fully on screen (#20)", async ({ page, context, request }) => {
+    const { token } = await createSession(request, uniqueNickname("H"));
+    await useToken(page, token);
+    await page.goto("/");
+    await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
+    await context.setOffline(true);
+    await expect(page.getByRole("status").filter({ hasText: "オフラインです" })).toBeVisible();
+    await expect(syncStatus(page)).toHaveText("オフライン・あとで同期");
+
+    const settings = page.getByRole("link", { name: "設定", exact: true });
+    await expect(settings).toBeVisible();
+    const box = (await settings.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(360);
+    expect(await horizontalOverflow(page), "horizontal overflow in px").toBeLessThanOrEqual(0);
+    await context.setOffline(false);
+  });
+});
 
 test("/gacha: one roll shows a result, ひらめき提案 shows 3 ideas and the no-AI note", async ({ page }) => {
   const errors = watchErrors(page);

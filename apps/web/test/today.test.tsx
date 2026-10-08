@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { API, addDays, jpDate, nextFirst, todayIn, type Challenge } from "@thirty/shared";
@@ -6,7 +6,7 @@ import { ToastHost, ToastProvider } from "../src/components/Toast";
 import { createAppStore } from "../src/lib/appStore";
 import { deviceTimeZone } from "../src/lib/session";
 import { AppProvider } from "../src/lib/store";
-import ChallengePage from "../src/pages/ChallengePage";
+import ChallengePage, { challengeBackLink } from "../src/pages/ChallengePage";
 import LogPage from "../src/pages/LogPage";
 import TodayPage from "../src/pages/TodayPage";
 
@@ -191,8 +191,29 @@ describe("TodayPage", () => {
   it("asks for the reflection when the 30 days are over (CUF-2 step 1)", () => {
     renderToday([ch({ startDate: addDays(today, -30), stamps: { "1": { at: 1 }, "30": { at: 2 } } })]);
     expect(screen.getByText("30日が終わりました")).toBeTruthy();
+    expect(screen.getByText("振り返り待ち")).toBeTruthy();
     expect(screen.getByText(/2日押せました/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "振り返る" }).getAttribute("href")).toBe("/c/abc123def4567890/reflect");
+  });
+
+  it("#20: after the cards come 次の1日組, then 「もうひとつ試す？」 as quiet links (Link, Link, button)", () => {
+    renderToday([ch({ startDate: addDays(today, -1) })]);
+    const teaser = screen.getByRole("heading", { level: 2, name: "次の1日組" });
+    const more = screen.getByRole("heading", { level: 2, name: "もうひとつ試す？" });
+    expect(teaser.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const section = more.closest("section")!;
+    expect(within(section).getByRole("link", { name: "レシピから選ぶ" }).getAttribute("href")).toBe("/recipes");
+    expect(within(section).getByRole("link", { name: "ガチャで決める" }).getAttribute("href")).toBe("/gacha");
+    fireEvent.click(within(section).getByRole("button", { name: "自分で決める" }));
+    expect(screen.getByRole("dialog", { name: "新しい30日" })).toBeTruthy();
+  });
+
+  it("#20: the hero's レシピ is the one green button; 自分で決める is a text button", () => {
+    renderToday();
+    expect(screen.getByRole("link", { name: "レシピから選ぶ" }).className).toContain("primary");
+    expect(screen.getByRole("link", { name: "ガチャで決める" }).className).not.toContain("primary");
+    expect(screen.getByRole("button", { name: "自分で決める" }).className).toContain("linkbtn");
+    expect(screen.queryByRole("heading", { name: "もうひとつ試す？" })).toBeNull();
   });
 
   it("shows the hero and a link to the log when only finished challenges remain", () => {
@@ -320,6 +341,22 @@ describe("ChallengePage", () => {
     expect(screen.queryByRole("button", { name: "編集" })).toBeNull();
   });
 
+  it("#20: the back link follows the state: 「きょう」 → / while open, 「記録」 → /log once done", () => {
+    renderAt("/c/abc123def4567890", [ch({ startDate: addDays(today, -4) })]);
+    expect(screen.getByRole("link", { name: "きょう" }).getAttribute("href")).toBe("/");
+    expect(screen.queryByRole("link", { name: "記録" })).toBeNull();
+    cleanup();
+    localStorage.clear();
+    renderAt("/c/abc123def4567890", [ch({ status: "done", verdict: "continue", startDate: addDays(today, -40), finishedDay: 30, finishedAt: 5 })]);
+    expect(screen.getByRole("link", { name: "記録" }).getAttribute("href")).toBe("/log");
+    expect(screen.queryByRole("link", { name: "きょう" })).toBeNull();
+  });
+
+  it("#20: challengeBackLink", () => {
+    expect(challengeBackLink({ status: "done" })).toEqual({ to: "/log", label: "記録" });
+    expect(challengeBackLink({ status: "active" })).toEqual({ to: "/", label: "きょう" });
+  });
+
   it("shows a not-found state for an unknown id", () => {
     renderAt("/c/zzzzzzzzzzzzzzzz", []);
     expect(screen.getByText("このチャレンジはありません")).toBeTruthy();
@@ -343,6 +380,26 @@ describe("LogPage", () => {
     expect(finished.getAttribute("href")).toBe("/c/done000000000001");
     const notes = screen.getAllByRole("listitem").filter((li) => li.className === "lp-note");
     expect(notes.map((n) => n.textContent)).toEqual([expect.stringContaining("きょうのメモ"), expect.stringContaining("初日より楽")]);
+  });
+
+  it("#20: one line points to きょう while a challenge is open; then 終わった30日 → まとめ → メモ", () => {
+    renderAt("/log", [
+      ch({ id: "done000000000001", status: "done", verdict: "stop", startDate: addDays(today, -40), finishedDay: 30, finishedAt: 9 }),
+      ch({ id: "active0000000002", startDate: addDays(today, -1) }),
+    ]);
+    expect(screen.getByText(/続けている30日は「きょう」にあります。/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "きょうを開く" }).getAttribute("href")).toBe("/");
+    const [finished, summary, notes] = ["終わった30日", "まとめ", "メモ"].map((name) => screen.getByRole("region", { name }));
+    expect(finished!.compareDocumentPosition(summary!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(summary!.compareDocumentPosition(notes!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(summary!.querySelector(".lp-stat-tried")).toBeTruthy();
+    expect(within(summary!).getByRole("list", { name: "判定の内訳" })).toBeTruthy();
+  });
+
+  it("#20: no line to きょう when every challenge is done", () => {
+    renderAt("/log", [ch({ id: "done000000000001", status: "done", verdict: "stop", startDate: addDays(today, -40), finishedDay: 30, finishedAt: 9 })]);
+    expect(screen.queryByText(/続けている30日は/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "きょうを開く" })).toBeNull();
   });
 
   it("shows an empty state with a way to start", () => {

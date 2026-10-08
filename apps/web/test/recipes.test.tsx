@@ -147,6 +147,10 @@ describe("RecipesPage", () => {
     expect(screen.getAllByTestId("recipe-card")).toHaveLength(OFFICIAL_RECIPES.length);
     expect(screen.getByText("みんなのレシピを読み込んでいます…")).toBeTruthy();
     expect(screen.getByRole("link", { name: "＋ レシピを書く" }).getAttribute("href")).toBe("/recipes/new");
+    // #20: 「えらぶ」 holds レシピ and ガチャ; the switch above the h1 marks this page.
+    const choose = screen.getByRole("navigation", { name: "えらびかた" });
+    expect(within(choose).getByRole("link", { name: "レシピ" }).getAttribute("aria-current")).toBe("page");
+    expect(within(choose).getByRole("link", { name: "ガチャ" }).getAttribute("href")).toBe("/gacha");
 
     await act(async () => {
       resolve(

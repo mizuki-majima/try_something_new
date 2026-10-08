@@ -27,6 +27,25 @@
   display: grid;
   gap: 12px;
 }
+/* 「続けている30日は「きょう」にあります。」: one quiet line under the h1. */
+.lp-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  margin-top: -10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.lp-open a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
 
 /* ---------- totals ---------- */
 .lp-stats {

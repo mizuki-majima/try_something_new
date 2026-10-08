@@ -1,6 +1,7 @@
 /**
- * 記録 "/log" (FR-15, CUF-2 step 4): totals, the finished challenges with their verdict stickers,
- * and every ひとこと across challenges, newest first.
+ * 記録 "/log" (FR-15, CUF-2 step 4): the finished challenges with their verdict stickers, then まとめ
+ * (totals and the verdicts), then every ひとこと across challenges, newest first. While a challenge is
+ * still open, one line points to きょう, where it lives.
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -8,7 +9,7 @@ import { VERDICTS, VERDICT_KEYS, addDays, jpDate, jpPeriod, type Challenge, type
 import { Seal } from "../components/Seal";
 import { EmptyState, ErrorState, Loading } from "../components/States";
 import { VerdictBadge } from "../features/share/VerdictBadge";
-import { stampedDays, viewChallenge } from "../lib/challenge";
+import { isOpen, stampedDays, viewChallenge } from "../lib/challenge";
 import { usePageTitle } from "../lib/hooks";
 import { useApp } from "../lib/store";
 import "./log.css";
@@ -47,6 +48,7 @@ export default function LogPage() {
     return m;
   }, [done]);
   const notes = useMemo(() => noteTimeline(challenges), [challenges]);
+  const hasOpen = challenges.some(isOpen);
 
   if (!ready && challenges.length === 0) return <Loading label="記録を読み込んでいます…" />;
   if (challenges.length === 0 && hasSession && lastSyncedAt === null && lastSyncError) {
@@ -79,25 +81,11 @@ export default function LogPage() {
   return (
     <section className="lp-page">
       <h1 className="lp-h1">記録</h1>
-
-      <div className="lp-stats">
-        <p className="lp-stat lp-stat-tried">
-          <b>{tried}</b>
-          <small>試した数</small>
+      {hasOpen && (
+        <p className="lp-open">
+          続けている30日は「きょう」にあります。<Link to="/">きょうを開く</Link>
         </p>
-        <p className="lp-stat lp-stat-stamps">
-          <b>{totalStamps}</b>
-          <small>押した印の合計</small>
-        </p>
-      </div>
-      <ul className="lp-verdicts" aria-label="判定の内訳">
-        {VERDICT_KEYS.map((k) => (
-          <li key={k} className={`lp-v lp-v-${k}`}>
-            <span>{VERDICTS[k].label}</span>
-            <b>{counts[k]}</b>
-          </li>
-        ))}
-      </ul>
+      )}
 
       <section className="lp-section" aria-labelledby="lp-done-h">
         <h2 className="lp-h2" id="lp-done-h">
@@ -127,6 +115,30 @@ export default function LogPage() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="lp-section" aria-labelledby="lp-sum-h">
+        <h2 className="lp-h2" id="lp-sum-h">
+          まとめ
+        </h2>
+        <div className="lp-stats">
+          <p className="lp-stat lp-stat-tried">
+            <b>{tried}</b>
+            <small>試した数</small>
+          </p>
+          <p className="lp-stat lp-stat-stamps">
+            <b>{totalStamps}</b>
+            <small>押した印の合計</small>
+          </p>
+        </div>
+        <ul className="lp-verdicts" aria-label="判定の内訳">
+          {VERDICT_KEYS.map((k) => (
+            <li key={k} className={`lp-v lp-v-${k}`}>
+              <span>{VERDICTS[k].label}</span>
+              <b>{counts[k]}</b>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="lp-section" aria-labelledby="lp-notes-h">

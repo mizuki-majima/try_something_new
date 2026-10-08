@@ -1,7 +1,8 @@
 /**
- * きょう "/" (SPEC UI, FR-3/FR-4, CUF-1): first visit → hero with three ways to start; otherwise one
- * stamp card per open challenge (active / waiting / ended), then the "次の1日組" teaser.
- * Every write goes through the store (optimistic, queued offline).
+ * きょう "/" (SPEC UI, FR-3/FR-4, CUF-1): first visit → hero with three ways to start (レシピ as the one
+ * green button, ガチャ as an outline button, 自分で決める as a text button); otherwise one stamp card per
+ * open challenge (active / waiting / ended), then the "次の1日組" teaser and 「もうひとつ試す？」 as a row of
+ * quiet links. Every write goes through the store (optimistic, queued offline).
  */
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router";
@@ -68,24 +69,6 @@ export default function TodayPage() {
             <ChallengeCard key={c.id} challenge={c} today={today} />
           ))}
         </div>
-        {open.length < LIMITS.openChallenges && (
-          <section className="td-more" aria-labelledby="td-more-h">
-            <h2 id="td-more-h" className="td-more-h">
-              もうひとつ試す？
-            </h2>
-            <div className="td-more-btns">
-              <Link className="btn sm" to="/recipes">
-                レシピから選ぶ
-              </Link>
-              <Link className="btn sm" to="/gacha">
-                ガチャで決める
-              </Link>
-              <button type="button" className="btn sm" onClick={() => setStart({ preset: null })}>
-                自分で決める
-              </button>
-            </div>
-          </section>
-        )}
       </>
     );
   }
@@ -94,6 +77,24 @@ export default function TodayPage() {
     <div className="td-page">
       {main}
       <CohortTeaser today={today} online={online} reserved={reserved} onReserve={() => setStart({ preset: { firstOfMonth: true } })} />
+      {open.length > 0 && open.length < LIMITS.openChallenges && (
+        <section className="td-more" aria-labelledby="td-more-h">
+          <h2 id="td-more-h" className="td-more-h">
+            もうひとつ試す？
+          </h2>
+          <div className="td-more-links">
+            <Link className="linkbtn" to="/recipes">
+              レシピから選ぶ
+            </Link>
+            <Link className="linkbtn" to="/gacha">
+              ガチャで決める
+            </Link>
+            <button type="button" className="linkbtn" onClick={() => setStart({ preset: null })}>
+              自分で決める
+            </button>
+          </div>
+        </section>
+      )}
       {doneCount > 0 && (
         <p className="td-history">
           振り返りを終えた30日：<b>{doneCount}件</b>
@@ -127,10 +128,10 @@ function Hero({ onCustom }: { onCustom: () => void }) {
         <Link className="btn primary lg td-cta" to="/recipes">
           レシピから選ぶ
         </Link>
-        <Link className="btn lg td-cta td-cta-yellow" to="/gacha">
+        <Link className="btn lg td-cta" to="/gacha">
           ガチャで決める
         </Link>
-        <button type="button" className="btn lg td-cta" onClick={onCustom}>
+        <button type="button" className="linkbtn td-cta-text" onClick={onCustom}>
           自分で決める
         </button>
       </div>
@@ -262,6 +263,7 @@ function ChallengeCard({ challenge: c, today }: { challenge: Challenge; today: s
             <span>{jpPeriod(c.startDate)}</span>
             {v.phase === "active" && <span className="td-tag td-tag-day">{v.day}日目</span>}
             {v.phase === "waiting" && <span className="td-tag">予約中</span>}
+            {v.phase === "ended" && <span className="td-tag td-tag-end">振り返り待ち</span>}
             {v.firstOfMonth && <span className="td-tag td-tag-first">1日組</span>}
           </p>
         </div>

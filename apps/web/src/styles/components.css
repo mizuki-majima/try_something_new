@@ -130,6 +130,61 @@
   border-color: var(--shu-ink);
   background: var(--shu-ink);
 }
+/* 「設定」: a gear and visible text in a 44px rounded control. Below 400px the text goes under the gear
+   in a 44×44 square, so the sync text keeps its room. */
+.top-settings {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0 14px 0 10px;
+  border: var(--border-ctl) solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--press) ease-out;
+}
+.top-settings svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+@media (hover: hover) {
+  .top-settings:hover {
+    background: var(--bg-2);
+    text-decoration: none;
+  }
+}
+.top-settings[aria-current="page"] {
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+@media (max-width: 399px) {
+  .top-settings {
+    flex-direction: column;
+    gap: 1px;
+    width: var(--tap);
+    height: var(--tap);
+    padding: 0;
+    border-radius: 12px;
+    font-size: 12px;
+    letter-spacing: 0;
+  }
+  .top-settings svg {
+    width: 18px;
+    height: 18px;
+  }
+}
 
 /* The page column. (Plain .wrap is the flex-wrap utility below.) */
 main.wrap {

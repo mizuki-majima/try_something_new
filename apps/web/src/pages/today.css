@@ -110,12 +110,22 @@
   font-size: 17px;
   font-weight: 700;
 }
+/* 「自分で決める」: the quietest of the three, a text button under the two buttons. */
+.td-cta-text {
+  justify-self: center;
+  justify-content: center;
+  min-width: var(--tap);
+  font-size: 16px;
+}
 @media (min-width: 560px) {
   .td-hero {
     padding: 32px 28px 26px;
   }
   .td-ctas {
-    grid-template-columns: 1.2fr 1fr 1fr;
+    grid-template-columns: 1.2fr 1fr;
+  }
+  .td-cta-text {
+    grid-column: 1 / -1;
   }
 }
 
@@ -244,6 +254,12 @@
   border-color: transparent;
   background: var(--shu-soft);
   color: var(--shu-ink);
+}
+/* Ended, the decision still to make. */
+.td-tag-end {
+  border-color: transparent;
+  background: var(--sand);
+  color: var(--amber-ink);
 }
 .td-count {
   flex: none;
@@ -411,11 +427,12 @@
   text-underline-offset: 3px;
 }
 
-/* ---------- more / teaser / history ---------- */
+/* ---------- teaser / more / history ---------- */
+/* 「もうひとつ試す？」 after the cards and the teaser: a short heading and a row of quiet links. */
 .td-more {
   display: grid;
-  gap: 10px;
-  padding-top: 14px;
+  gap: 2px;
+  padding-top: 12px;
   border-top: 1px solid var(--rule);
 }
 .td-more-h {
@@ -423,10 +440,13 @@
   font-size: 16px;
   font-weight: 700;
 }
-.td-more-btns {
+.td-more-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 0 20px;
+}
+.td-more-links .linkbtn {
+  font-size: 15px;
 }
 
 /* 「次の1日組」: a plain white card. */
