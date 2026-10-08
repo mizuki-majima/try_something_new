@@ -29,6 +29,11 @@ export type MePatchBody = {
   reminder?: { enabled: boolean; time: string };
 };
 
+/**
+ * Showing a day note in 「みんな」 is deliberately not an op (#17): it is sent online only and never
+ * applied before the server confirms (appStore setNoteShown). An older bundle reading the same
+ * queue (another open tab) has no branch in applyOp for a kind it does not know.
+ */
 export type OutboxOp =
   | { kind: "challenge.create"; body: CreateBody }
   | { kind: "challenge.patch"; id: string; body: ChallengePatchBody }
@@ -68,6 +73,9 @@ export function hasPendingMe(items: readonly OutboxItem[]): boolean {
 
 function merge(prev: OutboxOp, next: OutboxOp): OutboxOp | null {
   if (prev.kind === "stamp.put" && next.kind === "stamp.put" && prev.id === next.id && prev.day === next.day) {
+    // Two different texts stay two writes (#17): the server must see the one in between, or editing
+    // a shown note and then back would keep it shown although the owner was told it is private.
+    if (prev.body.note !== undefined && next.body.note !== undefined && prev.body.note !== next.body.note) return null;
     return { ...next, body: { ...prev.body, ...next.body } };
   }
   if (prev.kind === "challenge.patch" && next.kind === "challenge.patch" && prev.id === next.id) {
@@ -80,9 +88,10 @@ function merge(prev: OutboxOp, next: OutboxOp): OutboxOp | null {
 }
 
 /**
- * Add an op. Repeated edits of the same thing merge into the last item; a merged item always gets
- * a fresh key, so a copy that is already on the wire is not mistaken for it and the merged
- * version is still sent. Deleting a challenge the server has never seen just cancels its queue.
+ * Add an op. Repeated edits of the same thing merge into the last item (not two different texts of
+ * one day's note); a merged item always gets a fresh key, so a copy that is already on the wire is
+ * not mistaken for it and the merged version is still sent. Deleting a challenge the server has
+ * never seen just cancels its queue.
  */
 export function enqueue(items: readonly OutboxItem[], op: OutboxOp, at: number, key: string): OutboxItem[] {
   if (op.kind === "challenge.delete") {
@@ -145,7 +154,10 @@ export function applyOp(state: LocalState, op: OutboxOp, at: number): LocalState
         challenges: updateChallenge(state.challenges, op.id, (c) => {
           const prev = c.stamps[String(op.day)];
           const note = op.body.note !== undefined ? op.body.note : prev?.note;
-          const stamp = note ? { at: prev?.at ?? at, note } : { at: prev?.at ?? at };
+          // Like the API (#17): a note shown in 「みんな」 stays shown only while its text is unchanged
+          // (a re-stamp or the same text); any other text, an empty note included, is private again.
+          const keepShown = !!note && prev?.shown === true && note === prev.note;
+          const stamp = note ? { at: prev?.at ?? at, note, ...(keepShown ? { shown: true } : {}) } : { at: prev?.at ?? at };
           return { ...c, stamps: { ...c.stamps, [String(op.day)]: stamp }, updatedAt: at };
         }),
       };

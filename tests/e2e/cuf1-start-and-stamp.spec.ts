@@ -1,8 +1,8 @@
 /**
  * CUF-1 steps 1–5 (SPEC "Critical User Flow"): first visit → recipe → start → stamp day 1 →
- * reload, and the stamp is on the server.
+ * reload, and the stamp is on the server. The day's ひとこと stays private (#17: shown only by choice).
  */
-import { expect, getChallenges, getMe, syncStatus, test, uniqueNickname, waitForToken } from "./fixtures";
+import { expect, getChallenges, getCohort, getMe, getMemberNotes, syncStatus, test, thisMonth, uniqueNickname, waitForToken } from "./fixtures";
 
 const TITLE = "毎日1枚、写真を撮る";
 const NOTE = "朝の光がきれいだった";
@@ -71,5 +71,16 @@ test("CUF-1: start 「毎日1枚、写真を撮る」 from the recipe and stamp 
   expect(challenge).toMatchObject({ title: TITLE, seal: "写", recipeId: "photo", status: "active" });
   expect(Object.keys(challenge!.stamps)).toEqual(["1"]);
   expect(challenge!.stamps["1"]!.note).toBe(NOTE);
+  // The note is private by default (#17): not shown, the switch under it is off, and 「みんな」 lists the
+  // challenge without the note (the list never carries note text; 「詳しく見る」 gets none).
+  expect(challenge!.stamps["1"]).not.toHaveProperty("shown");
+  await expect(card.getByRole("switch", { name: "みんなに見せる" })).not.toBeChecked();
+  await expect
+    .poll(async () => (await getCohort(request, thisMonth())).members.find((m) => m.challengeId === challenge!.id)?.stampDays)
+    .toEqual([1]);
+  const cohort = await getCohort(request, thisMonth());
+  expect(cohort.members.find((m) => m.challengeId === challenge!.id)).not.toHaveProperty("shownNoteCount");
+  expect(JSON.stringify(cohort)).not.toContain(NOTE);
+  expect(await getMemberNotes(request, challenge!.id)).toEqual({ challengeId: challenge!.id, notes: [] });
   expect((await getMe(request, token)).user.nickname).toBe(nickname);
 });

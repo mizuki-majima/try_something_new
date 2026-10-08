@@ -215,6 +215,21 @@
   overflow-wrap: anywhere;
 }
 
+/* ---------- day notes the member shows (#17) ---------- */
+.tg-notes-pill {
+  background: var(--mint, #3ddc97);
+  color: var(--on-accent, #111);
+}
+.tg-notes {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.tg-notes-h {
+  font-size: 15px;
+  font-weight: 700;
+}
+
 /* ---------- next 1日組 ---------- */
 .tg-next {
   display: grid;

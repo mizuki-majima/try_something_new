@@ -23,8 +23,11 @@ export function toUser(item: Item): User {
   };
 }
 
-export async function getUser(deps: DbDeps, uid: string): Promise<User | undefined> {
-  const res = await deps.db.send(new GetCommand({ TableName: deps.tableName, Key: userKey(uid) }));
+/** `consistent`: a strongly consistent read (a route that must see shareProgress changed a moment ago). */
+export async function getUser(deps: DbDeps, uid: string, opts: { consistent?: boolean } = {}): Promise<User | undefined> {
+  const res = await deps.db.send(
+    new GetCommand({ TableName: deps.tableName, Key: userKey(uid), ...(opts.consistent ? { ConsistentRead: true } : {}) }),
+  );
   return res.Item ? toUser(res.Item) : undefined;
 }
 

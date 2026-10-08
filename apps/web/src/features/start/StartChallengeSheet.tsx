@@ -205,7 +205,7 @@ function StartForm({ onClose, recipe, preset, onStarted }: StartChallengeSheetPr
       <p className="st-note">
         {app.user?.shareProgress === false
           ? "進捗の公開はオフになっています。「みんな」には表示されません（設定で変えられます）。"
-          : "進捗（タイトル・印・押した日）は「みんな」に表示されます。ひとことメモと写真は表示されません。設定でオフにできます。"}
+          : "進捗（タイトル・印・押した日）は「みんな」に表示されます。ひとことメモは、自分で「みんなに見せる」を選んだものだけ表示されます。写真は表示されません。設定でオフにできます。"}
       </p>
 
       {formError && (

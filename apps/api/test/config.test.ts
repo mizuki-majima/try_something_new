@@ -122,4 +122,21 @@ describe("log", () => {
     expect(entry).toMatchObject({ level: "info", msg: "x", uid: "abcdef", route: "/api/me" });
     expect(lines[0]).not.toMatch(/secret-token|private|https:\/\/push|1\.2\.3\.4|ghijklmnop/);
   });
+
+  it("drops a shown note's stored consent (shownNote) like any note text (#17)", () => {
+    const lines: string[] = [];
+    const out = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    setLogLevel("info");
+    try {
+      log.info("note visibility", { uid: "abcdefghijklmnop", day: 3, show: true, shownNote: "見せたメモ", note: "見せたメモ", notes: [{ day: 3, note: "見せたメモ" }] });
+    } finally {
+      setLogLevel("silent");
+      out.mockRestore();
+    }
+    expect(JSON.parse(lines[0] ?? "{}")).toEqual({ level: "info", msg: "note visibility", time: expect.any(String), uid: "abcdef", day: 3, show: true });
+    expect(lines[0]).not.toContain("見せたメモ");
+  });
 });

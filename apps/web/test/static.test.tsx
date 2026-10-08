@@ -56,6 +56,15 @@ describe("AboutPage", () => {
     }
     expect(screen.getByText("無料です。広告や課金もありません。")).toBeTruthy();
   });
+
+  it("#17: says day notes are shown only when their owner chooses to, and photos never", () => {
+    renderPage(<AboutPage />);
+    const section = screen.getByRole("heading", { name: "1日組" }).closest("section")!;
+    expect(section.textContent).toContain(
+      "進捗の表示は、設定でいつでもオフにできます。ひとことメモは、本人が「みんなに見せる」を選んだものだけ表示されます。写真は表示されません。",
+    );
+    expect(section.textContent).not.toContain("ひとことメモや写真は表示されません");
+  });
 });
 
 describe("TermsPage", () => {
@@ -334,6 +343,7 @@ describe("Layout — waiting after a 429 (r2-web-6)", () => {
       hasSession: false,
       sessionInvalid: false,
       pending: 2,
+      stillShown: [],
       syncStatus,
       lastSyncError: "短い時間に操作が集中しています。しばらくしてからもう一度お試しください",
       lastSyncedAt: null,

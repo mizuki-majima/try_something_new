@@ -396,6 +396,31 @@ describe("export / import", () => {
     expect(file.challenges).toEqual([c]);
   });
 
+  it("exports `shown: true` for a note shown in みんな (still version 1); importing it brings every note back private (#17)", async () => {
+    api.clock.set("2026-10-06T03:00:00.000Z");
+    const s = await api.createSession("見せて書き出す");
+    const c = challenge({ stamps: { "1": { at: 1, note: "見せたメモ" }, "2": { at: 2, note: "見せていないメモ" } } });
+    await seedChallenge(s, c);
+    await api.deps.db.send(
+      new UpdateCommand({
+        TableName: api.deps.tableName,
+        Key: { pk: `USER#${s.user.id}`, sk: `CH#${c.id}` },
+        UpdateExpression: "SET #stamps.#day.#sn = :n",
+        ExpressionAttributeNames: { "#stamps": "stamps", "#day": "1", "#sn": "shownNote" },
+        ExpressionAttributeValues: { ":n": "見せたメモ" },
+      }),
+    );
+    const file = await json<BackupFile>(await api.request("/api/me/export", { token: s.token }));
+    expect(file.version).toBe(1);
+    expect(file.challenges[0]?.stamps).toEqual({ "1": { at: 1, note: "見せたメモ", shown: true }, "2": { at: 2, note: "見せていないメモ" } });
+    expect(JSON.stringify(file)).not.toContain("shownNote");
+
+    expect((await api.request(`/api/challenges/${c.id}`, { method: "DELETE", token: s.token })).status).toBe(204);
+    expect(await json<ImportResponse>(await api.request("/api/me/import", { token: s.token, body: file }))).toEqual({ imported: 1, skipped: 0 });
+    expect((await listUserChallenges(api.deps, s.user.id))[0]?.stamps).toEqual({ "1": { at: 1, note: "見せたメモ" }, "2": { at: 2, note: "見せていないメモ" } });
+    expect(JSON.stringify(await getChallengeItem(api.deps, s.user.id, c.id))).not.toContain("shownNote");
+  });
+
   it("merges: newer wins for own ids, foreign ids get a new id, unknown ids are kept, bad items are skipped", async () => {
     const me = await api.createSession("わたし");
     const someone = await api.createSession("だれか");

@@ -122,6 +122,11 @@ export const TransferRedeemSchema = z.object({
 export const StampSchema = z.object({
   at: z.number(),
   note: z.string().optional(),
+  /**
+   * Owner view only, sent only as true: the owner chose to show this day's note in 「みんな」 (#17)
+   * and it still holds the text they chose. Absent means private.
+   */
+  shown: z.boolean().optional(),
 });
 export type Stamp = z.infer<typeof StampSchema>;
 
@@ -166,10 +171,34 @@ export const ChallengePatchSchema = z
   .refine((v) => Object.keys(v).length > 0, "変更する項目がありません");
 export type ChallengePatch = z.input<typeof ChallengePatchSchema>;
 
+/** Saving a stamp never shows its note: only PUT .../visibility does (#17). */
 export const StampPutSchema = z.object({
   note: text({ min: 0, max: LIMITS.note, label: "ひとこと" }).optional(),
 });
 export type StampPut = z.input<typeof StampPutSchema>;
+
+/**
+ * A day note that may be shown in 「みんな」 (#17): the public-text rules (no URL, length and UTF-8
+ * caps). A private note may break them (a URL is fine there).
+ */
+export const PublicNoteSchema = text({ min: 1, max: LIMITS.note, noUrl: true, label: "ひとこと" });
+
+/** Passes PublicNoteSchema and is already in its normalised form (normalising leaves it unchanged). */
+export function isPublicNote(t: unknown): t is string {
+  if (typeof t !== "string") return false;
+  const r = PublicNoteSchema.safeParse(t);
+  return r.success && r.data === t;
+}
+
+/**
+ * PUT .../stamps/:day/visibility. Showing names the exact text the owner saw (the server refuses it
+ * when the stored note differs); hiding needs nothing.
+ */
+export const NoteVisibilitySchema = z.discriminatedUnion("show", [
+  z.object({ show: z.literal(true), note: z.string().min(1).max(rawTextLimit(LIMITS.note)) }),
+  z.object({ show: z.literal(false) }),
+]);
+export type NoteVisibility = z.input<typeof NoteVisibilitySchema>;
 
 export const ReflectSchema = z.object({
   verdict: VerdictSchema,
@@ -196,8 +225,17 @@ export type CohortMember = {
   cheeredToday: boolean;
   isMine: boolean;
   updatedAt: number;
+  /**
+   * How many day notes the owner shows (#17); the text is fetched with GET /api/members/:id/notes.
+   * Sent only when > 0; optional so a client tolerates an older API during a deploy.
+   */
+  shownNoteCount?: number;
 };
 export type CohortResponse = { month: string; members: CohortMember[] };
+/** A day note the owner chose to show, by day number (1..30). */
+export type MemberNote = { day: number; note: string };
+/** GET /api/members/:challengeId/notes: the notes shown in 「みんな」, by day ascending. */
+export type MemberNotesResponse = { challengeId: string; notes: MemberNote[] };
 export type UpcomingResponse = {
   startDate: string;
   /** Reservations (challenges), not people: one person may reserve several. */

@@ -94,6 +94,11 @@ export const QUOTAS = {
   pushTestsPerUserPerDay: 5,
   /** POST /api/me/import (backup restore). */
   importsPerUserPerDay: 3,
+  /**
+   * Day notes turned from private to shown in 「みんな」 (#17). Turning one back to private is a
+   * privacy action and is never counted (like R13), nor is showing one that is already shown.
+   */
+  noteShowsPerUserPerDay: 30,
 } as const;
 
 /**

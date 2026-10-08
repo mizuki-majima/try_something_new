@@ -227,6 +227,7 @@ function fakeStore(snap: Partial<AppSnapshot> = {}) {
     hasSession: true,
     sessionInvalid: false,
     pending: 0,
+    stillShown: [],
     syncStatus: "synced",
     lastSyncError: null,
     lastSyncedAt: 1,

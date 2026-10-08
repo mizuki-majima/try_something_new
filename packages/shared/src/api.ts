@@ -13,10 +13,12 @@ export const API = {
   challenges: "/api/challenges", // GET → ChallengeListResponse / POST ChallengeCreate → ChallengeResponse (201, idempotent on id)
   challenge: (id: string) => `/api/challenges/${id}`, // PATCH ChallengePatch / DELETE
   stamp: (id: string, day: number) => `/api/challenges/${id}/stamps/${day}`, // PUT StampPut / DELETE → ChallengeResponse
+  noteVisibility: (id: string, day: number) => `/api/challenges/${id}/stamps/${day}/visibility`, // PUT NoteVisibility → ChallengeResponse (show or stop showing the day note in みんな)
   reflect: (id: string) => `/api/challenges/${id}/reflect`, // POST Reflect → ChallengeResponse
   cohort: (month: string) => `/api/cohorts/${month}`, // GET → CohortResponse (public; token optional for isMine/cheeredToday)
   cohortUpcoming: "/api/cohorts/upcoming", // GET → UpcomingResponse
   cheer: (challengeId: string) => `/api/cheers/${challengeId}`, // POST → CheerResponse
+  memberNotes: (challengeId: string) => `/api/members/${challengeId}/notes`, // GET → MemberNotesResponse (public; 404 unless listed now)
   recipes: "/api/recipes", // GET → RecipeListResponse / POST RecipeInput → { recipe }
   recipe: (id: string) => `/api/recipes/${id}`, // GET → RecipeDetailResponse / DELETE (author)
   stories: (recipeId: string) => `/api/recipes/${recipeId}/stories`, // POST StoryInput → { story }

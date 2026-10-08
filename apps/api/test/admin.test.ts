@@ -178,6 +178,28 @@ describe("GET /api/admin/reports", () => {
     expect(items[iStory]?.preview.endsWith("…")).toBe(true);
     expect(JSON.stringify(items)).not.toContain(author.user.id);
   });
+
+  it("a member's preview carries the day notes the owner shows, never the others, up to 200 characters (#17)", async () => {
+    const owner = await api.createSession("ゆう");
+    const c = challenge();
+    const stamps: Record<string, unknown> = { "1": { at: 1, note: "ひみつのメモ" } };
+    for (let day = 2; day <= 11; day++) {
+      const note = `${day}日目に見せたメモ`.padEnd(30, "。");
+      stamps[String(day)] = { at: day, note, shownNote: note };
+    }
+    stamps["12"] = { at: 12, note: "書き換えたメモ", shownNote: "書き換える前のメモ" };
+    await put({ ...toChallengeItem(owner.user.id, owner.user, c), stamps });
+    await put({ pk: `CHREF#${c.id}`, sk: "REF", userId: owner.user.id });
+    await reportBy(1, "member", c.id);
+
+    const preview = (await reportItems()).find((i) => i.targetId === c.id)?.preview ?? "";
+    expect(preview.startsWith("ゆう「毎日スクワット」 2日目：2日目に見せたメモ。")).toBe(true);
+    expect(preview).toContain(" ／ 3日目：3日目に見せたメモ");
+    expect(preview).not.toContain("ひみつ");
+    expect(preview).not.toContain("書き換え");
+    expect(Array.from(preview)).toHaveLength(201);
+    expect(preview.endsWith("…")).toBe(true);
+  });
 });
 
 describe("POST /api/admin/moderate", () => {

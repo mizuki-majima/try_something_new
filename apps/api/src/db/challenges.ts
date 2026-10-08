@@ -6,6 +6,7 @@ import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/l
 import { LIMITS, findOfficialRecipe, monthKey, type Challenge, type Stamp } from "@thirty/shared";
 import type { DbDeps, Deps } from "../ports";
 import { authorPk, challengeKey, challengeRefKey, cohortGsi1, recipeKey, recipeStatsKey, userPk, type Key } from "./keys";
+import { isShownStamp, type StoredStamp } from "./notes";
 import { deleteShare, getShareItem } from "./shares";
 import { isConditionFailed, queryAll, queryPrefix, type Item } from "./util";
 
@@ -36,12 +37,16 @@ export type ChallengeItem = Key &
 const nullableString = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const nullableNumber = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
-/** Item → API shape for the owner (notes included). */
+/**
+ * Item → API shape for the owner (notes included). `shown: true` marks a note shown in 「みんな」
+ * (db/notes.ts); the stored consent (`shownNote`) itself is never returned.
+ */
 export function toChallenge(item: Item): Challenge {
   const stamps: Record<string, Stamp> = {};
-  for (const [day, s] of Object.entries((item.stamps as Record<string, Partial<Stamp>> | undefined) ?? {})) {
+  for (const [day, s] of Object.entries((item.stamps as Record<string, Partial<StoredStamp>> | undefined) ?? {})) {
     if (!s || typeof s.at !== "number") continue;
-    stamps[day] = typeof s.note === "string" && s.note ? { at: s.at, note: s.note } : { at: s.at };
+    stamps[day] =
+      typeof s.note === "string" && s.note ? { at: s.at, note: s.note, ...(isShownStamp(s) ? { shown: true } : {}) } : { at: s.at };
   }
   return {
     id: String(item.id),
@@ -73,7 +78,10 @@ export function cohortProjection(
 
 export type ChallengeFlags = { hiddenFromCohort?: boolean; moderated?: boolean; imported?: boolean };
 
-/** Full item for a Put. Flags are written only when true. */
+/**
+ * Full item for a Put. Flags are written only when true. Stamps are written as given: a `shown` that
+ * came from toChallenge is inert (only `shownNote` is consent, db/notes.ts), so a Put never shows a note.
+ */
 export function toChallengeItem(
   uid: string,
   owner: { nickname: string; shareProgress: boolean },
@@ -94,8 +102,19 @@ export function toChallengeItem(
   };
 }
 
-export async function getChallengeItem(deps: Pick<DbDeps, "db" | "tableName">, uid: string, chId: string): Promise<Item | undefined> {
-  const res = await deps.db.send(new GetCommand({ TableName: deps.tableName, Key: challengeKey(uid, chId) }));
+/**
+ * `consistent`: a strongly consistent read, for an answer that must see a write of a moment ago (the
+ * member route seeing an un-share at once; the owner's visibility route deciding, and saying why not).
+ */
+export async function getChallengeItem(
+  deps: Pick<DbDeps, "db" | "tableName">,
+  uid: string,
+  chId: string,
+  opts: { consistent?: boolean } = {},
+): Promise<Item | undefined> {
+  const res = await deps.db.send(
+    new GetCommand({ TableName: deps.tableName, Key: challengeKey(uid, chId), ...(opts.consistent ? { ConsistentRead: true } : {}) }),
+  );
   return res.Item;
 }
 
@@ -323,7 +342,13 @@ export type ChallengeUpdate = {
   /** Top-level attributes to SET (undefined is skipped, null is stored as null). */
   set?: Partial<Pick<Challenge, "title" | "seal" | "startDate" | "status" | "verdict" | "reflection" | "finishedAt" | "finishedDay">>;
   /** stamps.<day>: write this stamp, or remove it (null). */
-  stamp?: { day: number; value: Stamp | null };
+  stamp?: { day: number; value: StoredStamp | null };
+  /**
+   * With `stamp`: the write only happens while stamps.<day>.shownNote is still what was read (null:
+   * absent). A whole-stamp write planned before an un-share must not put the old consent back (#17).
+   * Ignored for an item without a stamps map: it holds no consent, and the map written holds none.
+   */
+  expectShownNote?: string | null;
   /**
    * The write only happens while the stored item still has this status (and start date, verdict,
    * and `counted` state when given).
@@ -397,6 +422,14 @@ export async function updateChallenge(
       } else {
         removes.push("#stamps.#day");
       }
+      if (u.expectShownNote !== undefined) {
+        names["#sn"] = "shownNote";
+        if (u.expectShownNote === null) conditions.push("attribute_not_exists(#stamps.#day.#sn)");
+        else {
+          values[":expectShownNote"] = u.expectShownNote;
+          conditions.push("#stamps.#day.#sn = :expectShownNote");
+        }
+      }
     } else {
       // Legacy item without a stamps map: a nested path cannot be written, so write the whole map.
       values[":stamps"] = u.stamp.value ? { [String(u.stamp.day)]: u.stamp.value } : {};
@@ -434,6 +467,55 @@ export async function updateChallenge(
         ExpressionAttributeValues: values,
         ReturnValues: "ALL_NEW",
       }),
+    );
+    return res.Attributes ? toChallenge(res.Attributes) : null;
+  } catch (err) {
+    if (isConditionFailed(err)) return null;
+    throw err;
+  }
+}
+
+/**
+ * Show a day note in 「みんな」 (`note`: stamps.<day>.shownNote = the text the owner confirmed) or stop
+ * showing it (null: shownNote removed). The only write of `shownNote` (db/notes.ts). Its own update,
+ * not updateChallenge: it never touches updatedAt, the cohort projection, the nickname or `imported`,
+ * so the member neither moves up the list nor shows new activity, and an import stays private.
+ *
+ * Showing is conditioned on the stored note still being `note` and the challenge not being hidden by
+ * moderation or imported; stopping only on the stamp existing. Returns the updated challenge, or null
+ * when a condition failed (the caller reads again to say why).
+ */
+export async function setStampShown(
+  deps: Pick<DbDeps, "db" | "tableName">,
+  uid: string,
+  chId: string,
+  day: number,
+  note: string | null,
+): Promise<Challenge | null> {
+  const names: Record<string, string> = { "#stamps": "stamps", "#day": String(day), "#sn": "shownNote" };
+  try {
+    const res = await deps.db.send(
+      new UpdateCommand(
+        note === null
+          ? {
+              TableName: deps.tableName,
+              Key: challengeKey(uid, chId),
+              UpdateExpression: "REMOVE #stamps.#day.#sn",
+              ConditionExpression: "attribute_exists(#stamps.#day)",
+              ExpressionAttributeNames: names,
+              ReturnValues: "ALL_NEW",
+            }
+          : {
+              TableName: deps.tableName,
+              Key: challengeKey(uid, chId),
+              UpdateExpression: "SET #stamps.#day.#sn = :note",
+              ConditionExpression:
+                "attribute_exists(pk) AND #stamps.#day.#note = :note AND (attribute_not_exists(#hidden) OR #hidden <> :true) AND (attribute_not_exists(#imported) OR #imported <> :true)",
+              ExpressionAttributeNames: { ...names, "#note": "note", "#hidden": "hiddenFromCohort", "#imported": "imported" },
+              ExpressionAttributeValues: { ":note": note, ":true": true },
+              ReturnValues: "ALL_NEW",
+            },
+      ),
     );
     return res.Attributes ? toChallenge(res.Attributes) : null;
   } catch (err) {

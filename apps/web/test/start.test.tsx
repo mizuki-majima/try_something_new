@@ -162,4 +162,13 @@ describe("StartChallengeSheet", () => {
     expect((screen.getByLabelText("ニックネーム（任意）") as HTMLInputElement).value).toBe("");
     expect(screen.getByText(/「みんな」に表示されます/)).toBeTruthy();
   });
+
+  it("#17: says what 「みんな」 shows: progress, and only the day notes chosen with 「みんなに見せる」", () => {
+    setup();
+    expect(
+      screen.getByText(
+        "進捗（タイトル・印・押した日）は「みんな」に表示されます。ひとことメモは、自分で「みんなに見せる」を選んだものだけ表示されます。写真は表示されません。設定でオフにできます。",
+      ),
+    ).toBeTruthy();
+  });
 });

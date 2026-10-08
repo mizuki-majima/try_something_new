@@ -62,6 +62,8 @@ export async function exportBackup(deps: DbDeps, user: User): Promise<BackupFile
  * BackupFileSchema only checks the shape. Imported titles and seals become public in the
  * cohort list, so they go through the same rules as a normal create. A day note is private and is
  * checked on its own (NoteSchema): one that breaks today's rules is dropped, not the challenge (R14).
+ * Stamps are rebuilt as { at, note }: an exported `shown` (or a crafted `shownNote`) is dropped, so
+ * every imported note is private until the owner chooses to show it again (#17).
  */
 const DAY_KEY_RE = new RegExp(`^([1-9]|[12]\\d|${TOTAL_DAYS})$`);
 const NoteSchema = text({ min: 0, max: LIMITS.note, label: "ひとこと" });

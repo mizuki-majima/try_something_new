@@ -12,6 +12,7 @@ const DROP = new Set([
   "authorization",
   "note",
   "notes",
+  "shownNote",
   "body",
   "story",
   "reflection",

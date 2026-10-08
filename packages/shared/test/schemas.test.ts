@@ -4,9 +4,13 @@ import {
   ChallengeCreateSchema,
   MePatchSchema,
   NicknameSchema,
+  NoteVisibilitySchema,
+  PublicNoteSchema,
   SealSchema,
   StampPutSchema,
+  StampSchema,
   TransferRedeemSchema,
+  isPublicNote,
   rawTextLimit,
   text,
   textByteLimit,
@@ -146,5 +150,67 @@ describe("field schemas", () => {
     expect(MePatchSchema.safeParse({}).success).toBe(false);
     expect(MePatchSchema.safeParse({ shareProgress: false }).success).toBe(true);
     expect(MePatchSchema.safeParse({ reminder: { enabled: true, time: "24:00" } }).success).toBe(false);
+  });
+});
+
+describe("day notes shown in みんな (#17)", () => {
+  it("PublicNoteSchema / isPublicNote: no URL, not empty, within the length and byte caps", () => {
+    expect(isPublicNote("きょうは10分歩いた")).toBe(true);
+    expect(isPublicNote(`${FAMILY}と散歩`)).toBe(true);
+    expect(isPublicNote("あ".repeat(LIMITS.note))).toBe(true);
+
+    expect(isPublicNote("https://example.com を読んだ")).toBe(false);
+    expect(isPublicNote("example.com を見た")).toBe(false);
+    expect(messages(PublicNoteSchema.safeParse("www.example.jp"))).toEqual(["ひとことにURLは入れられません"]);
+    expect(isPublicNote("")).toBe(false);
+    expect(isPublicNote("   ")).toBe(false);
+    expect(isPublicNote("あ".repeat(LIMITS.note + 1))).toBe(false);
+    // 1 grapheme of combining marks: within 120 characters, over the UTF-8 cap.
+    const fat = "a" + String.fromCodePoint(0x20dd).repeat(LIMITS.note * 4 + 15);
+    expect(isPublicNote(fat)).toBe(false);
+    expect(isPublicNote(String.fromCodePoint(0x1f44d, 0x1f3fd).repeat(70))).toBe(false);
+    expect(isPublicNote(undefined)).toBe(false);
+    expect(isPublicNote(42)).toBe(false);
+  });
+
+  it("isPublicNote refuses a note that normalising would change (stored before today's rules)", () => {
+    expect(PublicNoteSchema.safeParse("  前後に空白  ").success).toBe(true);
+    expect(isPublicNote("  前後に空白  ")).toBe(false);
+    expect(isPublicNote(`見え${ZWSP}ない`)).toBe(false);
+    expect(isPublicNote("1行目\n2行目")).toBe(false);
+    expect(isPublicNote("前後に空白")).toBe(true);
+  });
+
+  it("a private stamp note may still contain a URL (StampPutSchema is unchanged)", () => {
+    expect(StampPutSchema.parse({ note: "https://example.com を読んだ" }).note).toBe("https://example.com を読んだ");
+    // Saving a stamp cannot show it: there is no field for that.
+    expect(StampPutSchema.parse({ note: "メモ", shown: true, shownNote: "メモ" })).toEqual({ note: "メモ" });
+  });
+
+  it("NoteVisibilitySchema accepts only { show: true, note } and { show: false }", () => {
+    expect(NoteVisibilitySchema.parse({ show: true, note: "見せる" })).toEqual({ show: true, note: "見せる" });
+    expect(NoteVisibilitySchema.parse({ show: false })).toEqual({ show: false });
+    expect(NoteVisibilitySchema.parse({ show: false, note: "x" })).toEqual({ show: false });
+    for (const bad of [
+      {},
+      { show: true },
+      { show: true, note: "" },
+      { show: true, note: 1 },
+      { show: true, note: "あ".repeat(rawTextLimit(LIMITS.note) + 1) },
+      { show: "true", note: "x" },
+      { show: 1 },
+      { note: "x" },
+      null,
+      "show",
+    ]) {
+      expect(NoteVisibilitySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("StampSchema: `shown` is an optional boolean (the owner view)", () => {
+    expect(StampSchema.parse({ at: 1, note: "x", shown: true })).toEqual({ at: 1, note: "x", shown: true });
+    expect(StampSchema.parse({ at: 1, note: "x" })).toEqual({ at: 1, note: "x" });
+    expect(StampSchema.parse({ at: 1, note: "x", shownNote: "x" })).toEqual({ at: 1, note: "x" });
+    expect(StampSchema.safeParse({ at: 1, shown: "yes" }).success).toBe(false);
   });
 });

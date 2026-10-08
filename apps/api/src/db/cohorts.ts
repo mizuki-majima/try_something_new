@@ -1,13 +1,17 @@
 /**
  * "1日組" (FR-8) and cheers (FR-9). Members are read from the cohort projection on gsi1
  * (COHORT#<YYYY-MM> / <updatedAt13>#<chId>), which exists only while the owner shares progress and
- * the challenge is not hidden by moderation. Public shapes never carry notes or user ids.
+ * the challenge is not hidden by moderation. gsi1 projects every attribute, notes included, so the
+ * public shapes are built from an explicit allowlist: never user ids, never note text in the list.
+ * The day notes an owner chose to show (#17, db/notes.ts) are counted in the list and read one member
+ * at a time with GET /api/members/:id/notes.
  */
 import { BatchGetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { findOfficialRecipe, monthKey, TOTAL_DAYS, type CohortMember, type UpcomingResponse } from "@thirty/shared";
+import { findOfficialRecipe, monthKey, TOTAL_DAYS, type CohortMember, type MemberNote, type UpcomingResponse } from "@thirty/shared";
 import type { DbDeps } from "../ports";
 import { toChallenge } from "./challenges";
 import { authorPk, cheerKey, cohortPk, ttlIn, type Key } from "./keys";
+import { consentedNotes } from "./notes";
 import { GSI1 } from "./table";
 import { DEFAULT_NICKNAME } from "./users";
 import { isConditionFailed, type Item } from "./util";
@@ -27,6 +31,14 @@ const BATCH_GET_MAX = 100;
 /** Visible in a cohort list: projected on gsi1 and not hidden by moderation. */
 export function isInCohort(item: Item): boolean {
   return typeof item.gsi1pk === "string" && item.gsi1pk.startsWith("COHORT#") && item.hiddenFromCohort !== true;
+}
+
+/**
+ * The day notes a public route may show (db/notes.ts rules 1-3): the ones the owner chose, while the
+ * challenge is listed. GET /api/members/:id/notes also checks the owner's shareProgress (rule 4).
+ */
+export function visibleNotes(item: Item): MemberNote[] {
+  return isInCohort(item) ? consentedNotes(item) : [];
 }
 
 /** Newest activity first. */
@@ -68,9 +80,14 @@ export async function queryStartingOn(deps: DbOnly, startDate: string): Promise<
   return items.filter(isInCohort);
 }
 
-/** Public view of a challenge: no notes, no user id, no reflection text. */
+/**
+ * Public view of a challenge: no note text, no user id, no reflection text. Keep it an explicit
+ * allowlist and never spread the item (gsi1 holds every attribute). Of the notes, only how many the
+ * owner shows (shownNoteCount, sent when > 0); the text is never in the list.
+ */
 export function toCohortMember(item: Item, viewerUid: string | undefined, cheered: ReadonlySet<string>): CohortMember {
   const c = toChallenge(item);
+  const shownNoteCount = visibleNotes(item).length;
   const stampDays = Object.keys(c.stamps)
     .map(Number)
     .filter((d) => Number.isInteger(d) && d >= 1 && d <= TOTAL_DAYS)
@@ -89,6 +106,7 @@ export function toCohortMember(item: Item, viewerUid: string | undefined, cheere
     cheeredToday: cheered.has(c.id),
     isMine: viewerUid !== undefined && item.userId === viewerUid,
     updatedAt: c.updatedAt,
+    ...(shownNoteCount > 0 ? { shownNoteCount } : {}),
   };
 }
 

@@ -7,6 +7,8 @@ import {
   EARLY_REFLECT_FROM_DAY,
   IdSchema,
   LIMITS,
+  NoteVisibilitySchema,
+  PublicNoteSchema,
   QUOTAS,
   ReflectSchema,
   StampPutSchema,
@@ -14,6 +16,7 @@ import {
   challengePhase,
   dayIndex,
   diffDays,
+  isPublicNote,
   nextFirst,
   todayIn,
   type Challenge,
@@ -33,12 +36,16 @@ import {
   isKnownRecipe,
   listUserChallenges,
   putNewChallenge,
+  setStampShown,
   toChallenge,
   updateChallenge,
   type ChallengeUpdate,
 } from "../db/challenges";
+import type { StoredStamp } from "../db/notes";
 import { enforceQuota, refundQuota } from "../db/rate";
 import { bumpStats } from "../db/stats";
+import { getUser } from "../db/users";
+import type { Item } from "../db/util";
 import { badRequest, conflict, MESSAGES, notFound } from "../errors";
 import { log } from "../log";
 import type { Deps } from "../ports";
@@ -55,11 +62,19 @@ export const CHALLENGE_MESSAGES = {
   futureDay: "まだ来ていない日には印を押せません",
   tooEarly: `「ここで区切る」は${EARLY_REFLECT_FROM_DAY}日目からできます`,
   busy: "ほかの端末での変更と重なりました。もう一度お試しください",
+  // Showing a day note in 「みんな」 (#17).
+  noteMissing: "ひとことがある日だけ、みんなに見せられます。",
+  noteChanged: "ひとことが変わっていたため、見せませんでした。内容を確かめてから、もう一度選んでください。",
+  noteNotNormal: "このひとことは今の決まりに合わないため、見せられません。書き直して保存してから選んでください。",
+  progressOff: "進捗の表示がオフのため、見せられません。設定でオンにしてから選んでください。",
+  notListed: "この記録は「みんな」に表示されていないため、見せられません。",
 } as const;
 const M = CHALLENGE_MESSAGES;
 
 /** Rate-limit scope of QUOTAS.challengesPerUserPerDay. */
 export const CREATE_QUOTA_SCOPE = "challenge-create";
+/** Rate-limit scope of QUOTAS.noteShowsPerUserPerDay. */
+export const NOTE_SHOW_QUOTA_SCOPE = "note-show";
 
 /** How far back a create's start date may be: an offline create can reach the server days later. */
 export const CREATE_REPLAY_DAYS = 7;
@@ -76,8 +91,15 @@ export function isAllowedStartDate(startDate: string, today: string): boolean {
 }
 
 type Plan = Omit<ChallengeUpdate, "owner" | "now">;
-/** `counted`: this challenge's verdict is in STATS (see ChallengeItem.counted). */
-type PlanContext = { today: string; now: number; counted: boolean };
+/** `counted`: this challenge's verdict is in STATS (see ChallengeItem.counted). `item`: the raw item read. */
+type PlanContext = { today: string; now: number; counted: boolean; item: Item };
+
+/** stamps.<day> as stored (with the consent `shownNote`, which toChallenge leaves out). */
+function storedStamp(item: Item, day: number): Partial<StoredStamp> | undefined {
+  const stamps = item.stamps && typeof item.stamps === "object" ? (item.stamps as Record<string, unknown>) : undefined;
+  const s = stamps?.[String(day)];
+  return s && typeof s === "object" ? (s as Partial<StoredStamp>) : undefined;
+}
 
 /** A JSON body that may also be empty (PUT /stamps/:day with nothing to say). */
 async function readOptionalJson<T extends z.ZodType>(c: Context, schema: T): Promise<z.output<T>> {
@@ -110,7 +132,7 @@ export function challengesRoutes(deps: Deps) {
       const before = toChallenge(item);
       const nowDate = deps.now();
       const now = nowDate.getTime();
-      const p = plan(before, { today: todayIn(user.tz, nowDate), now, counted: item.counted === true });
+      const p = plan(before, { today: todayIn(user.tz, nowDate), now, counted: item.counted === true, item });
       const after = await updateChallenge(deps, user.id, item, { ...p, owner: user, now });
       if (after) return { before, after };
     }
@@ -221,15 +243,22 @@ export function challengesRoutes(deps: Deps) {
     const id = parseWith(IdSchema, c.req.param("id"));
     const day = parseWith(DaySchema, c.req.param("day"));
     const input = await readOptionalJson(c, StampPutSchema);
-    const { after } = await mutate(c.var.user, id, (ch, { today, now }) => {
+    const { after } = await mutate(c.var.user, id, (ch, { today, now, item }) => {
       if (ch.status === "done") throw conflict(M.done);
       // Missed days can be filled in; the future cannot (+1 day of slack for clocks and time zones).
       if (day > Math.min(TOTAL_DAYS, dayIndex(ch.startDate, today) + 1)) throw badRequest(M.futureDay);
       const prev = ch.stamps[String(day)];
+      const shownNote = storedStamp(item, day)?.shownNote;
       const note = input.note === undefined ? prev?.note : input.note;
+      // A note shown in 「みんな」 stays shown only for the very text the owner chose (a re-stamp, or
+      // saving it unchanged). Any other text, an empty note included, is private again: so is every
+      // save from a client that does not know about showing (an old PWA, an offline replay).
+      const keepShown = !!note && shownNote === note && note === prev?.note && isPublicNote(note);
       return {
-        stamp: { day, value: note ? { at: prev?.at ?? now, note } : { at: prev?.at ?? now } },
+        stamp: { day, value: note ? { at: prev?.at ?? now, note, ...(keepShown ? { shownNote: note } : {}) } : { at: prev?.at ?? now } },
         expect: { status: "active", startDate: ch.startDate },
+        // A whole-stamp write: if the owner stopped showing the note meanwhile, decide again.
+        expectShownNote: typeof shownNote === "string" ? shownNote : null,
       };
     });
     return c.json<ChallengeResponse>({ challenge: after });
@@ -242,6 +271,70 @@ export function challengesRoutes(deps: Deps) {
       if (ch.status === "done") throw conflict(M.done);
       return { stamp: { day, value: null }, expect: { status: "active" } };
     });
+    return c.json<ChallengeResponse>({ challenge: after });
+  });
+
+  // ---------- day notes in 「みんな」 (#17) ----------
+
+  /**
+   * Show the day's note in 「みんな」, or stop showing it. Online only, never through mutate: the write
+   * leaves updatedAt and the cohort projection alone (db/challenges.ts setStampShown). Stopping is a
+   * privacy action: never counted, and allowed on any challenge (done, imported, hidden). Showing is
+   * refused unless the stored note is the text the owner saw and can be public, progress is shared and
+   * the challenge is listed; only a real private → shown change counts towards the daily quota.
+   * Note text is never logged, and only the owner's own challenge is ever returned (someone else's id
+   * is a plain 404, as on every route here). The route reads strongly consistent (and reads the user
+   * again before refusing for progress off): an answer made from a replica that has not seen a write
+   * of a moment ago (an un-share, a saved note, progress turned on) would say "already shown" without
+   * writing, or refuse what the owner has just done.
+   */
+  r.put(`${stampPath}/visibility`, auth, async (c) => {
+    const id = parseWith(IdSchema, c.req.param("id"));
+    const day = parseWith(DaySchema, c.req.param("day"));
+    const input = await readJson(c, NoteVisibilitySchema);
+    const user = c.var.user;
+
+    if (!input.show) {
+      let after = await setStampShown(deps, user.id, id, day, null);
+      if (!after) {
+        // No stamp that day (nothing to stop showing), or no such challenge in the caller's partition.
+        const item = await getChallengeItem(deps, user.id, id, { consistent: true });
+        if (!item) throw notFound();
+        after = toChallenge(item);
+      }
+      log.info("note visibility", { uid: user.id, day, show: false });
+      return c.json<ChallengeResponse>({ challenge: after });
+    }
+
+    const item = await getChallengeItem(deps, user.id, id, { consistent: true });
+    if (!item) throw notFound();
+    const stored = storedStamp(item, day);
+    const note = typeof stored?.at === "number" && typeof stored.note === "string" ? stored.note : "";
+    if (!note) throw badRequest(M.noteMissing, { note: M.noteMissing });
+    // Consent is for the text the owner saw: not one changed on another device meanwhile.
+    if (input.note !== note) throw conflict(M.noteChanged);
+    const parsed = PublicNoteSchema.safeParse(note);
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? M.noteNotNormal;
+      throw badRequest(message, { note: message });
+    }
+    if (parsed.data !== note) throw badRequest(M.noteNotNormal, { note: M.noteNotNormal });
+    // The session's copy of the user is a plain read: look again before refusing.
+    if (!user.shareProgress && (await getUser(deps, user.id, { consistent: true }))?.shareProgress !== true) throw conflict(M.progressOff);
+    if (item.hiddenFromCohort === true || item.imported === true) throw conflict(M.notListed);
+    if (stored?.shownNote === note) return c.json<ChallengeResponse>({ challenge: toChallenge(item) });
+
+    await enforceQuota(deps, NOTE_SHOW_QUOTA_SCOPE, user.id, QUOTAS.noteShowsPerUserPerDay, "day");
+    const after = await setStampShown(deps, user.id, id, day, note);
+    if (!after) {
+      // Changed between the read and the write: nothing was shown, so the use is given back.
+      await refundQuota(deps, NOTE_SHOW_QUOTA_SCOPE, user.id, "day");
+      const current = await getChallengeItem(deps, user.id, id, { consistent: true });
+      if (!current) throw notFound();
+      if (current.hiddenFromCohort === true || current.imported === true) throw conflict(M.notListed);
+      throw conflict(storedStamp(current, day)?.note === note ? M.busy : M.noteChanged);
+    }
+    log.info("note visibility", { uid: user.id, day, show: true });
     return c.json<ChallengeResponse>({ challenge: after });
   });
 

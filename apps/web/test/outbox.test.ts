@@ -44,9 +44,17 @@ describe("enqueue", () => {
     const items = queue(stamp("a", 1), stamp("a", 1, "雨だった"));
     expect(items).toHaveLength(1);
     expect(items[0]!.op).toEqual(stamp("a", 1, "雨だった"));
-    const again = enqueue(items, stamp("a", 1, "晴れた"), 2000, "fresh");
+    const again = enqueue(items, stamp("a", 1), 2000, "fresh");
     expect(again).toHaveLength(1);
     expect(again[0]!.key).toBe("fresh");
+    expect(again[0]!.op).toEqual(stamp("a", 1, "雨だった"));
+    expect(enqueue(again, stamp("a", 1, "雨だった"), 3000, key())).toHaveLength(1);
+  });
+
+  it("keeps two different texts of one day's note as two writes, in order (#17)", () => {
+    const items = queue(stamp("a", 1, "雨がやんだ"), stamp("a", 1, "雨だった"));
+    expect(items.map((i) => i.op)).toEqual([stamp("a", 1, "雨がやんだ"), stamp("a", 1, "雨だった")]);
+    expect(queue(stamp("a", 1, "雨がやんだ"), stamp("a", 1, ""))).toHaveLength(2);
   });
 
   it("does not merge different days or a delete", () => {
@@ -333,5 +341,52 @@ describe("applyPending", () => {
     const first = applyPending({ user: null, challenges: [] }, queue(create("a")));
     const again = applyPending(first, queue(create("a")));
     expect(again.challenges).toHaveLength(1);
+  });
+});
+
+describe("applyOp and a note shown in 「みんな」 (#17)", () => {
+  const shownChallenge = (): Challenge => ({
+    id: "a",
+    recipeId: "photo",
+    title: "毎日1枚、写真を撮る",
+    seal: "写",
+    startDate: "2026-10-01",
+    status: "active",
+    stamps: { "1": { at: 5, note: "雨だった", shown: true }, "2": { at: 6, note: "晴れた" } },
+    verdict: null,
+    reflection: null,
+    finishedAt: null,
+    finishedDay: null,
+    cheers: 0,
+    shareId: null,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  /** Day 1 after these items, applied one by one on top of the server's copy (shown). */
+  const day1 = (items: OutboxItem[]) => applyPending({ user: null, challenges: [shownChallenge()] }, items).challenges[0]!.stamps["1"];
+
+  it("keeps `shown` for a re-stamp or the same text, like the API", () => {
+    expect(day1(queue(stamp("a", 1)))).toEqual({ at: 5, note: "雨だった", shown: true });
+    expect(day1(queue(stamp("a", 1, "雨だった")))).toEqual({ at: 5, note: "雨だった", shown: true });
+  });
+
+  it("drops it for another text or a cleared note, and editing back does not show it again", () => {
+    expect(day1(queue(stamp("a", 1, "雨がやんだ")))).toEqual({ at: 5, note: "雨がやんだ" });
+    expect(day1(queue(stamp("a", 1, "")))).toEqual({ at: 5 });
+    // Edited and then back before anything was sent: the queue keeps both, so the server sees the
+    // other text first and makes it private, as this device already shows.
+    const editedBack = queue(stamp("a", 1, "雨がやんだ"), stamp("a", 1, "雨だった"));
+    expect(editedBack).toHaveLength(2);
+    expect(day1(editedBack)).toEqual({ at: 5, note: "雨だった" });
+    // Undo then stamp again: a new stamp, private.
+    expect(day1(queue({ kind: "stamp.delete", id: "a", day: 1 }, stamp("a", 1, "雨だった")))).toEqual({ at: 1000, note: "雨だった" });
+  });
+
+  it("never makes a private note shown, and the stamp write never carries the choice", () => {
+    const after = applyPending({ user: null, challenges: [shownChallenge()] }, queue(stamp("a", 2), stamp("a", 3, "くもり")));
+    expect(after.challenges[0]!.stamps["2"]).toEqual({ at: 6, note: "晴れた" });
+    expect(after.challenges[0]!.stamps["3"]).toEqual({ at: 1000, note: "くもり" });
+    // Showing is not an op: a stamp write sends only what StampPutSchema accepts.
+    expect(opRequest(stamp("a", 1, "雨だった"))).toEqual({ method: "PUT", path: "/api/challenges/a/stamps/1", body: { note: "雨だった" } });
   });
 });

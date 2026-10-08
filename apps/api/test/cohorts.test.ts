@@ -319,3 +319,31 @@ describe("GET /api/cohorts/upcoming", () => {
     expect(res.byRecipe[0]).toMatchObject({ recipeId: "read", title: "毎日10ページ読む", seal: "読", count: 2 });
   });
 });
+
+describe("day notes shown in the list (#17)", () => {
+  it("counts the notes a member shows (shownNoteCount, sent only when > 0) and never puts note text in the list", async () => {
+    const a = await api.createSession("見せる人");
+    const b = await api.createSession("見る人");
+    const ch = await create(a, { startDate: "2026-10-01" });
+    const notes = ["見せるメモ1", "見せるメモ2", "見せないメモ3"];
+    for (const [i, note] of notes.entries()) expect((await stamp(a, ch.id, i + 1, { note })).status).toBe(200);
+    const visibility = (day: number, body: unknown) =>
+      api.request(`/api/challenges/${ch.id}/stamps/${day}/visibility`, { method: "PUT", token: a.token, body });
+    expect(await memberOf("2026-10", ch.id, b)).not.toHaveProperty("shownNoteCount");
+
+    expect((await visibility(1, { show: true, note: notes[0] })).status).toBe(200);
+    expect((await visibility(2, { show: true, note: notes[1] })).status).toBe(200);
+    for (const viewer of [undefined, b, a]) {
+      const { raw } = await cohort("2026-10", viewer);
+      for (const note of notes) expect(raw).not.toContain(note);
+      expect(raw).not.toMatch(/"(note|notes|shownNote)"/);
+      expect(await memberOf("2026-10", ch.id, viewer)).toMatchObject({ shownNoteCount: 2, stampDays: [1, 2, 3] });
+    }
+
+    expect((await visibility(1, { show: false })).status).toBe(200);
+    expect(await memberOf("2026-10", ch.id, b)).toMatchObject({ shownNoteCount: 1 });
+    // Rewriting a shown note makes it private: the count follows.
+    expect((await stamp(a, ch.id, 2, { note: "書き換えた" })).status).toBe(200);
+    expect(await memberOf("2026-10", ch.id, b)).not.toHaveProperty("shownNoteCount");
+  });
+});

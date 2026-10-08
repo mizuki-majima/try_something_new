@@ -32,6 +32,7 @@ function fakeStore(over: Partial<AppSnapshot> = {}): AppStore {
     hasSession: true,
     sessionInvalid: false,
     pending: 0,
+    stillShown: [],
     syncStatus: "synced",
     lastSyncError: null,
     lastSyncedAt: null,

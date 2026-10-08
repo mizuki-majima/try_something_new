@@ -61,6 +61,12 @@ export function useChallenge(id: string | undefined): Challenge | undefined {
   return useMemo(() => (id ? list.find((c) => c.id === id) : undefined), [list, id]);
 }
 
+/** The server still shows this day note although a queued write here makes it private (#17, AppSnapshot.stillShown). */
+export function useStillShown(challengeId: string, day: number): boolean {
+  const key = `${challengeId}#${day}`;
+  return useSelect((s) => s.stillShown.includes(key));
+}
+
 /** Today's YYYY-MM-DD in the user's time zone; re-renders after midnight. */
 export function useToday(): string {
   return useSelect((s) => s.today);
