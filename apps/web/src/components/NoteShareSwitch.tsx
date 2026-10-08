@@ -200,7 +200,7 @@ export function NoteShareSwitch({ challengeId, day, note, shown, draft = note, o
             <li>アカウントがない人も含めて、誰でも見られます。</li>
             <li>見せるのは、この日のひとことだけです。ほかの日のひとことが見えるかどうかは変わりません。写真はどの日も自分だけに見えます。</li>
             <li>名前や連絡先、URL、ほかの人のことは書かないでください。</li>
-            <li>「自分だけ」にはいつでも戻せます。書き換えたときも「自分だけ」に戻ります。</li>
+            <li>「自分だけ」には、つながっているときならいつでも戻せます。書き換えたときも、送信が終わると「自分だけ」に戻ります。</li>
           </ul>
           <ConsentNote action="show" />
           <div className="dialog-actions">

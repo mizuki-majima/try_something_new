@@ -164,6 +164,12 @@ export function parseMemberNotes(raw: unknown, challengeId: string, stampDays: r
   return [...byDay].sort(([a], [b]) => a - b).map(([day, note]) => ({ day, note }));
 }
 
+/** The API's own answer that this challenge shows no note (well formed and empty, not a list left out). */
+export function answeredNoNotes(raw: unknown, challengeId: string): boolean {
+  const r = raw as Partial<MemberNotesResponse> | null;
+  return !!r && typeof r === "object" && r.challengeId === challengeId && Array.isArray(r.notes) && r.notes.length === 0;
+}
+
 /** count / byRecipe count reservations (one person may have several); peopleCount, when the API sends it, counts people. */
 const parseUpcoming = (raw: unknown): UpcomingResponse | null => {
   const r = raw as UpcomingResponse | null;
@@ -235,7 +241,7 @@ export default function TogetherPage() {
 
       <div className="tg-privacy">
         <p>
-          一覧に出るのは、<b>ニックネーム・印・タイトル・押した日</b>と、本人が「みんなに見せる」を選んだひとことだけ。ほかのひとことと写真は表示されません。
+          一覧に出るのは、<b>ニックネーム・印・タイトル・押した日・判定・応援の数</b>と、本人が「みんなに見せる」を選んだひとことの数。そのひとことは「詳しく見る」で読めます。ほかのひとことと写真は表示されません。
         </p>
         {user && !user.shareProgress ? (
           <p>
@@ -581,18 +587,22 @@ function useMemberNotes(challengeId: string, enabled: boolean) {
   return { current, loading: enabled && current === null, retry };
 }
 
-/** 「本人が見せているひとこと」 in the details sheet (#17): plain text, by day. */
+/**
+ * 「本人が見せているひとこと」 in the details sheet (#17): plain text, by day. Your own card always asks
+ * the API: the list (gsi1, read once per visit) can lag behind a note you just showed, so "nothing
+ * shown" is said only when the strongly consistent read answered no notes.
+ */
 function MemberNotesSection({ member: m }: { member: CohortMember }) {
   const headId = useId();
-  const { current, loading, retry } = useMemberNotes(m.challengeId, (m.shownNoteCount ?? 0) > 0);
+  const { current, loading, retry } = useMemberNotes(m.challengeId, m.isMine || (m.shownNoteCount ?? 0) > 0);
   const notes = current?.raw !== undefined ? parseMemberNotes(current.raw, m.challengeId, m.stampDays) : [];
 
   let body: ReactNode = null;
   if (loading) body = <Loading inline label="ひとことを読み込んでいます…" />;
   else if (current?.error) body = <ErrorState title="ひとことを読み込めませんでした。" message={current.error} onRetry={retry} retryLabel="もう一度" />;
   else if (notes.length > 0) body = <MemberNoteList notes={notes} />;
-  else if (m.isMine && !current?.gone) {
-    body = <p className="note">あなたのひとことは、まだ誰にも見えていません。「自分の記録を開く」から日を選ぶと、日ごとに「みんなに見せる」を選べます。</p>;
+  else if (m.isMine && current?.raw !== undefined && answeredNoNotes(current.raw, m.challengeId)) {
+    body = <p className="note">いま「みんな」に見せているひとことはありません。「自分の記録を開く」から日を選ぶと、日ごとに「みんなに見せる」を選べます。</p>;
   }
   if (!body) return null;
   return (

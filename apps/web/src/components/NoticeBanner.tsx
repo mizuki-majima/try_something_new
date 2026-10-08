@@ -3,7 +3,8 @@
  * (「規約の変更」) promise to show a change and the day it takes effect on screen before that day.
  *
  * - A band under the header, in the page flow (it never covers the page), on every screen but the
- *   Terms and the Privacy policy, which carry the same notice at their top (改定のお知らせ).
+ *   Terms and the Privacy policy, which carry the same notice at their top (改定のお知らせ) until the
+ *   same day (noticeShowsOn).
  * - 「閉じる」 hides it on this device. The choice is stored with the effective date, so a new date
  *   shows it again. Storage may be missing or throw: lib/storage guards every access and keeps an
  *   in-memory copy, so the band still renders and still closes without it.
@@ -11,7 +12,7 @@
  */
 import { useState } from "react";
 import { Link, useLocation } from "react-router";
-import { EFFECTIVE, EFFECTIVE_ON, NOTICE_HIDDEN_FROM } from "../lib/legal";
+import { EFFECTIVE, EFFECTIVE_ON, noticeShowsOn } from "../lib/legal";
 import { KEYS, readString, writeString } from "../lib/storage";
 import { useToday } from "../lib/store";
 
@@ -20,7 +21,7 @@ const LEGAL_PATHS: ReadonlySet<string> = new Set(["/terms", "/privacy"]);
 
 /** Whether the band shows today: before NOTICE_HIDDEN_FROM, unless closed for this effective date. */
 export function noticeVisible(today: string, dismissedFor: string | null): boolean {
-  return today < NOTICE_HIDDEN_FROM && dismissedFor !== EFFECTIVE_ON;
+  return noticeShowsOn(today) && dismissedFor !== EFFECTIVE_ON;
 }
 
 export function NoticeBanner() {

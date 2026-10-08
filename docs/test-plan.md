@@ -1,6 +1,6 @@
 # Test Plan — 30日だけ
 
-Owner: AI QA ／ 対象: SPEC v1.5 ／ 最終更新: 2026-10-07
+Owner: AI QA ／ 対象: SPEC v1.5 ／ 最終更新: 2026-10-08
 
 方針: MVP では Critical User Flow（CUF）を最優先。網羅より「CUF が壊れたら必ず CI が赤になる」こと。次に過去の不具合の回帰、最後にエッジケース。課金される外部 API はどのテストからも呼ばない（このサービスには AI も課金 API も無い。[ADR 0003](decisions/0003-no-ai-mock-suggestions.md)）。
 
@@ -134,7 +134,7 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 | 進捗公開のオフは上限に数えず断らない（ニックネームと一緒でも）。オンとニックネームは数える。Web は上限中もオフを送れる（R13） | `apps/api/test/me.test.ts` "turning sharing off never uses…", "a rename sent together with turning sharing off…"；`apps/web/test/appStore.test.ts` "R13…", `apps/web/test/settings.test.tsx` "R1/R13…" |
 | 読み込みで長すぎるひとことだけを落とし、印とチャレンジは残す（`notesDropped`）。保存する大きさの上限のエラーは「あと N 文字」（R14） | `apps/api/test/me.test.ts` "drops only a note…", `packages/shared/test/schemas.test.ts` "says how many characters to remove…", `apps/api/test/challenges.test.ts`, `apps/web/test/settings.test.tsx` "R14…" |
 | 読み込みの上限 1000・書き込み 100（テーブルと GSI）。一覧と書き出しは200件より多く読まない、作成も合計200件まで。PILOT の集計は必要な項目だけ・1ページ500件・20秒で打ち切り `partial`（R15）。アラームのメトリクスの数と deploy.md の費用の記載が一致（R16） | `infra/test/stack.test.ts`；`apps/api/test/challenges.test.ts` "never reads more than 200…", "refuses a create once…"；`apps/api/test/pilot.test.ts`；`apps/web/test/admin.test.tsx` "R15…" |
-| 規約・プライバシーポリシーの改定のお知らせ（#17、ADR 0007）: 両方のページに制定日・改定日・適用日と「改定のお知らせ」、変わる文はどれも「（適用日）から」で、適用日の前も後も正しい。ほかの画面の上の「お知らせ」の帯は閉じられ、閉じたことは適用日ごとに保存（保存できなくても表示は壊れない）、適用日の14日後から出ない、規約とプライバシーポリシーのページには出ない | `apps/web/test/notice.test.tsx`；`apps/web/test/static.test.tsx`（利用規約・プライバシーポリシーの #17 の文と日付）；`tap-targets.spec.ts`（360px の帯） |
+| 規約・プライバシーポリシーの改定のお知らせ（#17、ADR 0007）: 両方のページに制定日・改定日・適用日と「改定のお知らせ」、変わる文はどれも「（適用日）から」で、適用日の前も後も正しい。ほかの画面の上の「お知らせ」の帯は閉じられ、閉じたことは適用日ごとに保存（保存できなくても表示は壊れない）、適用日の14日後から出ない、規約とプライバシーポリシーのページには出ない。ページの上の「改定のお知らせ」も適用日の14日後から出ない（日付の欄は残る） | `apps/web/test/notice.test.tsx`；`apps/web/test/static.test.tsx`（利用規約・プライバシーポリシーの #17 の文と日付、14日後のお知らせ）；`tap-targets.spec.ts`（360px の帯） |
 
 ## Live smoke（手動）と品質ルーブリック
 
@@ -203,7 +203,8 @@ Unit / Integration の欄はファイルと `it(...)` の名前（抜粋）。E2
 - **レート制限のキー**: API は `x-viewer-ip`（無ければ `x-forwarded-for`、それも無ければ共通の "unknown"）で数える。E2E はテストごとに別の値を送る。ローカルの `npm run dev` では全員が "unknown" になり、セッション作成が1時間 20件で止まる
 - **Service Worker の更新**（新しい版への切り替え、古いタブのチャンク再読み込み）は自動テストしていない
 - **見せたひとこと（#17）の DynamoDB の差**: 入れ子の属性の条件（`attribute_not_exists(stamps.N.shownNote)`、`stamps.N.note = :note`）と、無い入れ子の属性の REMOVE は dynalite と本物で違いうるので、リリース後の Live smoke（専用のテストアカウント）で確かめる。`GET /api/members/:id/notes` と `PUT .../visibility` の強い整合の読み込み（ConsistentRead。見せられなかった理由を返す読み直しも）は、dynalite でも手作業の smoke でも違いが見えないので、API のテストが送る GetCommand を見て固定している（`apps/api/test/note-visibility.test.ts` "(q)", "(r)"）
-- **古いタブ・古い PWA**: 古い版は見せる・戻すのルートを呼ばない。古い版でひとことを書き換えると API が「自分だけ」に戻すので、公開は増えない（API のテストで固定）。ただし古い版の画面は「（自分だけに見えます）」のままで、別の端末で見せたひとことにも出る。自動テストはしていない
+- **古いタブ・古い PWA**: 古い版は見せる・戻すのルートを呼ばない。古い版でひとことを書き換えると API が「自分だけ」に戻すので、公開は増えない（API のテストで固定）。ただし古い版の画面は、見せたひとことについて事実と違う説明を出し続ける: ひとことの欄の「（自分だけに見えます）」（別の端末で見せたひとことにも出る）、「みんな」の「詳しく見る」の「ひとことメモと写真は、本人だけが見られます。」、「みんな」の説明の「ひとことは表示されません。」、設定の「表示されないもの：ひとことメモ…」。タブやアプリを読み込み直すまで続く（Service Worker の登録はページを読み込み直さず、古いハッシュ付きファイルも消さないので、古い版はそのまま動く）。データは出ない。和らげるのは「お知らせ」の帯（閉じなければ 2026-10-24 まで、適用日から見せられるようになると書いている）で、1段目より前の版には帯も無い。自動テストはしていない
+- **持ち主の画面は、チャレンジが「みんな」に出ているかを知らない**（#17。既知の制約、コードは変えない）: 本人向けの応答に「1日組に出ているか」が無いので、読み込んだままのチャレンジや、管理・通報で1日組から外したチャレンジでも「みんなに見せる」をオンにできてしまい、API が 409（「この記録は「みんな」に表示されていないため、見せられません。」）で断る。見せたあとに管理・通報で外されたチャレンジのひとことは、誰にも見えていないのに「（みんなに見せています）」「「みんな」で誰でも見られます。」のまま。どちらも公開を実際より多く言う側で、何も漏れない（公開するかは API が読むたびに決める）。直すなら、本人向けの応答に `unlisted` を足してスイッチの説明を変える
 
 ## Not tested（意図的）
 

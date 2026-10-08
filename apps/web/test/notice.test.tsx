@@ -11,7 +11,7 @@ import { Layout } from "../src/components/Layout";
 import { noticeVisible } from "../src/components/NoticeBanner";
 import { ToastProvider } from "../src/components/Toast";
 import { createAppStore } from "../src/lib/appStore";
-import { EFFECTIVE, EFFECTIVE_ON, ENACTED, NOTICE_DAYS, NOTICE_HIDDEN_FROM, REVISED, REVISED_ON, jpFullDate } from "../src/lib/legal";
+import { EFFECTIVE, EFFECTIVE_ON, ENACTED, NOTICE_DAYS, NOTICE_HIDDEN_FROM, REVISED, REVISED_ON, jpFullDate, noticeShowsOn } from "../src/lib/legal";
 import { KEYS, removeKey } from "../src/lib/storage";
 import { AppProvider } from "../src/lib/store";
 
@@ -160,5 +160,8 @@ describe("NoticeBanner", () => {
     expect(noticeVisible(NOTICE_HIDDEN_FROM, null)).toBe(false);
     expect(noticeVisible(REVISED_ON, EFFECTIVE_ON)).toBe(false);
     expect(noticeVisible(REVISED_ON, "2026-10-01")).toBe(true);
+    // The same end date as the pages' 改定のお知らせ (static.test.tsx), which cannot be closed.
+    expect(noticeShowsOn(addDays(NOTICE_HIDDEN_FROM, -1))).toBe(true);
+    expect(noticeShowsOn(NOTICE_HIDDEN_FROM)).toBe(false);
   });
 });

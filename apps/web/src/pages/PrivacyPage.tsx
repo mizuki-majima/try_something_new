@@ -5,10 +5,13 @@
  * Revised for #17 (ADR 0007): from EFFECTIVE, a day note its owner chose to show in 「みんな」 is
  * public, and the choice is stored as a copy of the chosen text. Every changed sentence says from
  * when, so the page is true before that day too (the notes are not public yet) and after it.
+ * The 改定のお知らせ at the top goes away with the notice band (noticeShowsOn); the dates stay.
  */
 import { Link } from "react-router";
 import { TRANSFER_CODE_TTL_MINUTES } from "@thirty/shared";
 import { usePageTitle } from "../lib/hooks";
+import { noticeShowsOn } from "../lib/legal";
+import { useToday } from "../lib/store";
 import { EFFECTIVE, ENACTED, InfoDoc, OPERATOR, REVISED, type DocSection } from "./InfoDoc";
 
 const SECTIONS: readonly DocSection[] = [
@@ -247,14 +250,18 @@ const SECTIONS: readonly DocSection[] = [
 
 export default function PrivacyPage() {
   usePageTitle("プライバシーポリシー");
+  // Until the band goes away too (NoticeBanner); the dates above and below stay.
+  const showNotice = noticeShowsOn(useToday());
   return (
     <InfoDoc
       title="プライバシーポリシー"
       meta={`制定日 ${ENACTED} ／ 改定日 ${REVISED}（${EFFECTIVE}から適用） ／ 運営者 ${OPERATOR}`}
       notice={
-        <p>
-          {EFFECTIVE}から、本人が「みんなに見せる」を選んだひとことメモを公開する内容に改めます（<a href="#collect">保存する情報</a>・<a href="#public">公開される情報</a>・<a href="#delete">削除と、開示などのご請求</a>）。選ばないひとことメモは、これまでどおり公開しません。それまでは、ひとことメモは公開されません。同じ日に<Link to="/terms">利用規約</Link>も改めます。
-        </p>
+        showNotice && (
+          <p>
+            {EFFECTIVE}から、本人が「みんなに見せる」を選んだひとことメモを公開する内容に改めます（<a href="#collect">保存する情報</a>・<a href="#public">公開される情報</a>・<a href="#delete">削除と、開示などのご請求</a>）。選ばないひとことメモは、これまでどおり公開しません。それまでは、ひとことメモは公開されません。同じ日に<Link to="/terms">利用規約</Link>も改めます。
+          </p>
+        )
       }
       lead={
         <p>

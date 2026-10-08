@@ -1,13 +1,13 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { API } from "@thirty/shared";
+import { API, addDays } from "@thirty/shared";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { Layout } from "../src/components/Layout";
 import { ToastProvider } from "../src/components/Toast";
 import { resumeText } from "../src/components/OfflineBanner";
 import { createAppStore, type AppActions, type AppSnapshot, type AppStore } from "../src/lib/appStore";
-import { EFFECTIVE, REVISED } from "../src/lib/legal";
+import { EFFECTIVE, NOTICE_HIDDEN_FROM, REVISED, REVISED_ON } from "../src/lib/legal";
 import { clearSession, getToken } from "../src/lib/session";
 import { AppProvider } from "../src/lib/store";
 import AboutPage from "../src/pages/AboutPage";
@@ -20,6 +20,23 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 const renderPage = (el: ReactElement, path = "/") => render(<MemoryRouter initialEntries={[path]}>{el}</MemoryRouter>);
+
+/** A store whose today is `today` (and nothing else changes): the legal pages read it (useToday). */
+function storeOn(today: string): AppStore {
+  const store = createAppStore();
+  const snap: AppSnapshot = { ...store.getSnapshot(), today };
+  return { ...store, getSnapshot: () => snap, subscribe: () => () => {}, start: () => () => {} };
+}
+
+/** The Terms or the Privacy policy on `today`: their 改定のお知らせ shows until NOTICE_HIDDEN_FROM. */
+const renderLegal = (el: ReactElement, today: string = REVISED_ON) =>
+  render(
+    <MemoryRouter>
+      <ToastProvider>
+        <AppProvider store={storeOn(today)}>{el}</AppProvider>
+      </ToastProvider>
+    </MemoryRouter>,
+  );
 
 let fetchMock: Mock<typeof fetch>;
 
@@ -69,7 +86,7 @@ describe("AboutPage", () => {
 
 describe("TermsPage", () => {
   it("has a table of contents and the required sections", () => {
-    renderPage(<TermsPage />);
+    renderLegal(<TermsPage />);
     expect(screen.getByRole("heading", { level: 1, name: "利用規約" })).toBeTruthy();
     const toc = screen.getByRole("navigation", { name: "目次" });
     expect(toc.querySelectorAll("a").length).toBeGreaterThanOrEqual(10);
@@ -81,7 +98,7 @@ describe("TermsPage", () => {
   });
 
   it("r2-web-2: every report is checked by the operator; auto-hide is conditional, never promised", () => {
-    renderPage(<TermsPage />);
+    renderLegal(<TermsPage />);
     const text = document.body.textContent ?? "";
     expect(screen.getByText("通報はすべて運営者が確認し、必要なら投稿を非表示にしたり削除したりします。")).toBeTruthy();
     expect(text).toContain("一定の条件（利用を始めて24時間以上たっていることなど）を満たす3人から通報があった投稿は、運営者の確認の前に自動で非表示になることがあります。");
@@ -89,7 +106,7 @@ describe("TermsPage", () => {
   });
 
   it("#17: dates the revision (改定日・適用日) and says, from that day, only day notes their owner chose are public", () => {
-    renderPage(<TermsPage />);
+    renderLegal(<TermsPage />);
     const text = document.body.textContent ?? "";
     expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 ${REVISED}（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
     expect(text).toContain(`2026年10月6日 制定 ／ ${REVISED} 改定（${EFFECTIVE}から適用）`);
@@ -124,7 +141,7 @@ describe("TermsPage", () => {
 
 describe("PrivacyPage", () => {
   it("lists what is stored and what is not, retention and how to delete", () => {
-    renderPage(<PrivacyPage />);
+    renderLegal(<PrivacyPage />);
     expect(screen.getByRole("heading", { level: 1, name: "プライバシーポリシー" })).toBeTruthy();
     expect(screen.getByRole("table", { name: "サーバーに保存する情報" })).toBeTruthy();
     expect(screen.getByText(/アカウントのためのメールアドレスや電話番号、本名、住所、位置情報、写真、IP アドレスそのもの/)).toBeTruthy();
@@ -136,7 +153,7 @@ describe("PrivacyPage", () => {
   });
 
   it("says what is really stored: the optional reply contact, keyed IP hashes, the card's nickname, Google Calendar", () => {
-    renderPage(<PrivacyPage />);
+    renderLegal(<PrivacyPage />);
     const text = document.body.textContent ?? "";
     // The contact form's optional reply contact is stored (180 days); no blanket "no email" claim.
     expect(screen.getByText(/任意で入力された返信先（メールアドレスなど）。返信先は返信のためだけに使い、内容とともに180日で削除します/)).toBeTruthy();
@@ -156,7 +173,7 @@ describe("PrivacyPage", () => {
   });
 
   it("#17: dates the revision and says what is stored and public for a day note its owner chose to show", () => {
-    renderPage(<PrivacyPage />);
+    renderLegal(<PrivacyPage />);
     const text = document.body.textContent ?? "";
     expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 ${REVISED}（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
     expect(text).toContain(`2026年10月6日 制定 ／ ${REVISED} 改定（${EFFECTIVE}から適用）`);
@@ -191,6 +208,27 @@ describe("PrivacyPage", () => {
     expect(text).not.toContain("ひとことメモ、写真、設定、通知の登録は公開しません。");
     // Photos stay on the device.
     expect(text).toContain("写真はサーバーに送りません");
+  });
+});
+
+describe("the 改定のお知らせ (#17)", () => {
+  it("goes away from NOTICE_HIDDEN_FROM, like the band; the dates of the revision stay", () => {
+    for (const [name, page] of [
+      ["利用規約", <TermsPage />],
+      ["プライバシーポリシー", <PrivacyPage />],
+    ] as const) {
+      const { unmount } = renderLegal(page, addDays(NOTICE_HIDDEN_FROM, -1));
+      expect(screen.getByRole("region", { name: "改定のお知らせ" }), name).toBeTruthy();
+      unmount();
+
+      renderLegal(page, NOTICE_HIDDEN_FROM);
+      expect(screen.getByRole("heading", { level: 1, name })).toBeTruthy();
+      expect(screen.queryByRole("region", { name: "改定のお知らせ" }), name).toBeNull();
+      expect(screen.queryByText(/それまでは、ひとことメモは公開されません/), name).toBeNull();
+      expect(screen.getByText(`制定日 2026年10月6日 ／ 改定日 ${REVISED}（${EFFECTIVE}から適用） ／ 運営者 30日だけ 運営事務局（個人運営）`)).toBeTruthy();
+      expect(document.body.textContent).toContain(`2026年10月6日 制定 ／ ${REVISED} 改定（${EFFECTIVE}から適用）`);
+      cleanup();
+    }
   });
 });
 

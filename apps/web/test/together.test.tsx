@@ -6,7 +6,7 @@ import { ToastHost, ToastProvider } from "../src/components/Toast";
 import type { AppActions } from "../src/lib/appStore";
 import { KEYS, writeString } from "../src/lib/storage";
 import { AppProvider, type AppSnapshot, type AppStore } from "../src/lib/store";
-import TogetherPage, { cohortMonths, longestStreak, memberStatus, parseMemberNotes, sortMembers } from "../src/pages/TogetherPage";
+import TogetherPage, { answeredNoNotes, cohortMonths, longestStreak, memberStatus, parseMemberNotes, sortMembers } from "../src/pages/TogetherPage";
 
 vi.mock("../src/features/start/StartChallengeSheet", () => ({
   StartChallengeSheet: (p: { open: boolean; recipe?: { title: string } | null; preset?: { title?: string; firstOfMonth?: boolean } | null }) =>
@@ -141,8 +141,11 @@ describe("TogetherPage", () => {
     fetchMock.mockResolvedValue(json(200, { month: "2026-10", members: MEMBERS }));
     renderTogether();
     expect(screen.getByRole("tab", { name: /今月の組/ }).getAttribute("aria-selected")).toBe("true");
-    // #17: only the notes their owner chose to show; the others and photos never.
-    expect(screen.getByText(/本人が「みんなに見せる」を選んだひとことだけ。ほかのひとことと写真は表示されません。/)).toBeTruthy();
+    // #17: the list carries how many notes their owner chose to show; the text is read in 「詳しく見る」.
+    const privacy = screen.getByText(/本人が「みんなに見せる」を選んだひとことの数。/);
+    expect(privacy.textContent).toBe(
+      "一覧に出るのは、ニックネーム・印・タイトル・押した日・判定・応援の数と、本人が「みんなに見せる」を選んだひとことの数。そのひとことは「詳しく見る」で読めます。ほかのひとことと写真は表示されません。",
+    );
     expect(screen.getByRole("link", { name: "表示をOFFにする" }).getAttribute("href")).toBe("/settings#profile");
 
     const cards = await screen.findAllByTestId("member");
@@ -428,7 +431,12 @@ describe("day notes members show (#17)", () => {
     // Another shape, or another challenge's notes: none at all.
     for (const raw of [null, "notes", [], { notes: "x" }, { challengeId: id }, { challengeId: "ch00000000000009", notes: [{ day: 1, note: "よその" }] }]) {
       expect(parseMemberNotes(raw, id, [1, 2, 3])).toEqual([]);
+      expect(answeredNoNotes(raw, id)).toBe(false); // and not "nothing shown" either
     }
+    // "Nothing shown" only from the API's own empty answer, never from notes left out.
+    expect(answeredNoNotes({ challengeId: id, notes: [] }, id)).toBe(true);
+    expect(answeredNoNotes(messy, id)).toBe(false);
+    expect(answeredNoNotes({ challengeId: id, notes: [{ day: 9, note: "押していない日" }] }, id)).toBe(false);
   });
 
   it("the card shows how many notes are shown (1–30), never the text, and the list asks for nothing more", async () => {
@@ -513,17 +521,52 @@ describe("day notes members show (#17)", () => {
     expect(within(dialog).queryByTestId("member-notes")).toBeNull();
   });
 
-  it("your own details: no 通報, and a hint when no note is shown yet (without asking the API)", async () => {
-    serve([member({ challengeId: "ch00000000000003", nickname: "わたし", isMine: true })], () => json(500, {}));
+  const NONE_SHOWN = "いま「みんな」に見せているひとことはありません。「自分の記録を開く」から日を選ぶと、日ごとに「みんなに見せる」を選べます。";
+
+  it("your own details: no 通報, and a hint once the API answers that no note is shown", async () => {
+    serve([member({ challengeId: "ch00000000000003", nickname: "わたし", isMine: true })], (id) => json(200, { challengeId: id, notes: [] }));
     renderTogether();
     const dialog = await openSheet("わたし", "あなたの30日");
     expect(within(dialog).queryByRole("button", { name: /通報/ })).toBeNull();
-    expect(
-      within(dialog).getByText("あなたのひとことは、まだ誰にも見えていません。「自分の記録を開く」から日を選ぶと、日ごとに「みんなに見せる」を選べます。"),
-    ).toBeTruthy();
+    // Asked even without a count in the list: the hint comes from the API's answer, not from the list.
+    expect(await within(dialog).findByText(NONE_SHOWN)).toBeTruthy();
+    expect(notesCalls().map(([input]) => String(input))).toEqual([notesUrl("ch00000000000003")]);
     // The hint names a way there that is right in this sheet (the challenge page has the switch).
     expect(within(dialog).getByRole("link", { name: "自分の記録を開く" }).getAttribute("href")).toBe("/c/ch00000000000003");
-    expect(notesCalls()).toEqual([]);
+  });
+
+  it("your own details: a note shown after the list was read is listed, never 「…ありません」", async () => {
+    // The list (gsi1, read once) has no count yet; the API already shows day 2.
+    const mine = member({ challengeId: "ch00000000000003", nickname: "わたし", isMine: true, stampDays: [1, 2] });
+    serve([mine], (id) => json(200, { challengeId: id, notes: [{ day: 2, note: "さっき見せた" }] }));
+    renderTogether();
+    const dialog = await openSheet("わたし", "あなたの30日");
+    expect(await within(dialog).findByText("さっき見せた")).toBeTruthy();
+    expect(within(dialog).queryByText(NONE_SHOWN)).toBeNull();
+  });
+
+  it("your own details: no hint while loading, on an error, or when the answer cannot be drawn", async () => {
+    let answer: ((r: Response) => void) | undefined;
+    let retried = false;
+    // Day 9 is not stamped in this (older) list, so its note is left out: that is not "nothing shown".
+    serve([member({ challengeId: "ch00000000000003", nickname: "わたし", isMine: true, stampDays: [1] })], (id) =>
+      retried ? json(200, { challengeId: id, notes: [{ day: 9, note: "9日目" }] }) : new Promise<Response>((r) => (answer = r)),
+    );
+    renderTogether();
+    const dialog = await openSheet("わたし", "あなたの30日");
+    expect(await within(dialog).findByText("ひとことを読み込んでいます…")).toBeTruthy();
+    expect(within(dialog).queryByText(NONE_SHOWN)).toBeNull();
+    await waitFor(() => expect(answer).toBeDefined());
+    await act(async () => answer!(json(500, { error: { code: "internal", message: "サーバーで問題が起きました。" } })));
+    expect(within(dialog).getByText("ひとことを読み込めませんでした。")).toBeTruthy();
+    expect(within(dialog).queryByText(NONE_SHOWN)).toBeNull();
+
+    retried = true;
+    fireEvent.click(within(dialog).getByRole("button", { name: "もう一度" }));
+    await waitFor(() => expect(notesCalls()).toHaveLength(2));
+    await waitFor(() => expect(within(dialog).queryByText("ひとことを読み込んでいます…")).toBeNull());
+    expect(within(dialog).queryByText(NONE_SHOWN)).toBeNull();
+    expect(within(dialog).queryByText("9日目")).toBeNull();
   });
 
   it("your own shown notes are listed like anyone's", async () => {
@@ -532,6 +575,6 @@ describe("day notes members show (#17)", () => {
     renderTogether();
     const dialog = await openSheet("わたし", "あなたの30日");
     expect(await within(dialog).findByText("見せた2日目")).toBeTruthy();
-    expect(within(dialog).queryByText(/まだ誰にも見えていません/)).toBeNull();
+    expect(within(dialog).queryByText(NONE_SHOWN)).toBeNull();
   });
 });
